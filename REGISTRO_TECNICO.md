@@ -46,6 +46,9 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 lanciare, verificare benvenuto, ripristinare) → `Compress-Archive` di exe +
 LEGGIMI in `dist\YGO Toolbox vX.Y.Z.zip`. Benvenuto: `WelcomeDialog`, flag
 `welcomed` in mw_settings (marcato in silenzio se il token esiste già).
+**Git/GitHub:** repo PRIVATO su https://github.com/Losax/ygo-toolbox
+(branch `main`; .gitignore esclude build/dist/db/token/.claude; screenshot
+del README in `docs/`). Committare e pushare a fine sessione.
 
 ---
 
