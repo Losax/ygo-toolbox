@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Build PyInstaller (rigenerabile: pyinstaller ygo_toolbox.spec)
+build/
+dist/
+
+# Dati locali / segreti (non devono finire nel repo)
+*.db
+cardtrader_token.txt
+.env
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Claude Code (impostazioni locali)
+.claude/

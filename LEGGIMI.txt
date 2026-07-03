@@ -1,0 +1,53 @@
+=====================================================================
+  YGO TOOLBOX v1.0.0 — prezzi delle carte Yu-Gi-Oh! su CardTrader
+=====================================================================
+
+Cosa fa
+-------
+Tiene d'occhio il prezzo PIÙ BASSO delle carte che scegli su
+CardTrader e ti avvisa con una notifica quando cala oltre la soglia
+che hai impostato. Cartelle, filtri (lingua, condizione, CardTrader
+Zero, ...), controllo automatico periodico e all'avvio.
+
+Requisiti
+---------
+- Windows 10 o 11. Non serve installare nulla: doppio clic sull'exe.
+- Un account CardTrader (gratuito) per il token API.
+
+Primo avvio
+-----------
+1) Windows SmartScreen potrebbe mostrare "PC protetto da Windows":
+   è normale per le app non firmate. Clicca "Ulteriori informazioni"
+   e poi "Esegui comunque". Serve solo la prima volta.
+
+2) Imposta il tuo token CardTrader: pulsante con la CHIAVE in alto a
+   destra. Il token si crea gratis su cardtrader.com nella sezione
+   API del tuo profilo (area sviluppatori). Usa il TUO token: è
+   personale e resta solo sul tuo PC.
+
+3) Sincronizza il catalogo: pulsante con le FRECCE circolari.
+   Scarica ~48.000 carte, ci mette 4-5 minuti, SOLO la prima volta.
+
+4) Cerca una carta nella barra di ricerca, imposta la soglia di
+   avviso ("Avvisa al calo di") e premi "Aggiungi alla watchlist".
+
+Consigli d'uso
+--------------
+- Tasto destro sulla watchlist per creare CARTELLE; trascina le
+  righe per riordinarle o spostarle nelle cartelle.
+- Pulsante a IMBUTO accanto alla ricerca = filtri sugli annunci
+  (lingua, condizione minima, prima edizione, Zero, PRO, ...).
+- Pulsante GRIGLIA in alto = modalità Panoramica (watchlist grande
+  con tutti i dettagli dell'annuncio più economico).
+- In OPZIONI (pulsante sliders): badge per le rarità, codici set,
+  animazioni on/off e lingua dell'app (Italiano/English).
+- Non aprire più copie dell'app insieme e non fare controlli a
+  raffica: CardTrader potrebbe bloccarti temporaneamente l'accesso.
+
+Dove stanno i dati
+------------------
+Tutto in C:\Users\<tuo nome>\.ygo_toolbox\  (token, watchlist,
+catalogo). Se qualcosa non va, il file log.txt in quella cartella
+aiuta a capire il problema: allegalo quando lo segnali.
+
+Buona caccia ai prezzi!
