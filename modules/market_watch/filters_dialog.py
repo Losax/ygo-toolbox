@@ -23,6 +23,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -30,12 +31,15 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QGraphicsOpacityEffect,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
-from core import anim, i18n, theme
+from core import anim, i18n, telegram, theme
 from core.i18n import tr
 
 from .providers.base import ListingFilters
@@ -490,7 +494,63 @@ class DisplayDialog(CardDialog):
         note.setObjectName("subtitle")
         note.setWordWrap(True)
         self.body.addWidget(note)
+        # --- notifiche Telegram sul telefono (il PC fa da "server") ---
+        self.body.addSpacing(6)
+        tg_title = QLabel(tr("Notifiche Telegram sul telefono"))
+        tg_title.setObjectName("popoverTitle")
+        self.body.addWidget(tg_title)
+        tg_help = QLabel(tr(
+            "Crea un bot con @BotFather su Telegram, apri la chat col bot e "
+            "premi /start; poi incolla qui il token e collega. Gli avvisi di "
+            "calo prezzo arriveranno anche sul telefono (col PC acceso)."))
+        tg_help.setObjectName("subtitle")
+        tg_help.setWordWrap(True)
+        self.body.addWidget(tg_help)
+        tg_row = QHBoxLayout()
+        tg_row.setSpacing(8)
+        self.tg_token = QLineEdit()
+        self.tg_token.setPlaceholderText(tr("Token del bot (da @BotFather)"))
+        self.tg_token.setText(telegram.load_config().get("token", ""))
+        self.tg_link_btn = QPushButton(tr("Collega e invia prova"))
+        self.tg_link_btn.clicked.connect(self._link_telegram)
+        tg_row.addWidget(self.tg_token, 1)
+        tg_row.addWidget(self.tg_link_btn)
+        self.body.addLayout(tg_row)
+        self.tg_status = QLabel()
+        self.tg_status.setObjectName("subtitle")
+        self._refresh_tg_status()
+        self.body.addWidget(self.tg_status)
         self._add_buttons()
+
+    def _refresh_tg_status(self) -> None:
+        if telegram.is_configured():
+            self.tg_status.setText(
+                tr("Collegato ✓ — chat: {name}").format(name=telegram.linked_name() or "?"))
+        else:
+            self.tg_status.setText(tr("Non collegato."))
+
+    def _link_telegram(self) -> None:
+        token = self.tg_token.text().strip()
+        if not token:
+            return
+        self.tg_status.setText(tr("Collegamento…"))
+        self.tg_link_btn.setEnabled(False)
+        QApplication.processEvents()   # mostra lo stato prima della chiamata
+        try:
+            found = telegram.discover_chat(token)
+        except Exception as exc:  # rete/token errato: mostrare, non esplodere
+            self.tg_status.setText(tr("Errore: {msg}").format(msg=exc))
+            self.tg_link_btn.setEnabled(True)
+            return
+        self.tg_link_btn.setEnabled(True)
+        if found is None:
+            self.tg_status.setText(
+                tr("Nessun /start trovato: apri la chat col bot, premi /start e riprova."))
+            return
+        chat_id, name = found
+        telegram.save_config(token, chat_id, name)
+        telegram.send(tr("✅ YGO Toolbox collegato! Gli avvisi di calo prezzo arriveranno qui."))
+        self._refresh_tg_status()
 
     def result_language(self) -> str:
         return self.app_lang.currentData()

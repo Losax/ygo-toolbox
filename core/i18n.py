@@ -178,6 +178,23 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "instant interface.",
         "La nuova lingua si applica al prossimo avvio.":
             "The new language applies at the next startup.",
+        # notifiche Telegram
+        "Notifiche Telegram sul telefono": "Telegram notifications on your phone",
+        "Crea un bot con @BotFather su Telegram, apri la chat col bot e "
+        "premi /start; poi incolla qui il token e collega. Gli avvisi di "
+        "calo prezzo arriveranno anche sul telefono (col PC acceso).":
+            "Create a bot with @BotFather on Telegram, open the bot chat and "
+            "press /start; then paste the token here and link. Price-drop "
+            "alerts will also reach your phone (while the PC is on).",
+        "Token del bot (da @BotFather)": "Bot token (from @BotFather)",
+        "Collega e invia prova": "Link and send test",
+        "Collegato ✓ — chat: {name}": "Linked ✓ — chat: {name}",
+        "Non collegato.": "Not linked.",
+        "Collegamento…": "Linking…",
+        "Nessun /start trovato: apri la chat col bot, premi /start e riprova.":
+            "No /start found: open the bot chat, press /start and try again.",
+        "✅ YGO Toolbox collegato! Gli avvisi di calo prezzo arriveranno qui.":
+            "✅ YGO Toolbox linked! Price-drop alerts will arrive here.",
         # benvenuto (primo avvio)
         "Benvenuto in YGO Toolbox!": "Welcome to YGO Toolbox!",
         "Per iniziare servono due passi:\n\n"

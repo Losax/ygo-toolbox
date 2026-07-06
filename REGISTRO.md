@@ -43,6 +43,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Filtri annunci (imbuto)** | Pulsante a **imbuto accanto alla barra di ricerca**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana), per tutte le carte senza filtri propri. |
 | **Opzioni (visualizzazione)** | Pulsante *Opzioni* (sliders) nell'header: preferenze di **visualizzazione** della watchlist (rarità come badge, set come codice), **animazioni dell'interfaccia** on/off (effetto immediato) e **lingua dell'app** (Italiano/English, si applica al riavvio). |
 | **Finestre "in-app"** | Le impostazioni non si aprono più come finestre di Windows: sono **card del tema** senza cornice, con ombra e dissolvenza, posizionate accanto al pulsante che le apre. **Clic fuori dalla card = chiudi e applica** (come un menu; per scartare c'è *Annulla*). |
+| **Notifiche Telegram** | In *Opzioni*: crea un bot con **@BotFather**, premi **/start** nella sua chat, incolla il token e clicca *Collega*. Gli avvisi di calo arrivano **anche sul telefono** (app chiusa, ovunque) finché il PC con l'app è acceso. Nessuna VPN, nessuna porta aperta. |
 
 ### Filtri disponibili (Opzioni)
 - **Lingua** (es. Italiano, Inglese, …)
@@ -165,6 +166,11 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     **esce con animazione** su OK/Annulla/clic fuori. Tempi delle animazioni
     ricalibrati (più morbidi e visibili). Corretti due bug: interruttori che
     non si spegnevano e crash alla massimizzazione in Panoramica.
+37. **Notifiche Telegram sul telefono** (fase 1 "mobile"): il PC con
+    l'app aperta fa da server; gli avvisi di calo prezzo arrivano anche su
+    Telegram (app chiusa, ovunque) — solo traffico in uscita, niente VPN né
+    porte sul router. Collegamento guidato in *Opzioni* (token da
+    @BotFather + /start).
 
 ---
 

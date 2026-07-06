@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from core import telegram
 from core.storage import Storage
 
 
@@ -18,6 +19,8 @@ class Notifier:
 
     Se la tray non è disponibile (es. test headless) fa fallback su stdout,
     così il codice resta testabile senza interfaccia grafica.
+    Se Telegram è collegato (Opzioni), la notifica parte ANCHE lì: così
+    arriva sul telefono ovunque, ad app chiusa (solo traffico in uscita).
     """
 
     def __init__(self, tray_icon=None) -> None:
@@ -28,6 +31,7 @@ class Notifier:
             self._tray.showMessage(title, message)
         else:
             print(f"[NOTIFY] {title}: {message}")
+        telegram.send(f"{title}\n{message}")   # no-op se non configurato
 
 
 @dataclass

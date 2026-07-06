@@ -288,6 +288,18 @@ def main() -> int:
     assert dlg.result_filters().language == "it"
     print("[OK] Filtri: lingua sempre modificabile, americana si spegne da sola.")
 
+    # 5b) canale Telegram: config su file, invio = no-op se non configurato
+    from core import telegram as tg  # noqa: E402
+    tg.CONFIG_FILE = tmp / "telegram.json"     # mai toccare la config reale nei test
+    assert not tg.is_configured()
+    tg.send("non deve partire nulla")          # no-op silenzioso senza config
+    tg.save_config("123:abc", 42, "lorenzo")
+    assert tg.is_configured() and tg.load_config()["chat_id"] == 42
+    assert tg.linked_name() == "lorenzo"
+    tg.CONFIG_FILE = tmp / "assente.json"      # torna non configurato
+    assert not tg.is_configured()
+    print("[OK] Telegram: config salvata/riletta, invio no-op senza collegamento.")
+
     # 6) i18n: traduzioni presenti, fallback sicuro, cambio lingua
     from core import i18n  # noqa: E402
     assert i18n.tr("Nessuna copia") == "Nessuna copia"      # default: italiano
