@@ -102,7 +102,7 @@ al catalogo serve **ri-sincronizzare**.
 `_listing_matches`): language, min_condition (scala `CONDITIONS`), first_edition,
 zero_only (`can_sell_via_hub`), exclude_graded, pro_only, **american_only**.
 Euristica USA (`_is_american_print`): lingua == "en" AND (country_code == "US"
-OR regex `\b(usa|u.s.a.|american(o/a)|north american|(na|us) print)\b` sul commento;
+OR regex `\b(usa|u.s.a.|american(o/a)|north american|(na|us) print/edition)\b` sul commento;
 confini di parola per non pescare "usato").
 
 ---
