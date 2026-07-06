@@ -253,6 +253,8 @@ def main() -> int:
     assert _is_american_print(en(description="Carta USA, near mint"))                 # commento USA
     assert _is_american_print(en(description="NA print, ottime condizioni"))          # NA print
     assert _is_american_print(en(description="North American printing"))              # North American
+    assert _is_american_print(en(description="[US Edition] near mint"))                # US Edition
+    assert not _is_american_print(en(description="Limited Edition"))                   # 'edition' da sola no
     assert not _is_american_print(en(user={"country_code": "IT"}, description="usato, ottimo stato"))  # 'usato' != USA
     assert not _is_american_print(en(user={"country_code": "IT"}, description="banana split promo"))   # 'banana' != NA print
     assert not _is_american_print(en(user={"country_code": "IT"}, description=""))    # nessun segnale

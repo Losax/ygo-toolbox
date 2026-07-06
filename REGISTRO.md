@@ -52,8 +52,8 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 - **Escludi carte graded**
 - **Solo venditori PRO**
 - **Solo stampa americana (USA)** — criterio *non ufficiale*: carta in inglese
-  **e** (venditore americano **oppure** commento con USA / American / NA print /
-  North American). Selezionandolo la lingua è forzata a Inglese.
+  **e** (venditore americano **oppure** commento con USA / American / NA-US print /
+  US Edition / North American). Selezionandolo la lingua è forzata a Inglese.
 
 I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
 

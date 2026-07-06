@@ -125,9 +125,11 @@ def _extract_price(product: dict) -> tuple[float, str] | None:
 
 # Riconoscimento "stampa americana" nei commenti del venditore.
 # Confini di parola per non confondere parole italiane (es. "usato" NON è "usa").
-# Coperti: USA / U.S.A. / American(o/a) / North American / NA print / US print.
+# Coperti: USA / U.S.A. / American(o/a) / North American / NA·US print /
+# NA·US edition (es. "[US Edition]").
 _AMERICAN_RE = re.compile(
-    r"\b(usa|u\.s\.a\.?|american[oa]?|north[\s\-]?american|(?:na|us)[\s\-]?print)\b",
+    r"\b(usa|u\.s\.a\.?|american[oa]?|north[\s\-]?american|"
+    r"(?:na|us)[\s\-]?(?:print|edition))\b",
     re.IGNORECASE,
 )
 
