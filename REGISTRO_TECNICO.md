@@ -1,6 +1,6 @@
 # Registro tecnico — YGO Toolbox (handoff sviluppo)
 
-_Aggiornato: 2026-07-03_
+_Aggiornato: 2026-07-28_
 
 Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 `CLAUDE.md` (regole) e `REGISTRO.md` (lato utente).
@@ -19,7 +19,6 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `storage.py` | Wrapper SQLite (solo thread GUI). |
 | `theme.py` | Tema: Fusion + `QPalette` scura + QSS. Costanti colore (ACCENT, POSITIVE, …) e `FONT_FAMILY` ("Inter", incorporato in `assets/fonts`, caricato con `QFontDatabase` in `apply_theme`; hinting `PreferNoHinting` per testo morbido; fallback Segoe UI). `build_qss(scale)` genera il QSS con le misure in px scalate; `apply_scale(app, scale)` lo ri-applica al volo. |
 | `anim.py` | Effetti: `fade_in`, `drop_shadow`, `hover_glow`/`hover_lift` (event filter), `pulse_item`, `animate_collapse` (fisarmonica pannello). Flag globale `ENABLED` (`set_enabled`/`is_enabled`, da Opzioni → chiave `animations` nel dict display): con False gli helper saltano allo stato finale; le animazioni custom (cartelle, arrivo riga, smooth wheel, ToggleSwitch, AnimatedCombo, CardDialog) controllano `anim.is_enabled()` da sole. |
-| `telegram.py` | Notifiche sul telefono (fase 1 "mobile", architettura: PC = server, SOLO traffico in uscita). Config in `~/.ygo_toolbox/telegram.json`; `discover_chat(token)` via getUpdates (richiede /start dell'utente); `send()` asincrono (thread daemon, no-op se non configurato) agganciato in `context.Notifier.notify`. UI di collegamento in `DisplayDialog`. Fase 2 prevista: comandi bot (/lista, /soglia) via polling + web UI in LAN. |
 | `i18n.py` | Traduzioni leggere: ITALIANO = chiave e fallback (chiavi non mappate restano in italiano), dict `en` completo. `load_language()` all'avvio (PRIMA della UI, da main), scelta in `~/.ygo_toolbox/language.txt`, `tr("…")` ovunque nelle stringhe visibili; template con `.format()`. La lingua si applica al RIAVVIO (la UI si costruisce una volta). |
 
 **modules/market_watch/**
@@ -270,6 +269,14 @@ Verifica offscreen della GUI (utile in sviluppo): istanziare `MainWindow` con
 
 - Grafico dello storico prezzi (dati già in `mw_price_history`).
 - Controllo in background anche ad app chiusa.
+- **Companion mobile: DA RIDECIDERE (in pausa dal 2026-07-28).** La prima
+  versione (bot Telegram: `core/telegram.py` + aggancio in `Notifier.notify` +
+  UI di collegamento in `DisplayDialog`) è stata **rimossa** perché la
+  direzione non è ancora decisa — meglio niente che mezza soluzione. Per
+  ripescarla: `git show 12f68bf` (commit "Notifiche Telegram sul telefono").
+  Alternative sul tavolo per quando si riprenderà: bot Telegram con comandi
+  (/lista, /soglia), web UI in LAN, app/PWA, oppure push da un servizio in
+  cloud (che però toglie il vincolo "PC acceso").
 - Colonne Panoramica trascinabili/personalizzabili; nascondere colonne sotto una
   certa larghezza (oggi la Panoramica dà il meglio a schermo intero).
 - Filtro per paese venditore; altre parole chiave per l'euristica "americana".
