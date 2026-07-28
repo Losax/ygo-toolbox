@@ -40,6 +40,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Interfaccia adattiva** | Tutta l'app (testi, righe, miniature, colonne, sidebar) **scala con la dimensione della finestra** (fino a +30% a schermo intero). In Panoramica, sotto lo schermo intero **l'intera vista si rimpicciolisce** (righe, font, miniature, badge) per restare usabile a qualsiasi larghezza, senza scroll orizzontale; se serve le intestazioni si abbreviano (Cond., Vend., … — nome completo nel tooltip). |
 | **Filtri per singola carta** | Icona **sliders** su ogni riga della watchlist: filtri validi solo per quella carta (con opzione "usa i filtri predefiniti"). Sovrascrivono i predefiniti. |
 | **Quali carte hanno filtri propri** | Un **imbutino teal davanti al nome** marca le carte con filtri diversi dai predefiniti, così si vedono scorrendo l'elenco; anche l'icona sliders di quella riga diventa **teal** invece che grigia. |
+| **Apri su CardTrader** | Icona **freccia in uscita** sulla riga, accanto ai filtri e al cestino: apre la pagina della carta sul sito. Basta l'id: CardTrader reindirizza alla pagina giusta. **I filtri non viaggiano nel link** — il sito non li accetta nell'indirizzo (li applica internamente) — perciò il tooltip elenca quelli in vigore, così si rimettono in due secondi. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
 | **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
@@ -326,6 +327,14 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
       storico dei prezzi resta.
     - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
+52. **Pulsante "apri su CardTrader" (v1.0.20).** Sulla riga, insieme ai filtri
+    e al cestino, c'è una freccia in uscita che apre la pagina della carta.
+    **Sui filtri nel link, la risposta è no** e vale la pena saperlo: ho
+    verificato sul sito, CardTrader applica i filtri con una chiamata interna
+    e non li scrive mai nell'indirizzo — un link "con i filtri già attivi"
+    semplicemente non esiste. Passarli comunque avrebbe prodotto un indirizzo
+    che *sembra* filtrato e non lo è. Al loro posto il tooltip elenca i filtri
+    in vigore per quella carta, così si rimettono a mano in due secondi.
 51. **Le copie multiple ora dicono da dove arrivano (v1.0.19).** Segnalato su
     *Blitzclique Surge*: 3 copie richieste, ma il venditore più economico ne
     aveva una — e l'app moltiplicava il suo prezzo per tre, cioè un totale non

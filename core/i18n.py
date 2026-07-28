@@ -105,6 +105,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "This card's OWN filters (different from the default ones) — click to change them",
         "Filtri di questa carta (ora usa i predefiniti)":
             "Filters for this card (currently using the default ones)",
+        "Apri la carta su CardTrader": "Open the card on CardTrader",
+        "CardTrader non accetta i filtri nel link: là vanno rimessi a mano ({filtri})":
+            "CardTrader doesn't take filters in the link: set them again there ({filtri})",
+        "1ª ed.": "1st ed.", "no graded": "no graded",
         "Rimuovi dalla watchlist": "Remove from watchlist",
         "Venditore professionale (PRO)": "Professional seller (PRO)",
         # cartelle

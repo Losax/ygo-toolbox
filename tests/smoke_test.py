@@ -605,6 +605,30 @@ def main() -> int:
     print("[OK] Copie da più venditori: costo reale (10 + 2×12), righe di "
           "provenienza apribili, mercato insufficiente dichiarato.")
 
+    # 5a-quinquies) link alla pagina CardTrader nella colonna Azioni
+    from PySide6.QtWidgets import QPushButton as _QPB  # noqa: E402
+    widget.repo.add_watch("cardtrader", "382653", "Dominus Purge",
+                          "Starlight Rare · ROTA", 0.0,
+                          _json.dumps(ListingFilters(language="it",
+                                                     first_edition_only=True).to_dict()))
+    widget._reload_table()
+    lrow = [r for r, (k, p) in enumerate(widget._row_entries)
+            if k == "watch" and p["ref_id"] == "382653"][0]
+    azioni = widget.table.cellWidget(lrow, 15)
+    bottoni = azioni.findChildren(_QPB)
+    assert len(bottoni) == 3, f"attesi filtri + link + cestino, trovati {len(bottoni)}"
+    # l'indirizzo si costruisce col solo id: il sito reindirizza allo slug
+    assert widget.CARD_PAGE.format(ref_id="382653") == \
+        "https://www.cardtrader.com/cards/382653"
+    wl = [w for w in widget.repo.list_watches() if w["ref_id"] == "382653"][0]
+    tip = widget._card_page_tip(wl)
+    assert "CardTrader" in tip and "IT" in tip and "1ª ed." in tip, tip
+    # senza filtri attivi niente riga sui filtri da rimettere
+    assert widget._filters_summary(ListingFilters()) == ""
+    widget.repo.remove_watch(wl["id"])
+    print("[OK] Azioni: pulsante che apre la pagina della carta, coi filtri "
+          "in vigore ricordati nel tooltip.")
+
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.
     from modules.market_watch.providers import cardtrader as ct  # noqa: E402

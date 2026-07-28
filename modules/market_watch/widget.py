@@ -24,11 +24,22 @@ from PySide6.QtCore import (
     Qt,
     QStringListModel,
     QThreadPool,
+    QUrl,
     QTimer,
     QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QImage, QPainter, QPen, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QFontMetrics,
+    QIcon,
+    QImage,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QCompleter,
@@ -219,6 +230,32 @@ def _make_pencil_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
     ln(9, 23, 13, 27)      # base della punta
     ln(9, 23, 6, 30)       # punta
     ln(13, 27, 6, 30)
+    p.end()
+    return QIcon(pm)
+
+
+def _make_link_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
+    """Icona 'apri fuori': riquadro con freccia che esce in alto a destra."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(color))
+    pen.setWidthF(size / 16.0)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    u = size / 32.0
+    # riquadro aperto sull'angolo da cui esce la freccia
+    p.drawLine(QPointF(18 * u, 7 * u), QPointF(7 * u, 7 * u))
+    p.drawLine(QPointF(7 * u, 7 * u), QPointF(7 * u, 25 * u))
+    p.drawLine(QPointF(7 * u, 25 * u), QPointF(25 * u, 25 * u))
+    p.drawLine(QPointF(25 * u, 25 * u), QPointF(25 * u, 14 * u))
+    # freccia in uscita
+    p.drawLine(QPointF(15 * u, 17 * u), QPointF(26 * u, 6 * u))
+    p.drawLine(QPointF(19 * u, 6 * u), QPointF(26 * u, 6 * u))
+    p.drawLine(QPointF(26 * u, 6 * u), QPointF(26 * u, 13 * u))
     p.end()
     return QIcon(pm)
 
@@ -659,6 +696,7 @@ class MarketWatchWidget(QWidget):
         # variante teal: segnala a colpo d'occhio le carte con filtri PROPRI,
         # fra tutte le icone grigie della colonna Azioni
         self._settings_icon_custom = _make_settings_icon(theme.ACCENT)
+        self._link_icon = _make_link_icon()
         self._pencil_icon = _make_pencil_icon()
         # ref_id -> PriceQuote dell'ultimo controllo: persistito in mw_last_quote
         # e ricaricato qui, così la Panoramica è piena anche appena riavviata.
@@ -1742,6 +1780,13 @@ class MarketWatchWidget(QWidget):
         settings_btn.clicked.connect(
             lambda _=False, wid=watch["id"], rf=raw_filters, nm=watch["card_name"]:
             self._open_item_settings(wid, rf, nm))
+        link_btn = QPushButton()
+        link_btn.setObjectName("ghost")
+        link_btn.setIcon(self._link_icon)
+        link_btn.setIconSize(icon_sz)
+        link_btn.setToolTip(self._card_page_tip(watch))
+        link_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        link_btn.clicked.connect(lambda _=False, rid=ref_id: self._open_card_page(rid))
         remove_btn = QPushButton()
         remove_btn.setObjectName("ghost")
         remove_btn.setIcon(self._trash_icon)
@@ -1750,6 +1795,7 @@ class MarketWatchWidget(QWidget):
         remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         remove_btn.clicked.connect(lambda _=False, wid=watch["id"]: self._remove(wid))
         arow.addWidget(settings_btn)
+        arow.addWidget(link_btn)
         arow.addWidget(remove_btn)
         self.table.setCellWidget(row, 15, actions)
 
@@ -2370,6 +2416,46 @@ class MarketWatchWidget(QWidget):
         self._set_busy(False, tr("Base «{name}»: {n} carte, {c} copie. Controllo i prezzi…")
                        .format(name=name, n=len(cards), c=copies_tot))
         self.check_now()
+
+    # --- apertura della pagina su CardTrader ---
+    CARD_PAGE = "https://www.cardtrader.com/cards/{ref_id}"
+
+    @staticmethod
+    def _filters_summary(f) -> str:
+        """I filtri in vigore, in una riga leggibile."""
+        pezzi = []
+        if f.language:
+            pezzi.append(f.language.upper())
+        if f.min_condition:
+            pezzi.append(f.min_condition)
+        if f.first_edition_only:
+            pezzi.append(tr("1ª ed."))
+        if f.zero_only:
+            pezzi.append("Zero")
+        if f.exclude_graded:
+            pezzi.append(tr("no graded"))
+        if f.pro_only:
+            pezzi.append("PRO")
+        if f.american_only:
+            pezzi.append("USA")
+        return " · ".join(pezzi)
+
+    def _card_page_tip(self, watch) -> str:
+        """VERIFICATO sul sito (2026-07-29): la pagina carta applica i filtri
+        con una POST a `filter.json` e NON li mette mai nell'URL — passarli nel
+        link non funziona, restano lì ignorati. Invece di fingere, il tooltip
+        elenca quali sono in vigore qui, così si ritrovano in due secondi."""
+        tip = tr("Apri la carta su CardTrader")
+        attivi = self._filters_summary(self._effective_filters(watch))
+        if attivi:
+            tip += "\n" + tr("CardTrader non accetta i filtri nel link: là vanno "
+                             "rimessi a mano ({filtri})").format(filtri=attivi)
+        return tip
+
+    def _open_card_page(self, ref_id: str) -> None:
+        """Basta l'id del blueprint: il sito reindirizza alla pagina giusta
+        (verificato dal vivo, /cards/382653 → /it/cards/382653-dominus-purge-…)."""
+        QDesktopServices.openUrl(QUrl(self.CARD_PAGE.format(ref_id=ref_id)))
 
     def _ask_copies(self, watch_id, card_name: str, current: int) -> None:
         value, ok = QInputDialog.getInt(

@@ -319,6 +319,22 @@ confini di parola per non pescare "usato").
   solo se token + watchlist non vuota).
 - **Filtri per carta:** icona impostazioni per riga → `_open_item_settings` →
   `FiltersDialog(allow_global=True)` → `repo.set_watch_filters` (`''` = globali).
+- **Pagina della carta sul sito** (`_open_card_page`): basta
+  `https://www.cardtrader.com/cards/<blueprint_id>` — il sito reindirizza allo
+  slug completo (verificato dal vivo 2026-07-29: `/cards/382653` →
+  `/it/cards/382653-dominus-purge-…`). Quindi NON serve salvare lo `slug` in
+  catalogo né risincronizzare, anche se l'API lo espone.
+  **I filtri NON si possono passare nel link.** Ispezionata la pagina: il
+  pannello filtri è un form che fa **POST a `/it/cards/<id>/filter.json`** e
+  l'URL non cambia mai; mettendo i `q[...]` in query string restano lì
+  ignorati (checkbox non spuntate, risultati invariati). Nomi dei campi, per
+  memoria: `q[terms][properties_hash.yugioh_language.keyword][]` (en/fr/it/de/
+  es/pt), `q[terms][properties_hash.condition.keyword][]`,
+  `q[term][properties_hash.first_edition]`, `q[term][user.can_sell_via_hub]`,
+  `q[term][graded]`. **Attenzione:** la scala delle condizioni del SITO
+  (Mint, Near Mint, Slightly/Moderately Played, Played, Poor) NON coincide con
+  quella che usiamo dall'API (`CONDITIONS`: … Excellent, Good, Light Played …).
+  Al posto dei filtri nel link, il tooltip elenca quelli in vigore.
 - **Immagini:** anteprima grande via `ImageFetchWorker` (QImage decodificato fuori
   GUI); miniature del popup via `ThumbDelegate`; miniature di riga watchlist via
   `_row_icon`/`_on_row_thumb` (QThreadPool + `SESSION`, `_ThumbTask` con size). Cache per URL.
