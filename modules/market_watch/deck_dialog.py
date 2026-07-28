@@ -8,16 +8,16 @@ chiude solo con OK o Annulla.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QStringListModel, QTimer
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCompleter,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -29,7 +29,9 @@ from PySide6.QtWidgets import (
 from core import theme
 from core.i18n import tr
 
-MAX_RESULTS = 40      # il popup dei risultati resta corto e reattivo
+from .search_model import ThumbDelegate
+
+MAX_RESULTS = 60      # come la ricerca principale
 MAX_COPIES = 99
 
 
@@ -41,9 +43,11 @@ class DeckDialog(QDialog):
     """
 
     def __init__(self, search, name: str = "", filters_json: str = "",
-                 cards=None, filters_editor=None, parent=None) -> None:
+                 cards=None, filters_editor=None, thumb_items=None,
+                 resolve=None, parent=None) -> None:
         super().__init__(parent)
         self._search = search
+        self._resolve = resolve
         self._filters_json = filters_json
         self._filters_editor = filters_editor   # callable(json) -> json | None
         self.setWindowTitle(tr("Base (mazzo)"))
@@ -73,19 +77,41 @@ class DeckDialog(QDialog):
         top.addWidget(self.filters_btn)
         root.addLayout(top)
 
-        # --- ricerca carte ---
+        # --- ricerca carte: LA STESSA della barra principale ---
+        # Stesso `ThumbDelegate`, quindi stesse miniature, stesso hover animato
+        # e stessa pill del codice set. Non si riscrive niente: cambia solo il
+        # campo che la pilota.
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(tr("Cerca una carta da aggiungere…"))
         self.search_input.textEdited.connect(self._on_search)
         root.addWidget(self.search_input)
-        self.results = QListWidget()
-        self.results.setMaximumHeight(120)
-        self.results.itemActivated.connect(self._add_selected)
-        self.results.itemDoubleClicked.connect(self._add_selected)
-        root.addWidget(self.results)
-        # Invio nel campo = aggiungi il primo risultato: comporre un mazzo
-        # significa ripetere questo gesto decine di volte, il mouse è di troppo.
-        self.search_input.returnPressed.connect(self._add_first)
+
+        self._model = QStringListModel(self)
+        self._completer = QCompleter(self._model, self)
+        self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._completer.setCompletionMode(QCompleter.CompletionMode.UnfilteredPopupCompletion)
+        self._completer.setMaxVisibleItems(6)
+        popup = self._completer.popup()
+        popup.setObjectName("searchPopup")
+        popup.setUniformItemSizes(True)     # senza, il view misura OGNI riga
+        popup.setMouseTracking(True)
+        popup.viewport().setMouseTracking(True)
+        font = QFont(popup.font())
+        font.setPointSizeF(font.pointSizeF() + 3)
+        popup.setFont(font)
+        self._thumbs = ThumbDelegate(self)
+        self._thumbs.set_view(popup)
+        popup.setItemDelegate(self._thumbs)
+        if thumb_items:
+            self._thumbs.set_cards(thumb_items)
+        self._completer.activated[str].connect(self._on_pick)
+        self.search_input.setCompleter(self._completer)
+        # debounce come nella barra principale: il filtro parte dopo la pausa
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.setInterval(90)
+        self._timer.timeout.connect(self._apply_search)
+        self._pending = ""
 
         # --- carte della base ---
         # Copie e "togli" stanno nella STESSA cella: con una colonna a parte
@@ -142,21 +168,21 @@ class DeckDialog(QDialog):
 
     # ------------------------------------------------------------ ricerca
     def _on_search(self, text: str) -> None:
-        self.results.clear()
-        text = text.strip()
+        self._pending = text
+        self._timer.start()
+
+    def _apply_search(self) -> None:
+        text = self._pending.strip()
         if not text:
+            self._model.setStringList([])
             return
-        for label, ref in self._search(text)[:MAX_RESULTS]:
-            item = QListWidgetItem(label)
-            item.setData(Qt.ItemDataRole.UserRole, ref)
-            self.results.addItem(item)
+        self._model.setStringList([label for label, _ref in self._search(text)[:MAX_RESULTS]])
+        self._completer.complete()
 
-    def _add_first(self) -> None:
-        if self.results.count():
-            self._add(self.results.item(0).data(Qt.ItemDataRole.UserRole))
-
-    def _add_selected(self, item) -> None:
-        self._add(item.data(Qt.ItemDataRole.UserRole))
+    def _on_pick(self, label: str) -> None:
+        ref = self._resolve(label) if self._resolve else None
+        if ref is not None:
+            self._add(ref)
 
     def _add(self, ref) -> None:
         """Carta già presente = una copia in più: è quello che ci si aspetta
@@ -170,8 +196,9 @@ class DeckDialog(QDialog):
             self._cards.append([ref, 1])
             self._rebuild_table()
         self.search_input.clear()
-        self.results.clear()
+        self._model.setStringList([])
         self.search_input.setFocus()
+        self.table.scrollToBottom()
 
     # ------------------------------------------------------------- tabella
     def _rebuild_table(self) -> None:

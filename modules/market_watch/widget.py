@@ -556,6 +556,7 @@ class MarketWatchWidget(QWidget):
         self._pending_filters: ListingFilters | None = None
         self._label_to_ref: dict[str, CardRef] = {}
         self._search_index: list[tuple[str, str]] = []  # (label_minuscolo, label)
+        self._completer_items: list[tuple] = []         # voci per il ThumbDelegate
         # ref senza annuncio conforme ai filtri: persistito, così "Nessuna copia"
         # sopravvive al riavvio (altrimenti tornerebbe a mostrare il vecchio prezzo).
         self._no_match_refs: set[str] = self._load_no_match()
@@ -711,10 +712,6 @@ class MarketWatchWidget(QWidget):
             "Filtri predefiniti: si applicano alle carte che aggiungi senza "
             "impostarne di propri"))
         self.defaults_btn.clicked.connect(self.open_default_filters)
-        self.deck_btn = QPushButton()
-        self.deck_btn.setIcon(_make_deck_icon())
-        self.deck_btn.setToolTip(tr("Nuova base: un mazzo di carte in più copie, con filtri comuni"))
-        self.deck_btn.clicked.connect(lambda: self.open_deck())
         self.options_btn = QPushButton()
         self.options_btn.setIcon(_make_gear_icon())   # sliders = filtri di UNA carta
         self.options_btn.setToolTip(tr("Opzioni di visualizzazione della watchlist"))
@@ -724,13 +721,12 @@ class MarketWatchWidget(QWidget):
         self.overview_btn.setCheckable(True)
         self.overview_btn.setToolTip(tr("Panoramica: nasconde la ricerca e allarga la watchlist"))
         self.overview_btn.toggled.connect(self._toggle_overview)
-        self._header_buttons = (self.token_btn, self.sync_btn, self.deck_btn,
+        self._header_buttons = (self.token_btn, self.sync_btn,
                                 self.defaults_btn, self.options_btn, self.overview_btn)
         header.addWidget(self.token_label)
         header.addWidget(self.catalog_label)
         header.addWidget(self.token_btn)
         header.addWidget(self.sync_btn)
-        header.addWidget(self.deck_btn)
         header.addWidget(self.defaults_btn)
         header.addWidget(self.options_btn)
         header.addWidget(self.overview_btn)
@@ -766,6 +762,13 @@ class MarketWatchWidget(QWidget):
         self.filters_btn.setCheckable(True)   # acceso = questa carta ha filtri suoi
         self.filters_btn.clicked.connect(self.open_card_filters)
         search_row.addWidget(self.filters_btn)
+        # Il pulsante delle BASI sta qui, accanto alla ricerca: comporre una
+        # base è un gesto di ricerca, non un'impostazione dell'app.
+        self.deck_btn = QPushButton()
+        self.deck_btn.setIcon(_make_deck_icon())
+        self.deck_btn.setToolTip(tr("Nuova base: un mazzo di carte in più copie, con filtri comuni"))
+        self.deck_btn.clicked.connect(lambda: self.open_deck())
+        search_row.addWidget(self.deck_btn)
         self._update_card_filters_btn()
         pv.addLayout(search_row)
 
@@ -1029,7 +1032,7 @@ class MarketWatchWidget(QWidget):
         big = self._overview
         self.preview.setFixedSize(self._sp(156), self._sp(218))
         self.search_input.setMinimumHeight(self._sp(34))
-        for btn in (*self._header_buttons, self.filters_btn):  # pulsanti-icona quadrati
+        for btn in (*self._header_buttons, self.filters_btn, self.deck_btn):  # icone quadrate
             btn.setFixedSize(self._sp(38), self._sp(38))
             btn.setIconSize(QSize(self._sp(20), self._sp(20)))
         if big:
@@ -1419,6 +1422,7 @@ class MarketWatchWidget(QWidget):
         self._search_index = [(lbl.lower(), lbl) for lbl in labels]
         self._completer_model.setStringList([])        # vuoto: si riempie coi match
         self._thumb_delegate.set_cards(items)          # immagini + codice gestiti dal delegate
+        self._completer_items = items                  # li riusa la ricerca delle basi
         # La mappa dei ripieghi nasce QUI, ma la tabella è già stata disegnata
         # una volta (questo metodo è differito con un singleShot per non
         # rallentare l'avvio): senza questo giro, le carte che dipendono dal
@@ -2192,7 +2196,9 @@ class MarketWatchWidget(QWidget):
                                           detail=w["detail"] or ""),
                                   w["copies"] if "copies" in w.keys() else 1))
         dlg = DeckDialog(self._deck_search, name=name, filters_json=filters_json,
-                         cards=cards, filters_editor=self._edit_deck_filters, parent=self)
+                         cards=cards, filters_editor=self._edit_deck_filters,
+                         thumb_items=self._completer_items,      # stesse miniature
+                         resolve=self._label_to_ref.get, parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         self._save_deck(folder, dlg.result_name(), dlg.result_filters_json(), dlg.result_cards())
