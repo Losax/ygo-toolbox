@@ -243,7 +243,41 @@ class MarketWatchRepository:
     def _key_clause(filters_key) -> tuple[str, tuple]:
         return ("", ()) if filters_key is None else (" AND filters_key = ?", (filters_key,))
 
+    def _run_start(self, provider, ref_id, filters_key) -> int:
+        """Id oltre il quale comincia la "corsa" attuale di questi filtri.
+
+        Cambiare filtri INTERROMPE la serie: i punti presi con la chiave
+        corrente PRIMA dell'interruzione sono di un'altra sessione, magari di
+        settimane fa. Confrontarcisi faceva ricomparire vecchi movimenti come
+        se fossero appena successi (è il caso "tolgo e rimetto americana e mi
+        esce +30%"). Qui si trova l'ultimo punto con una chiave DIVERSA: la
+        corsa buona è tutto quello che viene dopo."""
+        if filters_key is None:
+            return 0
+        rows = self.storage.query(
+            "SELECT MAX(id) AS cut FROM mw_price_history "
+            "WHERE provider = ? AND ref_id = ? AND filters_key != ?",
+            (provider, str(ref_id), filters_key),
+        )
+        return rows[0]["cut"] or 0 if rows else 0
+
     def last_price(self, provider, ref_id, filters_key: str | None = None) -> float | None:
+        """Ultimo prezzo della corsa ATTUALE di questi filtri (None se la corsa
+        è appena iniziata). È anche il riferimento per l'avviso di calo: dopo un
+        cambio di filtri non c'è nulla con cui confrontarsi, e va bene così."""
+        clause, extra = self._key_clause(filters_key)
+        cut = self._run_start(provider, ref_id, filters_key)
+        rows = self.storage.query(
+            "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ?" + clause +
+            " AND id > ? ORDER BY captured_at DESC, id DESC LIMIT 1",
+            (provider, str(ref_id)) + extra + (cut,),
+        )
+        return rows[0]["price"] if rows else None
+
+    def last_known_price(self, provider, ref_id, filters_key: str | None = None) -> float | None:
+        """Ultimo prezzo noto con questi filtri, anche di una corsa precedente.
+        Serve per MOSTRARE un prezzo (meglio uno vecchio che un trattino
+        mentre il nuovo controllo è in corso), mai per calcolare variazioni."""
         clause, extra = self._key_clause(filters_key)
         rows = self.storage.query(
             "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ?" + clause +
@@ -256,20 +290,26 @@ class MarketWatchRepository:
         """[ultimo prezzo, ultimo prezzo DIVERSO precedente] (o meno elementi
         se non c'è abbastanza storia). La Var.% si calcola sull'ultimo CAMBIO
         di prezzo, non sull'ultimo controllo: robusto anche sui DB vecchi che
-        contengono controlli consecutivi con lo stesso prezzo."""
+        contengono controlli consecutivi con lo stesso prezzo.
+
+        Il confronto resta DENTRO la corsa attuale (vedi `_run_start`): se la
+        corsa è appena iniziata si torna il solo prezzo noto, senza secondo
+        elemento — quindi Var. "—", né in salita né in discesa."""
         clause, extra = self._key_clause(filters_key)
+        cut = self._run_start(provider, ref_id, filters_key)
         rows = self.storage.query(
             "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ?" + clause +
-            " ORDER BY captured_at DESC, id DESC LIMIT 1",
-            (provider, str(ref_id)) + extra,
+            " AND id > ? ORDER BY captured_at DESC, id DESC LIMIT 1",
+            (provider, str(ref_id)) + extra + (cut,),
         )
         if not rows:
-            return []
+            known = self.last_known_price(provider, ref_id, filters_key)
+            return [known] if known is not None else []
         last = rows[0]["price"]
         prev = self.storage.query(
             "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ?" + clause +
-            " AND price != ? ORDER BY captured_at DESC, id DESC LIMIT 1",
-            (provider, str(ref_id)) + extra + (last,),
+            " AND id > ? AND price != ? ORDER BY captured_at DESC, id DESC LIMIT 1",
+            (provider, str(ref_id)) + extra + (cut, last),
         )
         return [last, prev[0]["price"]] if prev else [last]
 

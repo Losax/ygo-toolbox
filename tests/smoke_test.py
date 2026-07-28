@@ -187,11 +187,27 @@ def main() -> int:
     assert widget.repo.last_price_change("cardtrader", "555", nuova_chiave) == [3.00], \
         "col nuovo filtro la storia riparte: nessun precedente con cui fare la Var."
     assert widget.table.item(0, 9).text() == "—", widget.table.item(0, 9).text()
-    # la vecchia serie non è persa: tornando ai filtri di prima si riprende
-    assert widget.repo.last_price_change("cardtrader", "555", chiave) == [12.00, 25.00]
+
+    # TORNANDO ai filtri di prima non deve riemergere il vecchio confronto:
+    # quei movimenti sono di un'altra sessione, magari di settimane fa, e
+    # ricomparirebbero come se fossero appena successi (caso reale: tolgo e
+    # rimetto "americana" e mi esce +30%). Vale in salita come in discesa.
     widget.repo.set_watch_filters(watch555["id"], "")
-    print("[OK] Cambio filtri: nessun crollo inventato in Var. né notifica; "
-          "la serie precedente resta e si riprende tornando indietro.")
+    assert widget.repo.last_price_change("cardtrader", "555", chiave) == [12.00], \
+        "la corsa precedente non deve fornire un termine di paragone"
+    assert widget.repo.last_price("cardtrader", "555", chiave) is None, \
+        "nemmeno l'avviso di calo deve avere un riferimento"
+    # il prezzo però resta visibile (meglio l'ultimo noto di un trattino)
+    assert widget.repo.last_known_price("cardtrader", "555", chiave) == 12.00
+    before = len(notifier.messages)
+    widget._on_prices([{"ref_id": "555", "quote": PriceQuote(30.00, "EUR", "NM")}])  # +150% finto
+    assert len(notifier.messages) == before
+    assert widget.table.item(0, 9).text() == "—", widget.table.item(0, 9).text()
+    # da qui in poi i movimenti VERI si vedono di nuovo
+    widget._on_prices([{"ref_id": "555", "quote": PriceQuote(24.00, "EUR", "NM")}])  # -20% vero
+    assert widget.table.item(0, 9).text() == "-20.0%", widget.table.item(0, 9).text()
+    print("[OK] Cambio filtri: niente Var. inventata né avvisi, in salita come "
+          "in discesa; i movimenti veri della nuova serie si vedono.")
 
     # 3c) rimozione carta = pulizia completa (storico + ultimo annuncio)
     watch_id = [w for w in widget.repo.list_watches() if w["ref_id"] == "555"][0]["id"]

@@ -286,8 +286,16 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     calo**. Ora ogni prezzo in archivio ricorda **con quali filtri** è stato
     rilevato, e si confronta solo con prezzi presi con gli stessi: dopo un
     cambio la Var. resta "—" finché non c'è un movimento vero.
-    La storia precedente **non si perde**: tornando ai filtri di prima, il
-    confronto riprende da dove era rimasto.
+48. **…e nemmeno rimettendo i filtri di prima (v1.0.12).** Restava un caso:
+    togliere un filtro e poi **rimetterlo** faceva ricomparire il confronto
+    con la vecchia serie — un movimento magari di tre settimane prima, che
+    sembrava appena avvenuto (visto dal vivo su *Dominus Purge*: +30%). Ora
+    il confronto vive solo **dentro il tratto attuale**: ogni cambio di filtri
+    chiude il tratto precedente, e quello nuovo riparte da capo. Vale in
+    salita come in discesa, e vale anche per gli avvisi di calo.
+    Il **prezzo** resta comunque visibile (l'ultimo noto con quei filtri):
+    a sparire è solo la percentuale, che è la cosa che mentiva. Lo storico
+    completo resta nel database, per il grafico che verrà.
     In più, un'immagine che non si scarica **non viene più richiesta a ogni
     ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
     risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.

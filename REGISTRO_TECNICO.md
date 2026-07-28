@@ -77,6 +77,17 @@ del README in `docs/`). Committare e pushare a fine sessione.
   `record_price` filtrano per chiave (`None` = tutta la storia, per lo
   sfoltimento); `prune_history` raggruppa anche per `filters_key`, altrimenti
   due serie della stessa carta si mangerebbero a vicenda.
+  **Non basta la chiave: conta anche il TRATTO** (`_run_start`). Togliere un
+  filtro e rimetterlo riportava la chiave di prima, e con essa il confronto
+  con punti di settimane addietro: un movimento vecchio che sembrava appena
+  avvenuto (dal vivo su *Dominus Purge*: +30%). `_run_start` trova
+  `MAX(id)` fra i punti con chiave DIVERSA — quello è il taglio, e il
+  confronto usa solo i punti successivi. Senza interruzioni il taglio è 0 e il
+  comportamento è identico a prima.
+  `last_price` (riferimento dell'avviso) e `last_price_change` (Var.) usano il
+  taglio; `last_known_price` NO, perché serve a MOSTRARE un prezzo: meglio
+  l'ultimo noto che un trattino mentre il ricontrollo è in corso. Regola:
+  **il prezzo si può ereditare, la percentuale no.**
   **Migrazione (`adopt_history_key`):** i punti nati prima della colonna hanno
   chiave `''`. All'avvio `_adopt_history_keys` li assegna ai filtri correnti
   **solo per le carte che usano i predefiniti**: se una carta ha filtri PROPRI
