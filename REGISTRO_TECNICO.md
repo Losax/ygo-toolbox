@@ -42,10 +42,16 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 `version_info.txt`), `assets/icon.ico`, `assets/fonts/` (Inter + licenza OFL),
 `core/version.py` (APP_VERSION — allineare a mano `version_info.txt`),
 `LEGGIMI.txt` (guida per gli amici, va nello zip di distribuzione).
-**Release:** build exe → test da profilo pulito (rinominare `~/.ygo_toolbox`,
-lanciare, verificare benvenuto, ripristinare) → `Compress-Archive` di exe +
-LEGGIMI in `dist\YGO Toolbox vX.Y.Z.zip`. Benvenuto: `WelcomeDialog`, flag
-`welcomed` in mw_settings (marcato in silenzio se il token esiste già).
+**Release:** alzare la versione in **TRE** posti (`core/version.py`,
+`version_info.txt` — sia `filevers/prodvers` sia le stringhe — e l'intestazione
+di `LEGGIMI.txt`) → build exe → test da profilo pulito (rinominare
+`~/.ygo_toolbox`, lanciare, verificare benvenuto, ripristinare) →
+`Compress-Archive` di exe + LEGGIMI in `dist\YGO Toolbox vX.Y.Z.zip`.
+Benvenuto: `WelcomeDialog`, flag `welcomed` in mw_settings (marcato in silenzio
+se il token esiste già).
+**REGOLA (richiesta esplicita 2026-07-28): a ogni modifica tutto resta "a
+pari"** — sorgente, commit+push su GitHub **e l'exe in `dist\`** ricompilato.
+Niente exe che resta indietro rispetto al codice.
 **Git/GitHub:** repo PRIVATO su https://github.com/Losax/ygo-toolbox
 (branch `main`; .gitignore esclude build/dist/db/token/.claude; screenshot
 del README in `docs/`). Committare e pushare a fine sessione.

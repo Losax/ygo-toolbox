@@ -172,6 +172,10 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     quelle di sistema, sul PC. Il codice non è perso: sta nella cronologia di
     git (commit `12f68bf`), pronto da ripescare quando si sceglierà come
     procedere.
+38. **v1.0.1**: exe ricompilato e nuovo pacchetto `dist\YGO Toolbox v1.0.1.zip`.
+    Numero alzato perché il v1.0.0 era già confezionato per essere girato: due
+    exe diversi con lo stesso numero creerebbero solo confusione. Il vecchio
+    zip resta in `dist\` come archivio della versione già distribuita.
 
 ---
 
