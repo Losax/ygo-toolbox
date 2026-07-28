@@ -157,7 +157,9 @@ def main() -> int:
     q3 = widget3._last_quotes.get("555")
     assert q3 is not None and (q3.seller, q3.condition, q3.zero) == ("mario", "Near Mint", True), q3
     assert "555" not in widget3._no_match_refs
-    assert widget3.table.item(0, 4).text() == "Near Mint", "condizione non ricaricata al riavvio"
+    # in tabella la condizione è la sigla; il nome intero sta nel tooltip
+    assert widget3.table.item(0, 4).text() == "NM", "condizione non ricaricata al riavvio"
+    assert widget3.table.item(0, 4).toolTip() == "Near Mint"
     assert widget3.table.item(0, 8).text() == "12.00 €", widget3.table.item(0, 8).text()
     widget3.stop()
     print("[OK] Ultimo annuncio persistito: Panoramica piena anche dopo il riavvio.")
@@ -628,6 +630,20 @@ def main() -> int:
     widget.repo.remove_watch(wl["id"])
     print("[OK] Azioni: pulsante che apre la pagina della carta, coi filtri "
           "in vigore ricordati nel tooltip.")
+
+    # 5a-sexies) condizione abbreviata in tabella, nome intero nel tooltip
+    from modules.market_watch.widget import _condition_short  # noqa: E402
+    assert _condition_short("Near Mint") == "NM"
+    assert _condition_short("Light Played") == "LP"
+    assert _condition_short("Slightly Played") == "SP"     # nome usato dal sito
+    assert _condition_short("Moderately Played") == "MP"
+    assert _condition_short("Played") == "PL", "'played' dentro 'light played' non deve confondere"
+    assert _condition_short("Poor") == "PO"
+    assert _condition_short("  near mint ") == "NM", "spazi e maiuscole non contano"
+    # sconosciuta: si lascia com'è invece di inventare una sigla
+    assert _condition_short("Graded 9.5") == "Graded 9.5"
+    assert _condition_short("") == ""
+    print("[OK] Condizioni abbreviate: NM/LP/SP/MP/PL, sconosciute intatte.")
 
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.

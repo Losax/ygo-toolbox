@@ -419,6 +419,31 @@ class _IndentDelegate(QStyledItemDelegate):
         return size
 
 
+# Sigle delle condizioni. Match ESATTO sul nome intero (niente sottostringhe:
+# "played" è dentro "light played" e "slightly played", e un match parziale le
+# ridurrebbe tutte a PL). Ci sono sia i nomi dell'API sia quelli del sito, che
+# NON coincidono — vedi la nota su `_open_card_page` nel registro tecnico.
+_CONDITION_SHORT = {
+    "mint": "M",
+    "near mint": "NM",
+    "excellent": "EX",
+    "good": "GD",
+    "light played": "LP",
+    "slightly played": "SP",
+    "moderately played": "MP",
+    "played": "PL",
+    "poor": "PO",
+}
+
+
+def _condition_short(name: str) -> str:
+    """Sigla della condizione (NM, LP, …), o il nome com'è se sconosciuto.
+
+    In tabella lo spazio è prezioso e il nome per esteso non dice niente che
+    il tooltip non possa dire; una sigla inventata, invece, ingannerebbe."""
+    return _CONDITION_SHORT.get((name or "").strip().lower(), name or "")
+
+
 _folder_icon_cache: dict[tuple[bool, int, str], QIcon] = {}
 
 
@@ -1161,7 +1186,9 @@ class MarketWatchWidget(QWidget):
             widths = {1: 150,
                       2: 84 if self._display.get("rarity_icons") else 160,
                       3: 90 if self._display.get("set_codes") else 140,
-                      4: 110, 5: 62, 6: 56, 7: 56,
+                      # Condizione ora è una sigla (NM, LP…): non serve più lo
+                      # spazio per "Moderately Played", va a Commenti (Stretch)
+                      4: 70, 5: 62, 6: 56, 7: 56,
                       8: 118, 9: 96, 12: 150, 14: 50, 15: 60}
             base_total = img_w + sum(widths.values())
             avail = self.table.viewport().width()
@@ -1692,7 +1719,12 @@ class MarketWatchWidget(QWidget):
             self.table.removeCellWidget(row, 3)
             self.table.setItem(row, 3, cell(setname or "—"))
         # 4 Condizione, 5 Lingua, 6 1ª ed., 7 Zero (annuncio scelto, colonne separate)
-        self.table.setItem(row, 4, cell((q.condition if q is not None else "") or "—"))
+        cond_full = (q.condition if q is not None else "") or ""
+        cond_item = cell(_condition_short(cond_full) or "—")
+        cond_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if cond_full:
+            cond_item.setToolTip(cond_full)
+        self.table.setItem(row, 4, cond_item)
         lang_item = cell((q.language if q is not None else "") or "—")
         lang_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(row, 5, lang_item)
@@ -2733,7 +2765,12 @@ class MarketWatchWidget(QWidget):
         # 1 Nome: "↳ 2 copie" — l'indentazione la mette _IndentDelegate
         self.table.setItem(row, 1, cell("↳  " + (
             tr("1 copia") if qty == 1 else tr("{n} copie").format(n=qty))))
-        self.table.setItem(row, 4, cell(src.get("condition") or "—"))
+        cond_src = src.get("condition") or ""
+        cond_cell = cell(_condition_short(cond_src) or "—")
+        cond_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if cond_src:
+            cond_cell.setToolTip(cond_src)
+        self.table.setItem(row, 4, cond_cell)
         lang = cell((src.get("language") or "").upper() or "—")
         lang.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(row, 5, lang)
