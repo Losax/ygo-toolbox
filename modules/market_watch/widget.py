@@ -1222,7 +1222,9 @@ class MarketWatchWidget(QWidget):
         stock: dict[str, str] = {}
         stock_plain: dict[str, str] = {}
         for row in rows:
-            url = row["image_url"] or ""
+            # usable_*: scarta il segnaposto grigio di CardTrader, altrimenti
+            # verrebbe scelto come ripiego al posto di una foto vera
+            url = cardtrader.usable_image_url(row["image_url"] or "")
             if not url:
                 continue
             name_ = row["name"]
@@ -1235,7 +1237,7 @@ class MarketWatchWidget(QWidget):
         for row in rows:
             name = row["name"]
             detail = row["detail"] or ""          # "rarità · espansione" (per la tabella)
-            image_url = row["image_url"] or ""
+            image_url = cardtrader.usable_image_url(row["image_url"] or "")
             code = (row["set_code"] or "").upper()
             if " · " in detail:
                 rarity, expansion = detail.rsplit(" · ", 1)
@@ -1257,6 +1259,11 @@ class MarketWatchWidget(QWidget):
         self._search_index = [(lbl.lower(), lbl) for lbl in labels]
         self._completer_model.setStringList([])        # vuoto: si riempie coi match
         self._thumb_delegate.set_cards(items)          # immagini + codice gestiti dal delegate
+        # La mappa dei ripieghi nasce QUI, ma la tabella è già stata disegnata
+        # una volta (questo metodo è differito con un singleShot per non
+        # rallentare l'avvio): senza questo giro, le carte che dipendono dal
+        # ripiego resterebbero con la cornice vuota fino al render successivo.
+        self._refresh_row_icons()
 
     def _on_search_text(self, text: str) -> None:
         # ogni modifica manuale annulla la carta selezionata in precedenza
@@ -1566,7 +1573,7 @@ class MarketWatchWidget(QWidget):
         Il ripiego è l'arte della stessa carta presa da un'altra stampa
         (preferita quella senza rarità): giusta come disegno, sbagliata come
         stampa — per questo va mostrata col timbro "Stock"."""
-        exact = self.repo.catalog_image(PROVIDER, ref_id) or ""
+        exact = cardtrader.usable_image_url(self.repo.catalog_image(PROVIDER, ref_id) or "")
         if not name:
             name = self.repo.catalog_name(PROVIDER, ref_id) or ""
         stock = self._stock_images.get(name, "")

@@ -335,14 +335,40 @@ def _find_yugioh_game(games_payload: object) -> dict | None:
     return None
 
 
+# Per le stampe di cui non ha la foto, CardTrader NON lascia il campo vuoto:
+# restituisce il proprio segnaposto grigio ("fallbacks/card_uploader/show.png").
+# Per noi vale come immagine ASSENTE — meglio l'arte di un'altra stampa della
+# stessa carta che un rettangolo grigio buono per qualsiasi carta.
+# VERIFICATO sul catalogo reale (2026-07-28): 645 stampe su 47.980, di cui 636
+# hanno un'altra stampa con la foto vera.
+_CT_PLACEHOLDER = "fallbacks/"
+
+
+def usable_image_url(url: str) -> str:
+    """'' se l'URL manca o punta al segnaposto generico di CardTrader.
+
+    Si applica anche in LETTURA (widget), non solo qui: i cataloghi già
+    scaricati contengono quegli URL e non deve servire una risincronizzata."""
+    return "" if (not url or _CT_PLACEHOLDER in url) else url
+
+
 def _blueprint_image_url(blueprint: dict) -> str:
     """URL assoluto dell'immagine di un blueprint (variante 'show', medio-grande).
 
     La risposta espone url relativi in image.{url, show, preview, social}; uso
-    'show' (dimensione carta) con fallback all'url base. Stringa vuota se assente."""
+    'show' (dimensione carta) con fallback all'url base. Stringa vuota se
+    assente o se è il segnaposto di CardTrader.
+
+    NB: il percorso relativo a volte arriva SENZA lo slash iniziale (succede
+    proprio per i segnaposto). Concatenandolo alla cieca usciva
+    "https://www.cardtrader.comfallbacks/…", cioè un host inesistente."""
     img = blueprint.get("image") or {}
     rel = (img.get("show") or {}).get("url") or img.get("url") or ""
-    return f"{IMAGE_HOST}{rel}" if rel else ""
+    if not rel:
+        return ""
+    if rel.startswith(("http://", "https://")):
+        return usable_image_url(rel)
+    return usable_image_url(f"{IMAGE_HOST}/{rel.lstrip('/')}")
 
 
 def _all_blueprints(client: CardTraderClient, expansion_id) -> list[dict]:

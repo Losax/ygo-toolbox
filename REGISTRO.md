@@ -238,6 +238,18 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       vuota** discreta.
     *(Una prima versione metteva le iniziali della carta al posto del buco:
     scartata, faceva più rumore del problema che risolveva.)*
+44. **Le carte che restavano senza immagine (v1.0.7).** Il ripiego funzionava
+    per alcune carte (*Azamina Mu Rcielago*) e non per altre
+    (*Deception of the Sinful Spoils*). Motivo: per le stampe di cui non ha la
+    foto, CardTrader non lascia il campo vuoto — manda **un suo rettangolo
+    grigio**, uguale per tutte le carte. L'app lo prendeva per un'immagine
+    buona e non cercava il ripiego; se poi quella stampa capitava per prima in
+    elenco, veniva scelta *lei* come ripiego, e la carta restava senza niente.
+    Ora quel rettangolo è riconosciuto e trattato come "immagine assente".
+    Nel tuo catalogo riguardava **645 stampe su 47.980**: dopo la correzione
+    ne restano scoperte **9**, e la watchlist ha tutte le immagini.
+    Non serve risincronizzare il catalogo: la correzione vale anche su quello
+    già scaricato.
     In più, un'immagine che non si scarica **non viene più richiesta a ogni
     ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
     risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.

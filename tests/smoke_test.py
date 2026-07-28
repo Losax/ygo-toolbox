@@ -441,6 +441,22 @@ def main() -> int:
     from PySide6.QtCore import Qt  # noqa: E402
     from PySide6.QtGui import QImage, QPixmap  # noqa: E402
     from modules.market_watch import search_model as sm  # noqa: E402
+    # Il segnaposto grigio di CardTrader vale come immagine ASSENTE, e il
+    # percorso relativo arriva senza slash iniziale (caso reale: "Deception of
+    # the Sinful Spoils", 645 stampe su 47.980 nel catalogo vero).
+    from modules.market_watch.providers import cardtrader as ctp  # noqa: E402
+    assert ctp.usable_image_url("https://www.cardtrader.comfallbacks/card_uploader/show.png") == ""
+    assert ctp.usable_image_url("") == ""
+    assert ctp.usable_image_url("https://x/show_vera.jpg") == "https://x/show_vera.jpg"
+    assert ctp._blueprint_image_url(
+        {"image": {"show": {"url": "fallbacks/card_uploader/show.png"}}}) == "", \
+        "il segnaposto di CardTrader non va salvato come immagine"
+    assert ctp._blueprint_image_url(
+        {"image": {"show": {"url": "uploads/x.jpg"}}}) == f"{ctp.IMAGE_HOST}/uploads/x.jpg", \
+        "slash iniziale mancante: l'host non va incollato al percorso"
+    assert ctp._blueprint_image_url(
+        {"image": {"show": {"url": "/uploads/x.jpg"}}}) == f"{ctp.IMAGE_HOST}/uploads/x.jpg"
+
     widget.repo.replace_catalog("cardtrader", [
         # tre stampe della stessa carta: una SENZA rarità (l'arte "liscia",
         # da preferire come ripiego), una con rarità, una senza immagine
@@ -448,6 +464,11 @@ def main() -> int:
         ("902", "Mirror Force", "Secret Rare · DPKB", "", "DPKB"),
         ("904", "Mirror Force", "SDK", "http://x/show_904.jpg", "SDK"),
         ("903", "Carta Introvabile", "Rare · XYZ", "", "XYZ"),
+        # caso "Deception": la stampa col segnaposto viene PRIMA nel catalogo.
+        # Se la si prendesse come ripiego, la carta resterebbe senza immagine.
+        ("905", "Carta Col Segnaposto", "Quarter Century · ROTA",
+         "https://www.cardtrader.comfallbacks/card_uploader/show.png", "ROTA"),
+        ("906", "Carta Col Segnaposto", "Secret Rare · ROTA", "http://x/show_906.jpg", "ROTA"),
     ])
     widget._rebuild_completer()
     # ripiego = la stampa SENZA rarità, non la prima trovata
@@ -457,6 +478,11 @@ def main() -> int:
     assert exact == "" and stock == "http://x/show_904.jpg", (exact, stock)
     # per la stampa che È il ripiego, nessun doppione
     assert widget._image_urls_for("904", "Mirror Force") == ("http://x/show_904.jpg", "")
+    # caso "Deception": il segnaposto NON deve vincere come ripiego
+    exact905, stock905 = widget._image_urls_for("905", "Carta Col Segnaposto")
+    assert exact905 == "", "il segnaposto non è un'immagine valida"
+    assert stock905 == "http://x/show_906.jpg", \
+        f"doveva ripiegare sulla foto vera dell'altra stampa, non su {stock905!r}"
     # nessuna immagine da nessuna parte: cornice vuota, niente iniziali
     assert widget._image_urls_for("903", "Carta Introvabile") == ("", "")
     icon = widget._row_icon("903", "Carta Introvabile")

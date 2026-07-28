@@ -97,7 +97,19 @@ al catalogo serve **ri-sincronizzare**.
 - `/blueprints?expansion_id=..` è **paginato a 50/pagina** → `_all_blueprints`
   scorre le pagine (stop a pagina incompleta o senza id nuovi).
 - Blueprint: `version` = **rarità**; `code` espansione = **codice set** (→ upper);
-  `image.show.url` = immagine (host **www.cardtrader.com**).
+  `image.show.url` = immagine (host **www.cardtrader.com**). **Due trappole,
+  entrambe viste dal vivo il 2026-07-28:**
+  1. per le stampe senza foto l'API NON lascia il campo vuoto, restituisce il
+     proprio segnaposto grigio `fallbacks/card_uploader/show.png` — 645 stampe
+     su 47.980. Vale come immagine assente (`usable_image_url`), altrimenti si
+     scarica un rettangolo grigio buono per qualsiasi carta invece di ripiegare
+     sull'arte vera di un'altra stampa;
+  2. quel percorso arriva **senza slash iniziale**: concatenandolo all'host
+     usciva `https://www.cardtrader.comfallbacks/…`, un host inesistente.
+     `_blueprint_image_url` ora normalizza lo slash.
+  Il filtro si applica anche in **lettura** (widget), non solo in scrittura:
+  i cataloghi già scaricati contengono quegli URL e non deve servire una
+  risincronizzata da 5 minuti per rimetterli a posto.
 - `/marketplace/products?blueprint_id=..` torna un **dict** {blueprint_id: [annunci]}.
   Prezzo in `price:{cents,currency}` e piatto `price_cents`.
 - Per annuncio: `properties_hash` (`condition`, `yugioh_language`, `first_edition`,
@@ -274,6 +286,10 @@ confini di parola per non pescare "usato").
   3. `_make_empty_frame(size)` — cornice tratteggiata, ultima spiaggia.
      (Una prima versione ci metteva le iniziali della carta: scartata su
      richiesta, faceva più rumore del buco che copriva.)
+  **Attenzione:** `_rebuild_completer` (che costruisce `_stock_images`) è
+  differito con un `singleShot`, quindi la tabella viene disegnata una prima
+  volta SENZA ripieghi: per questo finisce con `_refresh_row_icons()`, altrimenti
+  le carte che dipendono dal ripiego resterebbero con la cornice vuota.
   **Attenzione:** `_on_row_thumb` ricalcola le icone di TUTTE le righe
   (`_refresh_row_icons`), non solo di quella "proprietaria" dell'url: un
   ripiego è condiviso da più stampe della stessa carta, e un fallimento fa
