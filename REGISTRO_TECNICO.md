@@ -323,7 +323,10 @@ confini di parola per non pescare "usato").
      resterebbe acceso per il toggle automatico del clic.
   3. `_open_item_settings` (sliders sulla **riga**) → `repo.set_watch_filters`.
   Icona: **imbuto = predefiniti**, **sliders = filtri di una carta** (riga e
-  carta-in-arrivo: stesso mestiere, stesso glifo).
+  carta-in-arrivo: stesso mestiere, stesso glifo). Opzioni è passata da
+  sliders a **ingranaggio** (`_make_gear_icon`) proprio per liberare gli
+  sliders: header con cinque glifi tutti diversi (chiave, frecce, imbuto,
+  ingranaggio, griglia).
 - **Panoramica (`_toggle_overview`):** nasconde il pannello ricerca (animazione
   `anim.animate_collapse`) e delega a `_apply_responsive_sizing()` (righe,
   miniature, font, colonne — tutto già scalato con la UI). Tabella a **16

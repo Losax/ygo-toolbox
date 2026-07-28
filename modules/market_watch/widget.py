@@ -221,6 +221,33 @@ def _make_pencil_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
     return QIcon(pm)
 
 
+def _make_gear_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
+    """Icona 'ingranaggio' (Opzioni), a tratto.
+
+    Gli sliders sono ormai il glifo dei FILTRI DI UNA CARTA (riga in watchlist
+    e carta in arrivo): usarli anche per le Opzioni faceva sembrare due cose
+    diverse la stessa. L'ingranaggio è generico quanto basta a coprire
+    visualizzazione, animazioni e lingua."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(color))
+    pen.setWidthF(size / 16.0)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    u = size / 32.0
+    p.translate(16 * u, 16 * u)
+    for _ in range(8):                      # denti, uno ruotato 8 volte
+        p.drawLine(QPointF(0, -10.5 * u), QPointF(0, -14.0 * u))
+        p.rotate(45)
+    p.drawEllipse(QPointF(0, 0), 9.5 * u, 9.5 * u)   # corona
+    p.drawEllipse(QPointF(0, 0), 3.6 * u, 3.6 * u)   # foro
+    p.end()
+    return QIcon(pm)
+
+
 def _make_settings_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
     """Icona 'sliders' (filtri/impostazioni), a tratto, coerente col tema."""
     pm = QPixmap(size, size)
@@ -619,7 +646,7 @@ class MarketWatchWidget(QWidget):
             "impostarne di propri"))
         self.defaults_btn.clicked.connect(self.open_default_filters)
         self.options_btn = QPushButton()
-        self.options_btn.setIcon(_make_settings_icon())
+        self.options_btn.setIcon(_make_gear_icon())   # sliders = filtri di UNA carta
         self.options_btn.setToolTip(tr("Opzioni di visualizzazione della watchlist"))
         self.options_btn.clicked.connect(self.open_options)
         self.overview_btn = QPushButton()

@@ -266,6 +266,10 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     controllo del prezzo li rispetta (prima si potevano impostare solo dopo,
     dalla riga in watchlist). L'icona a sliders è la stessa dei filtri per
     riga: è lo stesso mestiere, su una carta sola.
+    Di conseguenza **Opzioni ha cambiato icona**: era anch'essa a sliders, ora
+    è un **ingranaggio**. Nell'header le cinque icone sono così tutte diverse:
+    chiave (token), frecce (sincronizza), imbuto (filtri predefiniti),
+    ingranaggio (opzioni), griglia (panoramica).
     In più, un'immagine che non si scarica **non viene più richiesta a ogni
     ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
     risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.
