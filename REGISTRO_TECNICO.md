@@ -364,15 +364,24 @@ confini di parola per non pescare "usato").
   testo (x < ~3px e 1px di linea); gli sfondi restano sugli item. I gruppi si
   ricalcolano in `_do_render` e il disegno segue da solo la fisarmonica
   (legge `rowViewportPosition`/`rowHeight` a ogni frame).
-  **Rientro delle carte in cartella:** `_IndentDelegate`
-  (`setItemDelegateForColumn(1, …)`), NON spazi nel testo. Gli spazi
-  rientrano solo la PRIMA riga: in Panoramica i nomi vanno a capo e le righe
-  successive restavano a sinistra, disallineate. Il delegate sposta il rect;
-  attenzione, di conseguenza **lo sfondo va dipinto a parte sul rect pieno**
+  **Colonna Nome = `_IndentDelegate`** (`setItemDelegateForColumn(1, …)`), che
+  fa due cose:
+  - *rientro* delle carte in cartella spostando il RECT, NON con spazi nel
+    testo: gli spazi rientrano solo la PRIMA riga, e in Panoramica i nomi vanno
+    a capo, lasciando le successive disallineate;
+  - *marcatore "filtri propri"* (`_make_mini_funnel`, teal) PRIMA del nome, per
+    le righe con `mw_watchlist.filters` valorizzato. La colonnina del marcatore
+    è riservata su TUTTE le righe: metterlo in fondo alla cella lo allontanava
+    dal nome (la colonna è larga), e riservare lo spazio solo dove serve
+    disallineava i nomi.
+  Attenzione: spostando il rect **lo sfondo va dipinto a parte sul rect pieno**
   (`CE_ItemViewItem` con testo e icona svuotati) prima del contenuto, altrimenti
   a sinistra resta una striscia scoperta — si vedeva come una linea verticale
-  lungo la colonna Nome. `sizeHint` sottrae il rientro così il ritorno a capo
-  usa la larghezza reale.
+  lungo la colonna Nome. `sizeHint` sottrae rientro e colonnina, così il ritorno
+  a capo usa la larghezza reale.
+  La stessa informazione la dà anche il pulsante filtri della riga
+  (`_settings_icon_custom`, teal invece di grigio): il marcatore serve a
+  scorrere l'elenco, il pulsante è il comando.
   Il drop di Qt sposterebbe i singoli
   item rompendo span/cell widget → `_WatchTable.dropEvent` lo intercetta
   (`IgnoreAction`) ed emette `row_moved(da, a)`; `_on_row_moved` decide

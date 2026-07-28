@@ -372,6 +372,14 @@ def main() -> int:
     widget.add_by_name()
     liscia = [w for w in widget.repo.list_watches() if w["ref_id"] == "557"][0]
     assert (liscia["filters"] or "") == "", "senza filtri propri deve usare i predefiniti"
+    # spia nella watchlist: marcatore nella colonna Nome solo per chi ha i propri
+    widget._reload_table()
+    marcate = {p["ref_id"] for r, (k, p) in enumerate(widget._row_entries)
+               if k == "watch" and widget._row_has_own_filters(r)}
+    assert "556" in marcate and "557" not in marcate, marcate
+    folder_rows = [r for r, (k, _p) in enumerate(widget._row_entries) if k == "folder"]
+    assert all(not widget._row_has_own_filters(r) for r in folder_rows), \
+        "le righe-cartella non vanno marcate"
     for ref in ("556", "557"):
         wid = [w for w in widget.repo.list_watches() if w["ref_id"] == ref][0]["id"]
         widget.repo.remove_watch(wid)

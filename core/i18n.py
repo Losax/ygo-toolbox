@@ -101,8 +101,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "Nessuna copia": "No copies",
         "Nessun annuncio soddisfa i filtri impostati (Opzioni).":
             "No listing matches the current filters.",
-        "Filtri di questa carta": "Filters for this card",
-        " (personalizzati)": " (custom)",
+        "Filtri PROPRI di questa carta (diversi dai predefiniti) — clic per modificarli":
+            "This card's OWN filters (different from the default ones) — click to change them",
+        "Filtri di questa carta (ora usa i predefiniti)":
+            "Filters for this card (currently using the default ones)",
         "Rimuovi dalla watchlist": "Remove from watchlist",
         "Venditore professionale (PRO)": "Professional seller (PRO)",
         # cartelle

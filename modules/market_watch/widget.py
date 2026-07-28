@@ -269,48 +269,88 @@ def _make_settings_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
     return QIcon(pm)
 
 
+_mini_funnel_cache: dict[tuple[int, str], QPixmap] = {}
+
+
+def _make_mini_funnel(size: int, color: str) -> QPixmap:
+    """Imbutino pieno: marca nella colonna Nome le carte con filtri PROPRI.
+
+    La stessa cosa la dice anche il pulsante filtri della riga (teal invece di
+    grigio), ma quello sta in fondo a destra: scorrendo l'elenco l'occhio è sui
+    nomi, e il marcatore deve stare lì."""
+    key = (size, color)
+    cached = _mini_funnel_cache.get(key)
+    if cached is not None:
+        return cached
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(color))
+    u = size / 16.0
+    p.drawPolygon([QPointF(1.5 * u, 3 * u), QPointF(14.5 * u, 3 * u),
+                   QPointF(9.5 * u, 8.5 * u), QPointF(9.5 * u, 13.5 * u),
+                   QPointF(6.5 * u, 11.5 * u), QPointF(6.5 * u, 8.5 * u)])
+    p.end()
+    _mini_funnel_cache[key] = pm
+    return pm
+
+
 class _IndentDelegate(QStyledItemDelegate):
-    """Rientro del NOME per le carte dentro una cartella, spostando il
-    RETTANGOLO di disegno invece di infilare spazi nel testo.
+    """Colonna NOME: rientro delle carte in cartella + marcatore "filtri propri".
 
-    Con gli spazi rientrava solo la PRIMA riga: in Panoramica i nomi lunghi
-    vanno a capo, e le righe successive tornavano a sinistra (disallineate).
-    Spostando il rect rientra tutto il blocco, e il testo va a capo dentro lo
-    spazio giusto."""
+    Il rientro sposta il RETTANGOLO di disegno invece di infilare spazi nel
+    testo: con gli spazi rientrava solo la PRIMA riga, e in Panoramica i nomi
+    lunghi vanno a capo, lasciando le righe successive disallineate.
+    Il marcatore sta PRIMA del nome, in una colonnina riservata su TUTTE le
+    righe (anche quelle senza): messo in fondo alla cella finiva lontano dal
+    nome, e riservando lo spazio solo dove serve i nomi si disallineerebbero."""
 
-    def __init__(self, indent_px, parent=None) -> None:
+    MARKER_GAP = 4
+
+    def __init__(self, indent_px, marker_px, has_marker, parent=None) -> None:
         super().__init__(parent)
-        self._indent_px = indent_px   # callable(row) -> px (0 = nessun rientro)
+        self._indent_px = indent_px     # callable(row) -> px di rientro
+        self._marker_px = marker_px     # callable() -> lato del marcatore in px
+        self._has_marker = has_marker   # callable(row) -> bool
 
-    def _shifted(self, option, index):
-        indent = self._indent_px(index.row())
-        if not indent:
-            return option
+    def _slot(self) -> int:
+        return self._marker_px() + self.MARKER_GAP
+
+    def _offset(self, row: int) -> int:
+        return self._indent_px(row) + self._slot()
+
+    def _content(self, option, index):
+        """Rettangolo del testo: dopo il rientro e la colonnina del marcatore."""
         shifted = QStyleOptionViewItem(option)
-        shifted.rect = option.rect.adjusted(indent, 0, 0, 0)
+        shifted.rect = option.rect.adjusted(self._offset(index.row()), 0, 0, 0)
         return shifted
 
     def paint(self, painter, option, index) -> None:  # noqa: N802 (firma Qt)
-        if self._indent_px(index.row()):
-            # Lo sfondo va dipinto sul rect PIENO: disegnando solo quello
-            # rientrato resterebbe a sinistra una striscia scoperta (si vedeva
-            # come una linea verticale lungo la colonna Nome). Prima lo sfondo
-            # (zebra/selezione, via lo stile, con testo e icona svuotati),
-            # poi il contenuto spostato.
-            back = QStyleOptionViewItem(option)
-            self.initStyleOption(back, index)
-            back.text = ""
-            back.icon = QIcon()
-            widget = back.widget
-            style = widget.style() if widget is not None else QApplication.style()
-            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, back, painter, widget)
-        super().paint(painter, self._shifted(option, index), index)
+        # Lo sfondo va dipinto sul rect PIENO: disegnando solo quello spostato
+        # resterebbe a sinistra una striscia scoperta (si vedeva come una linea
+        # verticale lungo la colonna Nome). Prima lo sfondo (zebra/selezione,
+        # via lo stile, con testo e icona svuotati), poi il contenuto.
+        back = QStyleOptionViewItem(option)
+        self.initStyleOption(back, index)
+        back.text = ""
+        back.icon = QIcon()
+        widget = back.widget
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, back, painter, widget)
+        super().paint(painter, self._content(option, index), index)
+        if self._has_marker(index.row()):
+            side = self._marker_px()
+            painter.drawPixmap(option.rect.left() + self._indent_px(index.row()),
+                               option.rect.center().y() - side // 2,
+                               _make_mini_funnel(side, theme.ACCENT))
 
     def sizeHint(self, option, index):  # noqa: N802 (firma Qt)
-        # larghezza ridotta dal rientro → il calcolo del ritorno a capo usa
-        # lo spazio davvero disponibile
-        size = super().sizeHint(self._shifted(option, index), index)
-        size.setWidth(size.width() + self._indent_px(index.row()))
+        # larghezza ridotta da rientro e colonnina → il calcolo del ritorno a
+        # capo usa lo spazio davvero disponibile
+        size = super().sizeHint(self._content(option, index), index)
+        size.setWidth(size.width() + self._offset(index.row()))
         return size
 
 
@@ -540,6 +580,9 @@ class MarketWatchWidget(QWidget):
         anim.set_enabled(bool(self._display.get("animations", True)))
         self._trash_icon = _make_trash_icon()
         self._settings_icon = _make_settings_icon()
+        # variante teal: segnala a colpo d'occhio le carte con filtri PROPRI,
+        # fra tutte le icone grigie della colonna Azioni
+        self._settings_icon_custom = _make_settings_icon(theme.ACCENT)
         self._pencil_icon = _make_pencil_icon()
         # ref_id -> PriceQuote dell'ultimo controllo: persistito in mw_last_quote
         # e ricaricato qui, così la Panoramica è piena anche appena riavviata.
@@ -787,7 +830,8 @@ class MarketWatchWidget(QWidget):
         self.table.setIconSize(ROW_ICON_NORMAL)
         self.table.setWordWrap(True)          # commenti su più righe in Panoramica
         # rientro delle carte in cartella: solo sulla colonna Nome
-        self._name_delegate = _IndentDelegate(self._row_indent, self.table)
+        self._name_delegate = _IndentDelegate(
+            self._row_indent, lambda: self._rp(13), self._row_has_own_filters, self.table)
         self.table.setItemDelegateForColumn(1, self._name_delegate)
         self._table_base_font = self.table.font()
         self.table.setShowGrid(False)
@@ -1574,10 +1618,12 @@ class MarketWatchWidget(QWidget):
         raw_filters = watch["filters"] if "filters" in watch.keys() else ""
         settings_btn = QPushButton()
         settings_btn.setObjectName("ghost")
-        settings_btn.setIcon(self._settings_icon)
+        settings_btn.setIcon(self._settings_icon_custom if raw_filters else self._settings_icon)
         settings_btn.setIconSize(icon_sz)
-        custom = tr(" (personalizzati)") if raw_filters else ""
-        settings_btn.setToolTip(tr("Filtri di questa carta") + custom)
+        settings_btn.setToolTip(
+            tr("Filtri PROPRI di questa carta (diversi dai predefiniti) — clic per modificarli")
+            if raw_filters else
+            tr("Filtri di questa carta (ora usa i predefiniti)"))
         settings_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         settings_btn.clicked.connect(
             lambda _=False, wid=watch["id"], rf=raw_filters, nm=watch["card_name"]:
@@ -1831,6 +1877,16 @@ class MarketWatchWidget(QWidget):
             return 0
         kind, _payload = self._row_entries[row]
         return self._rp(16) if (kind == "watch" and self._folder_at(row) is not None) else 0
+
+    def _row_has_own_filters(self, row: int) -> bool:
+        """True per le carte con filtri PROPRI (≠ predefiniti): è la riga che
+        va marcata nella colonna Nome."""
+        if not (0 <= row < len(self._row_entries)):
+            return False
+        kind, payload = self._row_entries[row]
+        if kind != "watch" or "filters" not in payload.keys():
+            return False
+        return bool(payload["filters"])
 
     def _folder_at(self, row: int):
         """Cartella 'di pertinenza' della riga visuale (None = fuori)."""

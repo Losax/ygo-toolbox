@@ -39,6 +39,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Panoramica** | Pulsante *Panoramica*: nasconde la ricerca e allarga la watchlist con voci grandi. Colonne separate: Immagine, Nome, Rarità, Set, **Condizione**, **Lingua**, **1ª ed.** (✓), **Zero** (✓), Prezzo, Var., **Venditore** (nome + **bandierina** del paese + badge **PRO**), **Commenti**, **Q.tà**. Transizione animata. |
 | **Interfaccia adattiva** | Tutta l'app (testi, righe, miniature, colonne, sidebar) **scala con la dimensione della finestra** (fino a +30% a schermo intero). In Panoramica, sotto lo schermo intero **l'intera vista si rimpicciolisce** (righe, font, miniature, badge) per restare usabile a qualsiasi larghezza, senza scroll orizzontale; se serve le intestazioni si abbreviano (Cond., Vend., … — nome completo nel tooltip). |
 | **Filtri per singola carta** | Icona **sliders** su ogni riga della watchlist: filtri validi solo per quella carta (con opzione "usa i filtri predefiniti"). Sovrascrivono i predefiniti. |
+| **Quali carte hanno filtri propri** | Un **imbutino teal davanti al nome** marca le carte con filtri diversi dai predefiniti, così si vedono scorrendo l'elenco; anche l'icona sliders di quella riga diventa **teal** invece che grigia. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
 | **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
@@ -270,6 +271,13 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     è un **ingranaggio**. Nell'header le cinque icone sono così tutte diverse:
     chiave (token), frecce (sincronizza), imbuto (filtri predefiniti),
     ingranaggio (opzioni), griglia (panoramica).
+46. **Si vede quali carte hanno filtri propri (v1.0.10).** Nella watchlist un
+    **imbutino teal davanti al nome** marca le carte con filtri diversi dai
+    predefiniti: scorrendo l'elenco si notano subito. Lo spazio dell'imbutino
+    è riservato su tutte le righe, così i nomi restano allineati anche dove
+    non c'è. In più l'icona sliders di quella riga è **teal** invece che
+    grigia, e il tooltip dice esplicitamente se la carta ha filtri propri o
+    sta usando i predefiniti.
     In più, un'immagine che non si scarica **non viene più richiesta a ogni
     ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
     risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.
