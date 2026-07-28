@@ -395,8 +395,28 @@ confini di parola per non pescare "usato").
   12-15 (nasconde 10,11), normale mostra 0-3 + 8-11 + 15 (nasconde 4-7,12-14).
   Cella Venditore = widget (`_seller_cell`): username + `flags.flag_pixmap`
   del paese + badge `_make_pro_badge` per i PRO, sfondo trasparente.
+- **Copie multiple (basi):** `lowest_price(card_id, filters, copies)` — con
+  `copies` > 1 non basta l'annuncio più economico, quel venditore potrebbe
+  averne UNO solo e moltiplicare il suo prezzo darebbe un totale non
+  ottenibile (visto dal vivo su *Blitzclique Surge*). `_pick_copies` scorre gli
+  annunci dal più economico prendendo le quantità disponibili finché le copie
+  sono coperte; nessuna richiesta in più, gli annunci sono già tutti lì.
+  Riempie `PriceQuote.sources` (una voce per venditore), `total` e `covered`
+  (< copies = il mercato non basta, e va detto invece di fingere un totale).
+  **`amount` resta il prezzo della copia più economica**: è quello che finisce
+  nello storico, quindi la Var.% continua a misurare la carta e non la lista
+  della spesa. Da qui la regola nel totale di base: `totale` = costo reale,
+  `ora`/`prima` = prezzi unitari × copie per la variazione — DUE accumulatori
+  separati, mescolarli darebbe una percentuale fra unità di misura diverse.
+  In tabella: terzo tipo di riga `("source", (watch, src))` in `_row_entries`,
+  visibile solo in Panoramica (servono le colonne) e solo per le carte aperte
+  (`_open_sources`, per ref_id, in memoria). L'interruttore è la cella Q.tà
+  (`3 ▸`), che è la colonna che parla di copie ed è larga quanto basta.
+  Attenzione: `_folder_at` e `_row_indent` devono riconoscere il nuovo tipo —
+  il payload è una TUPLA, non una riga di DB, e `payload["folder_id"]`
+  esploderebbe.
 - **Cartelle & drag&drop:** il modello visuale è `self._row_entries`
-  (lista di `("folder", riga)` / `("watch", riga)`); `_render_after_check`
+  (lista di `("folder", riga)` / `("watch", riga)` / `("source", …)`); `_render_after_check`
   costruisce cartelle → carte (se `expanded`) → carte fuori. **Riga-cartella
   allineata alle colonne** (`_set_folder_row`): NIENTE `setSpan` — prima era un
   unico item spalmato su 0-14 con nome/conteggio/totale nella stessa stringa,

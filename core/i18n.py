@@ -142,6 +142,15 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "Togli dalla base": "Remove from the base",
         "{n} carte · {c} copie in totale": "{n} cards · {c} copies in total",
         "{c} copie": "{c} copies",
+        # provenienza delle copie (carte in più copie, Panoramica)
+        "1 copia": "1 copy", "{n} copie": "{n} copies",
+        "{n} × {unit:.2f} € da {seller}": "{n} × {unit:.2f} € from {seller}",
+        "{n} copie · più economica {unit:.2f} €":
+            "{n} copies · cheapest {unit:.2f} €",
+        "Attenzione: se ne trovano solo {c} su {n}":
+            "Careful: only {c} of {n} are available",
+        "Le {n} copie arrivano da {v} venditori — clic per vedere da dove":
+            "The {n} copies come from {v} sellers — click to see where from",
         "Numero di copie…": "Number of copies…",
         "Quante copie di {name}?": "How many copies of {name}?",
         "Base «{name}»: {n} carte, {c} copie. Controllo i prezzi…":

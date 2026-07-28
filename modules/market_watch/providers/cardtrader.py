@@ -439,6 +439,39 @@ def fetch_catalog(client: CardTraderClient, progress: Callable[[int, int], None]
     return rows
 
 
+def _pick_copies(offerte: list[tuple[float, str, dict]], copies: int) -> tuple[list, float, int]:
+    """Le `copies` copie più economiche fra gli annunci (già ordinati per prezzo).
+
+    Ritorna (elenco delle prese, costo totale, copie coperte). Un annuncio con
+    quantità 3 può coprirne fino a 3; se il mercato non basta, `covered` resta
+    sotto le copie chieste — meglio dirlo che fingere un totale."""
+    prese: list[dict] = []
+    restano = copies
+    totale = 0.0
+    for amount, _currency, product in offerte:
+        if restano <= 0:
+            break
+        disponibili = int(product.get("quantity") or 0) or 1
+        presa = min(disponibili, restano)
+        user = product.get("user") or {}
+        props = product.get("properties_hash") or {}
+        prese.append({
+            "qty": presa,
+            "amount": amount,
+            "seller": user.get("username") or "",
+            "seller_type": user.get("user_type") or "",
+            "country": (user.get("country_code") or "").upper(),
+            "condition": props.get("condition") or "",
+            "language": (props.get("yugioh_language") or "").upper(),
+            "first_edition": bool(props.get("first_edition")),
+            "zero": bool(user.get("can_sell_via_hub")),
+            "comment": product.get("description") or "",
+        })
+        totale += presa * amount
+        restano -= presa
+    return prese, totale, copies - restano
+
+
 # --------------------------------------------------------------------------- #
 # Provider
 # --------------------------------------------------------------------------- #
@@ -454,12 +487,20 @@ class CardTraderProvider(PriceProvider):
         rows = self.repo.search_catalog(self.name, query)
         return [CardRef(id=str(r["ref_id"]), name=r["name"], detail=r["detail"] or "") for r in rows]
 
-    def lowest_price(self, card_id: str, filters: ListingFilters | None = None) -> PriceQuote | None:
+    def lowest_price(self, card_id: str, filters: ListingFilters | None = None,
+                     copies: int = 1) -> PriceQuote | None:
+        """Prezzo più basso e, se servono più copie, da dove si prendono.
+
+        Con `copies` > 1 non basta il singolo annuncio più economico: quel
+        venditore potrebbe averne una sola, e moltiplicare il suo prezzo per 3
+        darebbe un totale che non si può ottenere. Si scorrono quindi gli
+        annunci dal più economico prendendo le quantità disponibili finché le
+        copie sono coperte. Nessuna richiesta in più: gli annunci sono già
+        tutti qui."""
         f = filters if filters is not None else self.filters
         payload = self.client.marketplace_products(int(card_id))
         products = _products_list(payload, card_id)
-        best: PriceQuote | None = None
-        best_product: dict | None = None
+        offerte: list[tuple[float, str, dict]] = []
         for product in products:
             if not isinstance(product, dict):
                 continue
@@ -468,10 +509,15 @@ class CardTraderProvider(PriceProvider):
             parsed = _extract_price(product)
             if parsed is None:
                 continue
-            amount, currency = parsed
-            if best is None or amount < best.amount:
-                best = PriceQuote(amount=amount, currency=currency, detail=_listing_detail(product))
-                best_product = product
+            offerte.append((parsed[0], parsed[1], product))
+        if not offerte:
+            return None
+        offerte.sort(key=lambda o: o[0])
+        amount, currency, best_product = offerte[0]
+        best = PriceQuote(amount=amount, currency=currency,
+                          detail=_listing_detail(best_product))
+        if copies > 1:
+            best.sources, best.total, best.covered = _pick_copies(offerte, copies)
         if best is not None and best_product is not None:  # info sull'annuncio scelto
             user = best_product.get("user") or {}
             props = best_product.get("properties_hash") or {}

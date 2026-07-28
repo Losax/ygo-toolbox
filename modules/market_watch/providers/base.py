@@ -10,7 +10,7 @@ modulo Market Watch non cambia.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 
 @dataclass
@@ -83,6 +83,15 @@ class PriceQuote:
     language: str = ""      # codice lingua maiuscolo, es. "EN"
     first_edition: bool = False
     zero: bool = False      # acquistabile con CardTrader Zero
+    # --- copie multiple (basi) ---
+    # `amount` resta il prezzo della copia PIÙ ECONOMICA: è quello che entra
+    # nello storico, quindi la Var.% continua a misurare il movimento della
+    # carta e non della mia lista della spesa. Qui sotto, invece, cosa serve
+    # davvero per averne N: le copie si prendono dalle più economiche, anche
+    # da venditori diversi, perché il primo può averne una sola.
+    sources: list = field(default_factory=list)  # [{qty, amount, seller, …}]
+    total: float = 0.0      # costo delle copie coperte (0 = come `amount`)
+    covered: int = 0        # copie effettivamente reperibili (0 = una sola)
 
     def to_dict(self) -> dict:
         """Per la persistenza (mw_last_quote): JSON round-trip con from_dict."""
@@ -104,6 +113,9 @@ class PriceQuote:
             language=data.get("language", ""),
             first_edition=bool(data.get("first_edition", False)),
             zero=bool(data.get("zero", False)),
+            sources=list(data.get("sources") or []),
+            total=float(data.get("total", 0.0) or 0.0),
+            covered=int(data.get("covered", 0) or 0),
         )
 
 
@@ -115,5 +127,5 @@ class PriceProvider(ABC):
         ...
 
     @abstractmethod
-    def lowest_price(self, card_id: str) -> PriceQuote | None:
+    def lowest_price(self, card_id: str, filters=None, copies: int = 1) -> PriceQuote | None:
         ...

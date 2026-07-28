@@ -42,6 +42,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Quali carte hanno filtri propri** | Un **imbutino teal davanti al nome** marca le carte con filtri diversi dai predefiniti, così si vedono scorrendo l'elenco; anche l'icona sliders di quella riga diventa **teal** invece che grigia. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
+| **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
 | **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
 | **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
 | **Filtri predefiniti (imbuto)** | Pulsante a **imbuto nell'header**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana). Sono i filtri che una carta si porta dietro se la aggiungi senza impostarne di propri, e valgono per tutte quelle che non ne hanno. |
@@ -325,6 +326,21 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
       storico dei prezzi resta.
     - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
+51. **Le copie multiple ora dicono da dove arrivano (v1.0.19).** Segnalato su
+    *Blitzclique Surge*: 3 copie richieste, ma il venditore più economico ne
+    aveva una — e l'app moltiplicava il suo prezzo per tre, cioè un totale non
+    ottenibile. Ora:
+    - il costo è quello delle **3 copie più economiche davvero disponibili**,
+      anche da venditori diversi (nessuna richiesta in più: gli annunci erano
+      già tutti scaricati);
+    - in Panoramica la cella *Q.tà* mostra `3 ▸`: **clic** e sotto la carta
+      compaiono le righe dei venditori che contribuiscono, con quante copie,
+      a che prezzo, condizione e paese;
+    - se sul mercato non ce ne sono abbastanza, il prezzo si colora di giallo
+      e il tooltip dice quante se ne trovano davvero.
+    Il **totale della base** usa questo costo reale. La **Var.%** invece
+    continua a misurare il movimento dei prezzi: dice come si è mosso il
+    mercato, non come è cambiata la disponibilità.
 50. **Pulsanti fantasma spariti.** Su alcune righe restavano appiccicate a
     sinistra, davanti al nome, due iconcine che non ci dovevano stare: erano
     pulsanti di render precedenti che Qt non aveva buttato. Ora a ogni

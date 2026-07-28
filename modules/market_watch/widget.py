@@ -622,6 +622,8 @@ class MarketWatchWidget(QWidget):
         # "stock" per le stampe senza immagine); popolato da _rebuild_completer
         self._stock_images: dict[str, str] = {}
         self._current_img_name: str = ""
+        # carte (ref_id) di cui è aperto l'elenco "da dove arrivano le copie"
+        self._open_sources: set[str] = set()
         self._current_img_exact: str = ""    # URL chiesto (prima dei ripieghi)
         self._current_img_is_stock: bool = False
         self._row_thumb_pool = QThreadPool(self)
@@ -1668,6 +1670,18 @@ class MarketWatchWidget(QWidget):
             price_item = cell(tr("Nessuna copia"))
             price_item.setForeground(QColor(theme.WARN))
             price_item.setToolTip(tr("Nessun annuncio soddisfa i filtri impostati (Opzioni)."))
+        elif copies > 1 and q is not None and getattr(q, "total", 0.0):
+            # Con più copie il prezzo utile è quanto costano TUTTE: il totale
+            # della base è la somma di questi, e i conti tornano a vista.
+            # L'unitario più basso resta nel tooltip.
+            price_item = cell(f"{q.total:.2f} €")
+            mancanti = copies - (getattr(q, "covered", 0) or copies)
+            tip = tr("{n} copie · più economica {unit:.2f} €").format(n=copies, unit=q.amount)
+            if mancanti > 0:
+                tip += "\n" + tr("Attenzione: se ne trovano solo {c} su {n}").format(
+                    c=q.covered, n=copies)
+                price_item.setForeground(QColor(theme.WARN))
+            price_item.setToolTip(tip)
         else:
             price_item = cell("—" if last_price is None else f"{last_price:.2f} €")
         self.table.setItem(row, 8, price_item)
@@ -1684,6 +1698,14 @@ class MarketWatchWidget(QWidget):
         if q is not None:
             comment_text = q.comment or ""
             qty_text = str(q.quantity) if q.quantity else ""
+        # Con più copie da venditori diversi, la Q.tà diventa l'appiglio per
+        # aprire l'elenco delle provenienze: chevron + numero di venditori.
+        fonti = self._card_sources(watch) if copies > 1 else []
+        if fonti:
+            # la colonna Q.tà è stretta: qui ci sta "3 ▸", il numero di
+            # venditori lo dice il tooltip (e l'elenco, una volta aperto)
+            aperta = str(watch["ref_id"]) in self._open_sources
+            qty_text = f"{copies} {'▾' if aperta else '▸'}"
         # Venditore: nome + iconcine (bandiera del paese, badge PRO)
         self.table.setItem(row, 12, cell(""))
         if q is not None and (q.seller or q.country or q.seller_type):
@@ -1695,6 +1717,10 @@ class MarketWatchWidget(QWidget):
         self.table.setItem(row, 13, comment_item)
         qty_item = cell(qty_text)
         qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        if fonti:
+            qty_item.setForeground(QColor(theme.ACCENT))
+            qty_item.setToolTip(tr("Le {n} copie arrivano da {v} venditori — "
+                                   "clic per vedere da dove").format(n=copies, v=len(fonti)))
         self.table.setItem(row, 14, qty_item)
         actions = QWidget()
         # In Panoramica: pulsanti impilati (verticali) e icone più grandi;
@@ -1954,11 +1980,16 @@ class MarketWatchWidget(QWidget):
         self._reload_table()
 
     # ------------------------------------------------ cartelle & ordinamento
-    def _on_cell_clicked(self, row: int, _col: int) -> None:
-        if 0 <= row < len(self._row_entries):
-            kind, payload = self._row_entries[row]
-            if kind == "folder":
-                self._toggle_folder(payload)
+    def _on_cell_clicked(self, row: int, col: int) -> None:
+        if not (0 <= row < len(self._row_entries)):
+            return
+        kind, payload = self._row_entries[row]
+        if kind == "folder":
+            self._toggle_folder(payload)
+        elif kind == "watch" and col == 14 and self._card_sources(payload):
+            # la cella Q.tà è l'interruttore delle provenienze: sta lì il
+            # chevron, ed è la colonna che parla di copie
+            self._toggle_sources(payload)
 
     def _folder_card_rows(self, fid) -> list[int]:
         """Righe visuali delle carte contenute nella cartella `fid`."""
@@ -2028,7 +2059,34 @@ class MarketWatchWidget(QWidget):
         if not (0 <= row < len(self._row_entries)):
             return 0
         kind, _payload = self._row_entries[row]
+        if kind == "source":      # un gradino più dentro della carta che la ospita
+            return self._rp(16 if self._folder_at(row) is None else 32)
         return self._rp(16) if (kind == "watch" and self._folder_at(row) is not None) else 0
+
+    # --- provenienza delle copie (carte in più copie, solo in Panoramica) ---
+    def _card_sources(self, watch) -> list:
+        """Da quali annunci arrivano le copie di questa carta (vuoto se una
+        sola copia, o se bastano a coprirla tutte dallo stesso venditore)."""
+        quote = self._last_quotes.get(str(watch["ref_id"]))
+        if quote is None:
+            return []
+        sources = getattr(quote, "sources", None) or []
+        return sources if len(sources) > 1 else []
+
+    def _visible_sources(self, watch) -> list:
+        """Le righe-provenienza si mostrano solo in Panoramica (dove ci sono le
+        colonne per leggerle) e solo se la carta è stata aperta."""
+        if not self._overview or str(watch["ref_id"]) not in self._open_sources:
+            return []
+        return self._card_sources(watch)
+
+    def _toggle_sources(self, watch) -> None:
+        ref_id = str(watch["ref_id"])
+        if ref_id in self._open_sources:
+            self._open_sources.discard(ref_id)
+        else:
+            self._open_sources.add(ref_id)
+        self._reload_table()
 
     def _row_has_own_filters(self, row: int) -> bool:
         """True per le carte con filtri PROPRI (≠ predefiniti): è la riga che
@@ -2045,6 +2103,9 @@ class MarketWatchWidget(QWidget):
         if not (0 <= row < len(self._row_entries)):
             return None
         kind, payload = self._row_entries[row]
+        if kind == "source":      # riga-provenienza: vale la carta che la ospita
+            payload = payload[0]
+            return payload["folder_id"] if "folder_id" in payload.keys() else None
         if kind == "folder":
             return payload["id"]
         return payload["folder_id"] if "folder_id" in payload.keys() else None
@@ -2365,7 +2426,8 @@ class MarketWatchWidget(QWidget):
         self._failed_images.clear()
         self._refresh_folder_cache()   # i filtri effettivi dipendono dalle basi
         self._set_busy(True, tr("Controllo prezzi su CardTrader…"))
-        jobs = [(w["ref_id"], self._effective_filters(w)) for w in watches]
+        jobs = [(w["ref_id"], self._effective_filters(w),
+                 w["copies"] if "copies" in w.keys() else 1) for w in watches]
         self._price_worker = PriceFetchWorker(self.provider, jobs)
         self._price_worker.finished_ok.connect(self._on_prices)
         self._price_worker.progress.connect(self._on_price_progress)
@@ -2475,7 +2537,14 @@ class MarketWatchWidget(QWidget):
         for fid, ws in by_folder.items():
             if fid is None:
                 continue
-            now = before = 0.0
+            # Due grandezze DIVERSE, tenute separate apposta:
+            #  - `totale`  = quanto costa davvero comprare tutto oggi (le copie
+            #    più economiche disponibili, anche da venditori diversi);
+            #  - `ora`/`prima` = movimento dei PREZZI (unitari, pesati per le
+            #    copie), che è ciò che misura la Var.
+            # Mescolarle darebbe una percentuale calcolata fra due unità di
+            # misura diverse, cioè un numero senza significato.
+            totale = ora = prima = 0.0
             copies_tot = 0
             comparable = False   # almeno una carta ha un prezzo precedente VERO
             for w_ in ws:
@@ -2487,21 +2556,33 @@ class MarketWatchWidget(QWidget):
                                                      self._watch_key(w_))
                 if not prices:
                     continue
-                now += prices[0] * n
-                before += (prices[1] if len(prices) > 1 else prices[0]) * n
+                q_ = self._last_quotes.get(str(w_["ref_id"]))
+                reale = getattr(q_, "total", 0.0) if q_ is not None else 0.0
+                totale += reale if (n > 1 and reale) else prices[0] * n
+                ora += prices[0] * n
+                prima += (prices[1] if len(prices) > 1 else prices[0]) * n
                 comparable = comparable or len(prices) > 1
             # senza nemmeno un precedente vero il conto darebbe 0.0%, che si
             # legge come "non si è mosso" invece che "non lo so ancora"
-            delta = ((now - before) / before * 100.0) if (comparable and before) else None
-            summary[fid] = (now, delta, copies_tot)
+            delta = ((ora - prima) / prima * 100.0) if (comparable and prima) else None
+            summary[fid] = (totale, delta, copies_tot)
         # modello visuale: cartelle (con le loro carte, se espanse) e poi le
         # carte fuori dalle cartelle
+        def con_provenienze(w):
+            """La carta e, se aperta, da dove arrivano le sue copie."""
+            righe = [("watch", w)]
+            for src in self._visible_sources(w):
+                righe.append(("source", (w, src)))
+            return righe
+
         entries: list[tuple[str, object]] = []
         for f in folders:
             entries.append(("folder", f))
             if f["expanded"]:
-                entries.extend(("watch", w) for w in by_folder.get(f["id"], []))
-        entries.extend(("watch", w) for w in by_folder.get(None, []))
+                for w in by_folder.get(f["id"], []):
+                    entries.extend(con_provenienze(w))
+        for w in by_folder.get(None, []):
+            entries.extend(con_provenienze(w))
         self._row_entries = entries
 
         self.table.clearSpans()   # eredità delle versioni con la riga a span
@@ -2523,6 +2604,9 @@ class MarketWatchWidget(QWidget):
                                      len(by_folder.get(payload["id"], [])),
                                      total, delta, copies_tot)
                 continue
+            if kind == "source":
+                self._set_source_row(row, payload[0], payload[1])
+                continue
             self.table.setRowHeight(row, default_h)  # annulla eventuali altezze da cartella
             watch = payload
             no_match = str(watch["ref_id"]) in self._no_match_refs
@@ -2539,6 +2623,61 @@ class MarketWatchWidget(QWidget):
                 if price_item is not None:
                     color = theme.POSITIVE if change >= 0 else theme.NEGATIVE
                     anim.pulse_item(price_item, color, self.table)
+
+    def _set_source_row(self, row: int, watch, src: dict) -> None:
+        """Riga "da qui arrivano N copie": una per venditore che contribuisce.
+
+        Vive sotto la carta, incolonnata come lei, e mostra solo ciò che
+        distingue un'offerta dall'altra — quantità presa, prezzo unitario,
+        condizione/lingua e venditore. Niente Var. né soglia: sono della
+        carta, non della singola offerta."""
+        for c in range(16):
+            self.table.removeCellWidget(row, c)
+            self.table.setItem(row, c, QTableWidgetItem(""))
+
+        def cell(text: str = "") -> QTableWidgetItem:
+            it = QTableWidgetItem(text)
+            it.setForeground(QColor(theme.TEXT_MUTED))
+            return it
+
+        qty = int(src.get("qty") or 1)
+        unit = float(src.get("amount") or 0.0)
+        for c in range(16):
+            self.table.setItem(row, c, cell())
+        # 1 Nome: "↳ 2 copie" — l'indentazione la mette _IndentDelegate
+        self.table.setItem(row, 1, cell("↳  " + (
+            tr("1 copia") if qty == 1 else tr("{n} copie").format(n=qty))))
+        self.table.setItem(row, 4, cell(src.get("condition") or "—"))
+        lang = cell((src.get("language") or "").upper() or "—")
+        lang.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.table.setItem(row, 5, lang)
+        for col, flag in ((6, src.get("first_edition")), (7, src.get("zero"))):
+            it = cell("✓" if flag else "—")
+            it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            if flag:
+                it.setForeground(QColor(theme.ACCENT))
+            self.table.setItem(row, col, it)
+        # 8 Prezzo: costo di QUESTE copie (unitario nel tooltip)
+        price = cell(f"{unit * qty:.2f} €")
+        price.setToolTip(tr("{n} × {unit:.2f} € da {seller}").format(
+            n=qty, unit=unit, seller=src.get("seller") or "?"))
+        self.table.setItem(row, 8, price)
+        # 12 Venditore, 13 commento, 14 quantità presa
+        self.table.setItem(row, 12, cell(""))
+        if src.get("seller") or src.get("country"):
+            fake = PriceQuote(amount=unit, currency="EUR", seller=src.get("seller") or "",
+                              seller_type=src.get("seller_type") or "",
+                              country=src.get("country") or "")
+            self.table.setCellWidget(row, 12, self._seller_cell(fake))
+        comment = cell(src.get("comment") or "")
+        comment.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.table.setItem(row, 13, comment)
+        qty_item = cell(str(qty))
+        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.table.setItem(row, 14, qty_item)
+        # abbastanza alta da contenere la cella Venditore (nome + bandierina +
+        # badge PRO): a 40px il nome finiva sopra le iconcine
+        self.table.setRowHeight(row, self._rp(58))
 
     def _set_folder_row(self, row: int, folder, count: int, total: float = 0.0,
                         change: float | None = None, copies_tot: int = 0) -> None:

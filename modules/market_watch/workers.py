@@ -29,7 +29,8 @@ class PriceFetchWorker(QThread):
     MAX_CONSECUTIVE_FAILURES = 3
 
     def __init__(self, provider: PriceProvider, jobs: list, parent=None) -> None:
-        # jobs: lista di (ref_id, filters) — filtri effettivi (globali o della carta)
+        # jobs: lista di (ref_id, filters, copies) — filtri effettivi (globali,
+        # della base o della carta) e quante copie servono
         super().__init__(parent)
         self._provider = provider
         self._jobs = jobs
@@ -45,11 +46,12 @@ class PriceFetchWorker(QThread):
         if client is not None:
             client.should_stop = self.isInterruptionRequested
         try:
-            for done, (ref_id, filters) in enumerate(self._jobs, start=1):
+            for done, (ref_id, filters, copies) in enumerate(self._jobs, start=1):
                 if self.isInterruptionRequested():
                     break
                 try:
-                    quote: PriceQuote | None = self._provider.lowest_price(ref_id, filters)
+                    quote: PriceQuote | None = self._provider.lowest_price(
+                        ref_id, filters, copies)
                 except CardTraderError as exc:
                     failed += 1
                     consecutive += 1

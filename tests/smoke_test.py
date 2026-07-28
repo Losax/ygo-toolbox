@@ -546,6 +546,65 @@ def main() -> int:
     print("[OK] Basi: filtri comuni a cascata, copie che moltiplicano il totale, "
           "modifica senza perdere carte, nessun pulsante fantasma.")
 
+    # 5a-quater) copie da più venditori: il costo di 3 copie non è 3× la più
+    # economica se quel venditore ne ha una sola (caso "Blitzclique Surge").
+    from modules.market_watch.providers.cardtrader import _pick_copies  # noqa: E402
+
+    def offerta(prezzo, qty, venditore):
+        return (prezzo, "EUR", {"quantity": qty,
+                                "user": {"username": venditore, "country_code": "IT"},
+                                "properties_hash": {"condition": "Near Mint",
+                                                    "yugioh_language": "it"}})
+
+    offerte = [offerta(10.0, 1, "tizio"), offerta(12.0, 5, "caio"), offerta(20.0, 9, "sempronio")]
+    prese, totale, coperte = _pick_copies(offerte, 3)
+    assert coperte == 3 and abs(totale - (10.0 + 12.0 * 2)) < 1e-6, (prese, totale)
+    assert [p["qty"] for p in prese] == [1, 2], prese
+    assert [p["seller"] for p in prese] == ["tizio", "caio"]
+    # mercato che non basta: si dice quante se ne trovano, non si inventa
+    prese, totale, coperte = _pick_copies([offerta(10.0, 2, "tizio")], 5)
+    assert coperte == 2 and abs(totale - 20.0) < 1e-6
+    # una copia sola: nessuna complicazione
+    prese, totale, coperte = _pick_copies(offerte, 1)
+    assert coperte == 1 and prese[0]["qty"] == 1 and abs(totale - 10.0) < 1e-6
+
+    # in Panoramica la carta si apre e mostra una riga per venditore
+    q_multi = PriceQuote(amount=10.0, currency="EUR", detail="NM",
+                         sources=[{"qty": 1, "amount": 10.0, "seller": "tizio",
+                                   "country": "IT", "condition": "Near Mint",
+                                   "language": "IT"},
+                                  {"qty": 2, "amount": 12.0, "seller": "caio",
+                                   "country": "DE", "condition": "Excellent",
+                                   "language": "EN"}],
+                         total=34.0, covered=3)
+    widget._last_quotes["701"] = q_multi
+    widget.repo.add_watch("cardtrader", "701", "Ash Blossom & Joyous Spring",
+                          "Ultra Rare · RA01", 0.0, "", 3)
+    w701 = [w for w in widget.repo.list_watches() if w["ref_id"] == "701"][0]
+    widget.repo.record_price("cardtrader", "701", 10.0, "EUR", widget._watch_key(w701))
+    widget._toggle_overview(True)
+    widget._reload_table()
+    kinds = [k for k, _p in widget._row_entries]
+    assert "source" not in kinds, "le provenienze partono chiuse"
+    widget._toggle_sources([w for w in widget.repo.list_watches() if w["ref_id"] == "701"][0])
+    righe = [(k, p) for k, p in widget._row_entries]
+    fonti = [i for i, (k, _p) in enumerate(righe) if k == "source"]
+    assert len(fonti) == 2, righe
+    assert widget.table.item(fonti[0], 8).text() == "10.00 €", widget.table.item(fonti[0], 8).text()
+    assert widget.table.item(fonti[1], 8).text() == "24.00 €", widget.table.item(fonti[1], 8).text()
+    assert widget.table.item(fonti[1], 14).text() == "2"
+    # la carta mostra il costo delle TRE copie, non 3× la più economica
+    crow = [i for i, (k, p) in enumerate(righe)
+            if k == "watch" and p["ref_id"] == "701"][0]
+    assert widget.table.item(crow, 8).text() == "34.00 €", widget.table.item(crow, 8).text()
+    assert widget._row_indent(fonti[0]) > widget._row_indent(crow), "la provenienza va più dentro"
+    widget._toggle_sources(w701)
+    widget._toggle_overview(False)
+    widget.repo.remove_watch(w701["id"])
+    widget._last_quotes.pop("701", None)
+    print("[OK] Copie da più venditori: costo reale (10 + 2×12), righe di "
+          "provenienza apribili, mercato insufficiente dichiarato.")
+
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.
     from modules.market_watch.providers import cardtrader as ct  # noqa: E402
