@@ -34,6 +34,11 @@ from .search_model import ThumbDelegate
 MAX_RESULTS = 60      # come la ricerca principale
 MAX_COPIES = 99
 
+# Padding ridotto rispetto al tema: nella cella lo spinbox è basso, e con gli
+# 8px sopra/sotto del QSS al numero non resta abbastanza spazio per essere
+# disegnato intero. Centrato, perché è una quantità e si legge meglio.
+_SPIN_QSS = "QSpinBox { padding: 2px 6px; padding-right: 30px; }"
+
 
 class DeckDialog(QDialog):
     """Compone/modifica una base.
@@ -41,6 +46,8 @@ class DeckDialog(QDialog):
     `search(testo) -> [(etichetta, CardRef)]` la passa il widget: la ricerca
     "a token" sull'indice del catalogo è già sua, non ha senso rifarla qui.
     """
+
+    ROW_H = 52     # altezza riga: sotto, il numero delle copie viene tagliato
 
     def __init__(self, search, name: str = "", filters_json: str = "",
                  cards=None, filters_editor=None, thumb_items=None,
@@ -52,7 +59,7 @@ class DeckDialog(QDialog):
         self._filters_editor = filters_editor   # callable(json) -> json | None
         self.setWindowTitle(tr("Base (mazzo)"))
         self.setModal(True)
-        self.setMinimumWidth(620)
+        self.setMinimumSize(780, 620)   # comporre un mazzo vuole spazio
 
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 16, 18, 14)
@@ -120,11 +127,12 @@ class DeckDialog(QDialog):
         self.table = QTableWidget(0, 2)
         self.table.setHorizontalHeaderLabels([tr("Carta"), tr("Copie")])
         self.table.verticalHeader().setVisible(False)
-        self.table.setColumnWidth(1, 150)
-        # Righe alte: il tema dà ai campi un padding generoso, e nelle righe
-        # da 30px di default lo spinbox veniva tagliato (si vedevano solo le
-        # freccette, senza il numero).
-        self.table.verticalHeader().setDefaultSectionSize(44)
+        self.table.setColumnWidth(1, 170)
+        # Righe alte: il tema dà ai campi 8px di padding sopra e sotto, e in
+        # una riga bassa al numero restavano ~8px — si vedeva mezzo "3", che
+        # sembrava un carattere minuscolo. L'altezza si impone RIGA PER RIGA:
+        # `setDefaultSectionSize` non ridimensiona le righe già create.
+        self.table.verticalHeader().setDefaultSectionSize(self.ROW_H)
         self.table.horizontalHeader().setStretchLastSection(False)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
@@ -211,7 +219,10 @@ class DeckDialog(QDialog):
             spin = QSpinBox()
             spin.setRange(1, MAX_COPIES)
             spin.setValue(copies)
-            spin.setMinimumWidth(72)
+            spin.setMinimumSize(96, 34)
+            spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            spin.setStyleSheet(_SPIN_QSS)
+            spin.setToolTip(tr("Quante copie di questa carta"))
             spin.valueChanged.connect(lambda v, r=row: self._set_copies(r, v))
             drop = QPushButton("✕")
             drop.setObjectName("ghost")
@@ -227,6 +238,7 @@ class DeckDialog(QDialog):
             lay.addWidget(spin, 1)
             lay.addWidget(drop)
             self.table.setCellWidget(row, 1, box)
+            self.table.setRowHeight(row, self.ROW_H)
         self._refresh_summary()
 
     def _set_copies(self, row: int, value: int) -> None:

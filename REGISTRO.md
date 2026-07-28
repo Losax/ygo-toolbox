@@ -307,6 +307,8 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     - La ricerca nel modulo è **quella della barra principale**, non una
       copia: stesse **miniature**, stesso **hover animato**, stessa pill del
       codice set.
+    - Finestra più grande e **numero di copie ben leggibile**: prima le righe
+      erano troppo basse e del numero si vedeva solo una fettina centrale.
     - In watchlist la base è una cartella: **totale che moltiplica per le
       copie** (3× Ash Blossom vale tre Ash Blossom) e carte marcate `3×`, con
       il prezzo della singola copia.
