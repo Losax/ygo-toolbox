@@ -259,17 +259,26 @@ confini di parola per non pescare "usato").
 - **Immagini:** anteprima grande via `ImageFetchWorker` (QImage decodificato fuori
   GUI); miniature del popup via `ThumbDelegate`; miniature di riga watchlist via
   `_row_icon`/`_on_row_thumb` (QThreadPool + `SESSION`, `_ThumbTask` con size). Cache per URL.
-  **Quando l'immagine non c'è, due ripieghi (nessuno costa una richiesta in
-  più):**
-  1. *stock della stessa carta* — `self._stock_images` (nome → prima immagine
-     fra TUTTE le stampe di quella carta) è costruito in `_rebuild_completer`,
-     che il catalogo lo sta già scorrendo tutto: zero query aggiuntive.
-     `_image_url_for(ref_id, name)` prova la stampa specifica e poi lo stock.
-     L'arte è la stessa: cambia la rarità, non il disegno.
-  2. *segnaposto* — `_make_card_placeholder(nome, size)` in `search_model.py`
-     (lì perché serve anche al popup di ricerca; sta in un solo posto):
-     rettangolo con le iniziali, cache per (iniziali, w, h). Iniziali dalle
-     parole con la maiuscola ("Pot of Greed" → PG).
+  **Scala di ripieghi, uguale nei tre punti (riga, popup, anteprima):**
+  1. immagine della **stampa esatta**;
+  2. immagine di **un'altra stampa della stessa carta**, col timbro "Stock" —
+     `self._stock_images` (nome → url) è costruito in `_rebuild_completer`,
+     che il catalogo lo sta già scorrendo tutto: zero query aggiuntive. Si
+     preferisce una stampa **senza rarità** (`detail` senza " · " = arte
+     "liscia"), altrimenti una qualsiasi. Il ripiego si scarica **solo dopo**
+     che l'esatta è fallita, altrimenti sarebbero due richieste per carta.
+     Timbro = `stock_pixmap(url, pm)` in `search_model.py`: copia col testo in
+     diagonale (ombra scura + testo chiaro, così regge sia sulle arti scure
+     sia su quelle chiare), cache per (url, w, h) — l'originale in cache resta
+     pulito, perché lo stesso url è l'immagine ESATTA di un'altra stampa.
+  3. `_make_empty_frame(size)` — cornice tratteggiata, ultima spiaggia.
+     (Una prima versione ci metteva le iniziali della carta: scartata su
+     richiesta, faceva più rumore del buco che copriva.)
+  **Attenzione:** `_on_row_thumb` ricalcola le icone di TUTTE le righe
+  (`_refresh_row_icons`), non solo di quella "proprietaria" dell'url: un
+  ripiego è condiviso da più stampe della stessa carta, e un fallimento fa
+  scattare il ripiego anche su righe diverse. Il nome carta serve per
+  risalire al ripiego: sta nell'item della colonna 0 come `UserRole + 1`.
   **Gli URL falliti si RICORDANO** (`_failed_thumbs`, `_failed_images`,
   `ThumbDelegate._failed`): senza, ogni ridisegno rilanciava lo stesso download
   perso — esattamente la raffica che fa scattare l'anti-bot di Cloudflare

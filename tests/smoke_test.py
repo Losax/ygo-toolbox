@@ -436,40 +436,54 @@ def main() -> int:
     i18n._current = "it"
     print("[OK] i18n: inglese tradotto, chiavi ignote restano in italiano.")
 
-    # 7) immagini mancanti: ripiego "stock" + segnaposto, e niente ritentativi.
+    # 7) immagini: esatta -> altra stampa col timbro "Stock" -> cornice vuota.
     # (in fondo perché replace_catalog azzera il catalogo del provider)
-    from PySide6.QtGui import QImage  # noqa: E402
-    from modules.market_watch.search_model import _make_card_placeholder  # noqa: E402
+    from PySide6.QtCore import Qt  # noqa: E402
+    from PySide6.QtGui import QImage, QPixmap  # noqa: E402
+    from modules.market_watch import search_model as sm  # noqa: E402
     widget.repo.replace_catalog("cardtrader", [
-        # stessa carta, due stampe: la Secret Rare non ha immagine
+        # tre stampe della stessa carta: una SENZA rarità (l'arte "liscia",
+        # da preferire come ripiego), una con rarità, una senza immagine
         ("901", "Mirror Force", "Ultra Rare · LOB", "http://x/show_901.jpg", "LOB"),
         ("902", "Mirror Force", "Secret Rare · DPKB", "", "DPKB"),
+        ("904", "Mirror Force", "SDK", "http://x/show_904.jpg", "SDK"),
         ("903", "Carta Introvabile", "Rare · XYZ", "", "XYZ"),
     ])
     widget._rebuild_completer()
-    # la stampa senza immagine eredita l'arte dell'altra stampa (stessa carta)
-    assert widget._image_url_for("902", "Mirror Force") == "http://x/show_901.jpg", \
-        "stampa senza immagine: doveva ripiegare sull'altra stampa"
-    assert widget._image_url_for("901", "Mirror Force") == "http://x/show_901.jpg"
-    # nessuna stampa con immagine: niente URL, quindi segnaposto
-    assert widget._image_url_for("903", "Carta Introvabile") == ""
+    # ripiego = la stampa SENZA rarità, non la prima trovata
+    assert widget._stock_images["Mirror Force"] == "http://x/show_904.jpg", \
+        widget._stock_images["Mirror Force"]
+    exact, stock = widget._image_urls_for("902", "Mirror Force")
+    assert exact == "" and stock == "http://x/show_904.jpg", (exact, stock)
+    # per la stampa che È il ripiego, nessun doppione
+    assert widget._image_urls_for("904", "Mirror Force") == ("http://x/show_904.jpg", "")
+    # nessuna immagine da nessuna parte: cornice vuota, niente iniziali
+    assert widget._image_urls_for("903", "Carta Introvabile") == ("", "")
     icon = widget._row_icon("903", "Carta Introvabile")
-    assert icon is not None and not icon.isNull(), "senza immagine serve il segnaposto"
-    # il segnaposto usa le iniziali ed è in cache (stesse iniziali = stesso pixmap)
+    assert icon is not None and not icon.isNull(), "serve comunque una cornice"
     size = widget.table.iconSize()
-    assert _make_card_placeholder("Carta Introvabile", size) is \
-        _make_card_placeholder("Cavallo Imbizzarrito", size), "cache per iniziali attesa"
-    # le paroline minuscole non contano: "Pot of Greed" -> PG, non PO
-    assert _make_card_placeholder("Pot of Greed", size) is \
-        _make_card_placeholder("Pot Greed", size), "articoli/preposizioni da saltare"
-    # download fallito: si ricorda, non si ritenta, e la riga mostra il segnaposto
+    assert sm._make_empty_frame(size) is sm._make_empty_frame(size), "cornice in cache"
+
+    # il timbro "Stock" produce un pixmap DIVERSO dall'originale (ed è in cache)
+    art = QPixmap(sm.THUMB)
+    art.fill(Qt.GlobalColor.darkGreen)
+    marked = sm.stock_pixmap("http://x/preview_904.jpg", art)
+    assert marked is not art and marked.size() == art.size()
+    assert marked.toImage() != art.toImage(), "il timbro deve alterare l'immagine"
+    assert sm.stock_pixmap("http://x/preview_904.jpg", art) is marked, "timbro in cache"
+
+    # l'esatta fallisce -> si passa al ripiego, che viene messo in coda
     turl = "http://x/preview_901.jpg"
     widget._url_ref[turl] = "901"
     widget._url_name[turl] = "Mirror Force"
     widget._on_row_thumb(turl, QImage())          # immagine nulla = fallimento
     assert turl in widget._failed_thumbs, "l'URL perso va ricordato"
+    stock_turl = "http://x/preview_904.jpg"
+    widget._row_thumb_cache[stock_turl] = art     # come se fosse già scaricata
+    icon = widget._row_icon("901", "Mirror Force")
+    assert icon is not None and not icon.isNull(), "doveva ripiegare sull'altra stampa"
     before = len(widget._row_thumb_inflight)
-    assert widget._row_icon("901", "Mirror Force") is not None
+    widget._row_icon("901", "Mirror Force")
     assert len(widget._row_thumb_inflight) == before, "un URL già fallito non va riscaricato"
     # i download di immagini sono spaziati: niente raffica verso il CDN
     from modules.market_watch import search_model as sm  # noqa: E402
@@ -483,8 +497,8 @@ def main() -> int:
     spent = _time.monotonic() - t0
     assert spent >= 4 * sm._IMG_INTERVAL * 0.8, f"slot non spaziati ({spent:.3f}s)"
     sm._IMG_INTERVAL, sm._img_next_at = real_interval, 0.0
-    print("[OK] Immagini: ripiego su altra stampa, segnaposto con iniziali, "
-          "download falliti non ritentati e richieste spaziate.")
+    print("[OK] Immagini: ripiego sull'arte senza rarità col timbro 'Stock', "
+          "cornice vuota come ultima spiaggia, richieste spaziate.")
 
     widget.stop()
     storage.close()

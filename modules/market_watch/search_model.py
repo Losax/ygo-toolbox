@@ -52,22 +52,18 @@ def _thumb_url(image_url: str) -> str:
     return image_url.replace("/show_", "/preview_") if image_url else ""
 
 
-_placeholder_cache: dict[tuple[str, int, int], QPixmap] = {}
+_placeholder_cache: dict[tuple[int, int], QPixmap] = {}
+_marked_cache: dict[tuple[str, int, int], QPixmap] = {}
+STOCK_LABEL = "Stock"
 
 
-def _make_card_placeholder(name: str, size: QSize) -> QPixmap:
-    """Segnaposto per le carte di cui non si riesce ad avere l'immagine.
+def _make_empty_frame(size: QSize) -> QPixmap:
+    """Riquadro neutro per quando non c'è NESSUNA immagine utilizzabile,
+    nemmeno di un'altra stampa della stessa carta.
 
-    Rettangolo con le iniziali del nome: riempie il buco senza costare una
-    richiesta — e le richieste fallite NON vanno ripetute, CardTrader sta
-    dietro Cloudflare e risponde 403 alle raffiche. Cache per (iniziali,
-    larghezza, altezza): le stesse iniziali ricorrono su molte righe."""
-    # Iniziali dalle parole "piene": saltando gli articoli/preposizioni
-    # ("Pot of Greed" → PG, non PO). Se non ne restano, si ripiega su tutte.
-    words = [w for w in name.split() if w]
-    strong = [w for w in words if w[:1].isupper()] or words
-    initials = "".join(w[0] for w in strong[:2])[:2].upper() or "?"
-    key = (initials, size.width(), size.height())
+    Solo una cornice discreta che tiene il posto: la versione con le iniziali
+    del nome era peggio del buco che doveva coprire."""
+    key = (size.width(), size.height())
     cached = _placeholder_cache.get(key)
     if cached is not None:
         return cached
@@ -77,17 +73,53 @@ def _make_card_placeholder(name: str, size: QSize) -> QPixmap:
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     body = QRectF(0.5, 0.5, size.width() - 1.0, size.height() - 1.0)
     radius = max(2.0, min(size.width(), size.height()) / 12.0)
-    p.setPen(QPen(QColor(theme.BORDER), 1.0))
+    pen = QPen(QColor(theme.BORDER))
+    pen.setWidthF(1.0)
+    pen.setStyle(Qt.PenStyle.DashLine)
+    p.setPen(pen)
     p.setBrush(QColor(theme.SURFACE_2))
     p.drawRoundedRect(body, radius, radius)
-    font = QFont(theme.FONT_FAMILY)
-    font.setBold(True)
-    font.setPixelSize(max(8, round(min(size.width(), size.height()) * 0.42)))
-    p.setFont(font)
-    p.setPen(QColor(theme.TEXT_DISABLED))
-    p.drawText(body, Qt.AlignmentFlag.AlignCenter, initials)
     p.end()
     _placeholder_cache[key] = pm
+    return pm
+
+
+def stock_pixmap(url: str, source: QPixmap) -> QPixmap:
+    """Copia dell'immagine con la scritta "Stock" in diagonale, semitrasparente.
+
+    Serve quando si mostra l'immagine di un'ALTRA stampa della stessa carta
+    (rarità diversa): l'arte è quella giusta, la stampa no — e chi guarda deve
+    accorgersene senza doverlo indovinare. Cache per (url, larghezza, altezza):
+    la stessa immagine di ripiego ricorre su più righe."""
+    key = (url, source.width(), source.height())
+    cached = _marked_cache.get(key)
+    if cached is not None:
+        return cached
+    pm = QPixmap(source)          # copia: l'originale resta pulito in cache
+    w, h = pm.width(), pm.height()
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+    font = QFont(theme.FONT_FAMILY)
+    font.setBold(True)
+    font.setPixelSize(max(7, round(w * 0.26)))
+    # allarga/stringe finché la scritta non occupa ~l'80% della diagonale
+    diagonal = (w * w + h * h) ** 0.5
+    while (QFontMetrics(font).horizontalAdvance(STOCK_LABEL) > diagonal * 0.8
+           and font.pixelSize() > 7):
+        font.setPixelSize(font.pixelSize() - 1)
+    p.setFont(font)
+    p.translate(w / 2.0, h / 2.0)
+    p.rotate(-38)
+    band = QRectF(-w, -font.pixelSize(), 2.0 * w, 2.0 * font.pixelSize())
+    # ombra scura sotto + testo chiaro sopra: resta leggibile sia sulle arti
+    # scure sia su quelle chiare
+    p.setPen(QColor(0, 0, 0, 120))
+    p.drawText(band.translated(1.0, 1.0), Qt.AlignmentFlag.AlignCenter, STOCK_LABEL)
+    p.setPen(QColor(255, 255, 255, 165))
+    p.drawText(band, Qt.AlignmentFlag.AlignCenter, STOCK_LABEL)
+    p.end()
+    _marked_cache[key] = pm
     return pm
 
 
@@ -148,6 +180,7 @@ class ThumbDelegate(QStyledItemDelegate):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._map: dict[str, str] = {}      # label -> thumb_url
+        self._stock: dict[str, str] = {}    # label -> thumb_url di ripiego
         self._meta: dict[str, tuple] = {}   # label -> (testo_sinistra, codice_set)
         self._cache: dict[str, QPixmap] = {}
         self._inflight: set[str] = set()
@@ -203,10 +236,12 @@ class ThumbDelegate(QStyledItemDelegate):
             self._hover(-1)
         return False
 
-    def set_cards(self, items: list[tuple[str, str, str, str, str]]) -> None:
-        """items: (label, image_url, testo_sinistra, codice_set, nome_set_completo)."""
+    def set_cards(self, items: list[tuple]) -> None:
+        """items: (label, image_url, testo_sinistra, codice_set,
+        nome_set_completo, image_url_di_ripiego)."""
         self._map = {it[0]: _thumb_url(it[1]) for it in items}
         self._meta = {it[0]: (it[2], it[3], it[4]) for it in items}
+        self._stock = {it[0]: _thumb_url(it[5] if len(it) > 5 else "") for it in items}
 
     def sizeHint(self, option, index):
         return QSize(option.rect.width() or 280, ROW_H)
@@ -257,18 +292,16 @@ class ThumbDelegate(QStyledItemDelegate):
         ty = rect.top() + (rect.height() - THUMB.height()) // 2
         tx = rect.left() + PAD
         url = self._map.get(label, "")
-        pm = self._cache.get(url)
-        if pm is not None and not pm.isNull():
+        pm, marked = self._thumb_for(label, url)
+        if pm is not None:
+            if marked:
+                pm = stock_pixmap(marked, pm)
             painter.drawPixmap(tx + (THUMB.width() - pm.width()) // 2,
                                ty + (THUMB.height() - pm.height()) // 2, pm)
-        elif not url or url in self._failed:
-            # niente immagine (o download già fallito): segnaposto con le
-            # iniziali, invece del rettangolo vuoto
-            name = left_text.split(" — ")[0]
-            painter.drawPixmap(tx, ty, _make_card_placeholder(name, THUMB))
-        else:
+        elif self._pending(label, url):
             painter.fillRect(QRect(tx, ty, THUMB.width(), THUMB.height()), _PLACEHOLDER)
-            self._request(url)
+        else:
+            painter.drawPixmap(tx, ty, _make_empty_frame(THUMB))
 
         text_left = tx + THUMB.width() + PAD
         text_right = rect.right() - PAD
@@ -305,6 +338,33 @@ class ThumbDelegate(QStyledItemDelegate):
             QToolTip.hideText()
             return True
         return super().helpEvent(event, view, option, index)
+
+    # --- scelta dell'immagine: esatta → ripiego "Stock" → cornice vuota ---
+    def _thumb_for(self, label: str, url: str):
+        """(pixmap, url_da_marcare) — `url_da_marcare` valorizzato solo se il
+        pixmap è di un'ALTRA stampa e va quindi timbrato "Stock"."""
+        if url and url not in self._failed:
+            pm = self._cache.get(url)
+            if pm is not None and not pm.isNull():
+                return pm, ""
+            self._request(url)
+            return None, ""
+        # l'esatta manca o è persa: si ripiega sull'altra stampa
+        stock = self._stock.get(label, "")
+        if stock and stock != url and stock not in self._failed:
+            pm = self._cache.get(stock)
+            if pm is not None and not pm.isNull():
+                return pm, stock
+            self._request(stock)
+        return None, ""
+
+    def _pending(self, label: str, url: str) -> bool:
+        """True se c'è ancora un download in corso/da fare per questa voce:
+        distingue "sto caricando" (rettangolo neutro) da "non c'è niente da
+        mostrare" (cornice vuota)."""
+        stock = self._stock.get(label, "")
+        return any(u and u not in self._failed and u not in self._cache
+                   for u in (url, stock))
 
     # --- download miniatura (pigro, limitato, asincrono) ---
     def _request(self, url: str) -> None:
