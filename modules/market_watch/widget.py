@@ -224,7 +224,10 @@ def _make_pencil_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
 
 
 def _make_deck_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
-    """Icona 'base/mazzo': tre carte impilate, a tratto."""
+    """Icona 'base/mazzo': carte a ventaglio, a tratto.
+
+    Stesso glifo delle righe-base in watchlist (`_make_base_icon`): chi preme
+    questo pulsante deve ritrovare la stessa forma nell'elenco."""
     pm = QPixmap(size, size)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
@@ -232,12 +235,16 @@ def _make_deck_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
     pen = QPen(QColor(color))
     pen.setWidthF(size / 16.0)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     p.setPen(pen)
     p.setBrush(Qt.BrushStyle.NoBrush)
     u = size / 32.0
-    r = 2.0 * u
-    for dx, dy in ((0, 0), (3, 3), (6, 6)):   # dalla più arretrata alla prima
-        p.drawRoundedRect(QRectF((6 + dx) * u, (5 + dy) * u, 15 * u, 19 * u), r, r)
+    for angle in (-24, 0, 24):
+        p.save()
+        p.translate(16 * u, 25 * u)
+        p.rotate(angle)
+        p.drawRoundedRect(QRectF(-6 * u, -19 * u, 12 * u, 19 * u), 2.0 * u, 2.0 * u)
+        p.restore()
     p.end()
     return QIcon(pm)
 
@@ -379,10 +386,11 @@ _folder_icon_cache: dict[tuple[bool, int, str], QIcon] = {}
 
 
 def _make_base_icon(open_: bool, size: int = 24) -> QIcon:
-    """Icona di una BASE (mazzo): chevron + carte impilate.
+    """Icona di una BASE (mazzo): chevron + carte a ventaglio.
 
-    Deve distinguersi a colpo d'occhio dalla cartella semplice, ed è lo stesso
-    glifo del pulsante che crea le basi: chi lo ha premuto lo riconosce."""
+    Il ventaglio è stato scelto fra sei proposte perché è l'unico che si legge
+    ancora come "mazzo di carte" alla dimensione VERA della riga (~24px): le
+    varianti a pila, ingrandite più belle, lì impastavano i contorni."""
     key = (open_, size, "deck")
     cached = _folder_icon_cache.get(key)
     if cached is not None:
@@ -396,13 +404,19 @@ def _make_base_icon(open_: bool, size: int = 24) -> QIcon:
     stroke = QPen(QColor(theme.ACCENT))
     stroke.setWidthF(max(1.0, 1.7 * u))
     stroke.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    stroke.setCapStyle(Qt.PenCapStyle.RoundCap)
     fill = QColor(theme.ACCENT)
     fill.setAlpha(34 if open_ else 66)
     p.setPen(stroke)
     p.setBrush(fill)
-    r = 1.8 * u
-    for dx, dy in ((0, 0), (2.6, 2.6), (5.2, 5.2)):   # dalla più arretrata
-        p.drawRoundedRect(QRectF((11 + dx) * u, (6 + dy) * u, 12 * u, 15 * u), r, r)
+    # tre carte che ruotano attorno a un perno in basso: si disegnano dalla
+    # più a sinistra alla più a destra, così la sovrapposizione è naturale
+    for angle in (-22, 0, 22):
+        p.save()
+        p.translate(20.5 * u, 22.0 * u)
+        p.rotate(angle)
+        p.drawRoundedRect(QRectF(-5 * u, -15 * u, 10 * u, 15 * u), 1.6 * u, 1.6 * u)
+        p.restore()
     p.end()
     icon = QIcon(pm)
     _folder_icon_cache[key] = icon

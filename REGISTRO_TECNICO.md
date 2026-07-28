@@ -69,7 +69,7 @@ del README in `docs/`). Committare e pushare a fine sessione.
   espandibili della watchlist; eliminandone una le carte tornano a folder_id
   NULL. `filters` = JSON `ListingFilters` validi per TUTTE le carte contenute
   ('' = usa i predefiniti). `is_deck` = **base (mazzo)** invece di cartella
-  semplice: cambia icona (carte impilate, la stessa del pulsante che le crea)
+  semplice: cambia icona (carte a ventaglio, la stessa del pulsante che le crea)
   e aggiunge il badge "BASE" in colonna 2. Serve un flag ESPLICITO perché una
   base coi filtri predefiniti e una copia per carta sarebbe indistinguibile
   da una cartella. Lo mette `_save_deck` (anche modificando una cartella
