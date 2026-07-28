@@ -259,6 +259,29 @@ confini di parola per non pescare "usato").
 - **Immagini:** anteprima grande via `ImageFetchWorker` (QImage decodificato fuori
   GUI); miniature del popup via `ThumbDelegate`; miniature di riga watchlist via
   `_row_icon`/`_on_row_thumb` (QThreadPool + `SESSION`, `_ThumbTask` con size). Cache per URL.
+  **Quando l'immagine non c'è, due ripieghi (nessuno costa una richiesta in
+  più):**
+  1. *stock della stessa carta* — `self._stock_images` (nome → prima immagine
+     fra TUTTE le stampe di quella carta) è costruito in `_rebuild_completer`,
+     che il catalogo lo sta già scorrendo tutto: zero query aggiuntive.
+     `_image_url_for(ref_id, name)` prova la stampa specifica e poi lo stock.
+     L'arte è la stessa: cambia la rarità, non il disegno.
+  2. *segnaposto* — `_make_card_placeholder(nome, size)` in `search_model.py`
+     (lì perché serve anche al popup di ricerca; sta in un solo posto):
+     rettangolo con le iniziali, cache per (iniziali, w, h). Iniziali dalle
+     parole con la maiuscola ("Pot of Greed" → PG).
+  **Gli URL falliti si RICORDANO** (`_failed_thumbs`, `_failed_images`,
+  `ThumbDelegate._failed`): senza, ogni ridisegno rilanciava lo stesso download
+  perso — esattamente la raffica che fa scattare l'anti-bot di Cloudflare
+  (GOTCHA 1). Si azzerano in `check_now`, che è il gesto "aggiorna tutto":
+  altrimenti un 403 temporaneo lascerebbe il segnaposto fino al riavvio.
+  **Download spaziati** (`_img_slot`, `_IMG_INTERVAL` = 80 ms, in
+  `search_model.py`): `_ThumbTask` è il collo di bottiglia di TUTTE le
+  miniature (righe + popup), e 6 thread che partivano insieme erano la raffica
+  che faceva rispondere 403 al CDN. Misurato sul catalogo reale (2026-07-28):
+  **0 stampe su 47.980 senza image_url** → il "non trova l'immagine" NON era
+  un URL mancante ma il download che falliva; il ripiego stock resta come rete
+  di sicurezza, la spaziatura è la cura vera.
 - **Filtri globali:** `open_options` → `FiltersDialog` → salva JSON in
   `mw_settings.filters` → `provider.filters` → ricontrollo.
 - **Panoramica (`_toggle_overview`):** nasconde il pannello ricerca (animazione

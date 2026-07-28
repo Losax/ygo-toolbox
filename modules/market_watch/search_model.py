@@ -8,6 +8,9 @@ fuori dalla GUI solo per le righe effettivamente visibili.
 """
 from __future__ import annotations
 
+import threading
+import time
+
 import requests
 from PySide6.QtCore import (
     QAbstractAnimation,
@@ -22,8 +25,11 @@ from PySide6.QtCore import (
     QVariantAnimation,
     Signal,
 )
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPixmap
+from PySide6.QtCore import QRectF
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QToolTip
+
+from core import theme
 
 from .net import SESSION
 
@@ -46,8 +52,69 @@ def _thumb_url(image_url: str) -> str:
     return image_url.replace("/show_", "/preview_") if image_url else ""
 
 
+_placeholder_cache: dict[tuple[str, int, int], QPixmap] = {}
+
+
+def _make_card_placeholder(name: str, size: QSize) -> QPixmap:
+    """Segnaposto per le carte di cui non si riesce ad avere l'immagine.
+
+    Rettangolo con le iniziali del nome: riempie il buco senza costare una
+    richiesta — e le richieste fallite NON vanno ripetute, CardTrader sta
+    dietro Cloudflare e risponde 403 alle raffiche. Cache per (iniziali,
+    larghezza, altezza): le stesse iniziali ricorrono su molte righe."""
+    # Iniziali dalle parole "piene": saltando gli articoli/preposizioni
+    # ("Pot of Greed" → PG, non PO). Se non ne restano, si ripiega su tutte.
+    words = [w for w in name.split() if w]
+    strong = [w for w in words if w[:1].isupper()] or words
+    initials = "".join(w[0] for w in strong[:2])[:2].upper() or "?"
+    key = (initials, size.width(), size.height())
+    cached = _placeholder_cache.get(key)
+    if cached is not None:
+        return cached
+    pm = QPixmap(size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    body = QRectF(0.5, 0.5, size.width() - 1.0, size.height() - 1.0)
+    radius = max(2.0, min(size.width(), size.height()) / 12.0)
+    p.setPen(QPen(QColor(theme.BORDER), 1.0))
+    p.setBrush(QColor(theme.SURFACE_2))
+    p.drawRoundedRect(body, radius, radius)
+    font = QFont(theme.FONT_FAMILY)
+    font.setBold(True)
+    font.setPixelSize(max(8, round(min(size.width(), size.height()) * 0.42)))
+    p.setFont(font)
+    p.setPen(QColor(theme.TEXT_DISABLED))
+    p.drawText(body, Qt.AlignmentFlag.AlignCenter, initials)
+    p.end()
+    _placeholder_cache[key] = pm
+    return pm
+
+
 class _ThumbSignals(QObject):
     done = Signal(str, QImage)
+
+
+# Spaziatura fra i download di IMMAGINI (tutti passano da _ThumbTask: righe
+# della watchlist e popup di ricerca). Il CDN di CardTrader sta dietro
+# Cloudflare e risponde 403 alle raffiche: con 6 thread che partono insieme
+# le miniature "ogni tanto non si trovavano" proprio per questo. Non è un
+# limite dell'API, è educazione verso il CDN.
+_IMG_INTERVAL = 0.08     # ~12 immagini al secondo: fluido, ma non una raffica
+_img_lock = threading.Lock()
+_img_next_at = 0.0
+
+
+def _img_slot() -> None:
+    """Prenota lo slot successivo sotto lock e dorme FUORI dal lock, così i
+    thread si accodano senza bloccarsi a vicenda."""
+    global _img_next_at
+    with _img_lock:
+        due = max(time.monotonic(), _img_next_at)
+        _img_next_at = due + _IMG_INTERVAL
+    delay = due - time.monotonic()
+    if delay > 0:
+        time.sleep(delay)
 
 
 class _ThumbTask(QRunnable):
@@ -62,6 +129,7 @@ class _ThumbTask(QRunnable):
     def run(self) -> None:
         img = QImage()
         try:
+            _img_slot()
             resp = SESSION.get(self._url, timeout=10)
             if resp.status_code == 200 and resp.content:
                 tmp = QImage()
@@ -83,6 +151,7 @@ class ThumbDelegate(QStyledItemDelegate):
         self._meta: dict[str, tuple] = {}   # label -> (testo_sinistra, codice_set)
         self._cache: dict[str, QPixmap] = {}
         self._inflight: set[str] = set()
+        self._failed: set[str] = set()      # URL persi: non si ritentano
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(_POOL_THREADS)
         self._sig = _ThumbSignals(self)
@@ -192,10 +261,14 @@ class ThumbDelegate(QStyledItemDelegate):
         if pm is not None and not pm.isNull():
             painter.drawPixmap(tx + (THUMB.width() - pm.width()) // 2,
                                ty + (THUMB.height() - pm.height()) // 2, pm)
+        elif not url or url in self._failed:
+            # niente immagine (o download già fallito): segnaposto con le
+            # iniziali, invece del rettangolo vuoto
+            name = left_text.split(" — ")[0]
+            painter.drawPixmap(tx, ty, _make_card_placeholder(name, THUMB))
         else:
             painter.fillRect(QRect(tx, ty, THUMB.width(), THUMB.height()), _PLACEHOLDER)
-            if url:
-                self._request(url)
+            self._request(url)
 
         text_left = tx + THUMB.width() + PAD
         text_right = rect.right() - PAD
@@ -235,14 +308,20 @@ class ThumbDelegate(QStyledItemDelegate):
 
     # --- download miniatura (pigro, limitato, asincrono) ---
     def _request(self, url: str) -> None:
-        if url in self._cache or url in self._inflight or len(self._inflight) >= MAX_INFLIGHT:
+        if (url in self._cache or url in self._inflight or url in self._failed
+                or len(self._inflight) >= MAX_INFLIGHT):
             return
         self._inflight.add(url)
         self._pool.start(_ThumbTask(url, self._sig))
 
     def _on_thumb(self, url: str, image: QImage) -> None:
         self._inflight.discard(url)
-        if not image.isNull():
+        if image.isNull():
+            # Ricordo il fallimento: senza questo, ogni ridisegno del popup
+            # rilanciava lo stesso download perso — proprio la raffica che fa
+            # scattare l'anti-bot di Cloudflare.
+            self._failed.add(url)
+        else:
             self._cache[url] = QPixmap.fromImage(image)
         if self._view is not None:
             self._view.viewport().update()  # ridisegna le righe visibili

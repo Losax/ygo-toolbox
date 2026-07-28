@@ -66,7 +66,13 @@ from .providers import cardtrader
 from .providers.base import CardRef, ListingFilters, PriceQuote
 from .providers.cardtrader import CardTraderClient, CardTraderProvider
 from .repository import MarketWatchRepository
-from .search_model import ThumbDelegate, _ThumbSignals, _ThumbTask, _thumb_url
+from .search_model import (
+    ThumbDelegate,
+    _make_card_placeholder,
+    _ThumbSignals,
+    _ThumbTask,
+    _thumb_url,
+)
 from .workers import CatalogSyncWorker, ImageFetchWorker, PriceFetchWorker
 
 PROVIDER = "cardtrader"
@@ -466,6 +472,15 @@ class MarketWatchWidget(QWidget):
         self._row_thumb_cache: dict[str, QPixmap] = {}
         self._row_thumb_inflight: set[str] = set()
         self._url_ref: dict[str, str] = {}   # thumb_url -> ref_id (per aggiornare la riga giusta)
+        self._url_name: dict[str, str] = {}  # thumb_url -> nome carta (per il segnaposto)
+        # immagini che non si riescono a scaricare: ricordate per NON ritentare
+        # a ogni render (Cloudflare risponde 403 alle raffiche)
+        self._failed_thumbs: set[str] = set()
+        self._failed_images: set[str] = set()
+        # nome -> immagine di un'altra stampa della stessa carta (ripiego
+        # "stock" per le stampe senza immagine); popolato da _rebuild_completer
+        self._stock_images: dict[str, str] = {}
+        self._current_img_name: str = ""
         self._row_thumb_pool = QThreadPool(self)
         self._row_thumb_pool.setMaxThreadCount(6)
         self._row_thumb_signals = _ThumbSignals(self)
@@ -1193,10 +1208,22 @@ class MarketWatchWidget(QWidget):
         mapping: dict[str, CardRef] = {}
         items: list[tuple[str, str, str, str, str]] = []
         labels: list[str] = []
-        for row in self.repo.all_catalog(PROVIDER):
+        rows = self.repo.all_catalog(PROVIDER)
+        # Immagine "stock" per NOME: la prima disponibile fra tutte le stampe
+        # della stessa carta. Serve da ripiego per le stampe che nel catalogo
+        # non hanno immagine — l'arte è la stessa, cambia la rarità, non il
+        # disegno. Si costruisce in questa passata (il catalogo lo stiamo già
+        # scorrendo tutto): zero query in più, zero richieste di rete.
+        stock: dict[str, str] = {}
+        for row in rows:
+            url = row["image_url"] or ""
+            if url and row["name"] not in stock:
+                stock[row["name"]] = url
+        self._stock_images = stock
+        for row in rows:
             name = row["name"]
             detail = row["detail"] or ""          # "rarità · espansione" (per la tabella)
-            image_url = row["image_url"] or ""
+            image_url = row["image_url"] or stock.get(name, "")
             code = (row["set_code"] or "").upper()
             if " · " in detail:
                 rarity, expansion = detail.rsplit(" · ", 1)
@@ -1254,15 +1281,18 @@ class MarketWatchWidget(QWidget):
         self.add_btn.setEnabled(True)
         shown = ref.name if not ref.detail else f"{ref.name} · {ref.detail}"
         self.selected_label.setText(f"✓  {shown}")
-        self._show_image(ref.image_url)
+        self._show_image(ref.image_url, ref.name)
 
     # ------------------------------------------------------------- anteprima
-    def _show_image(self, url: str) -> None:
-        """Mostra l'anteprima della carta (con cache; scarico in un thread)."""
+    def _show_image(self, url: str, name: str = "") -> None:
+        """Mostra l'anteprima della carta (con cache; scarico in un thread).
+
+        Senza URL, o se il download è già fallito una volta, si mostra il
+        segnaposto con le iniziali invece di un riquadro vuoto."""
         self._current_img_url = url
-        if not url:
-            self.preview.setPixmap(QPixmap())
-            self.preview.setText(tr("Nessuna\nanteprima"))
+        self._current_img_name = name
+        if not url or url in self._failed_images:
+            self._show_preview_placeholder(name)
             return
         cached = self._img_cache.get(url)
         if cached is not None:
@@ -1275,8 +1305,13 @@ class MarketWatchWidget(QWidget):
         self._img_worker.failed.connect(self._on_image_failed)
         self._img_worker.start()
 
+    def _show_preview_placeholder(self, name: str) -> None:
+        self.preview.setText("")
+        self.preview.setPixmap(_make_card_placeholder(name, self.preview.size()))
+
     def _on_image_done(self, url: str, image: QImage) -> None:
-        if image.isNull():
+        if image.isNull():   # scaricata ma illeggibile: vale come fallimento
+            self._on_image_failed("immagine non valida")
             return
         pixmap = QPixmap.fromImage(image)  # già decodificata nel thread: solo incarto
         self._img_cache[url] = pixmap
@@ -1284,8 +1319,11 @@ class MarketWatchWidget(QWidget):
             self._set_preview_pixmap(pixmap)
 
     def _on_image_failed(self, _message: str) -> None:
-        if self.preview.pixmap() is None or self.preview.pixmap().isNull():
-            self.preview.setText(tr("Immagine non\ndisponibile"))
+        # Ricordo il fallimento: la prossima selezione della stessa carta
+        # mostra subito il segnaposto, senza ritentare (Cloudflare non gradisce).
+        if self._current_img_url:
+            self._failed_images.add(self._current_img_url)
+        self._show_preview_placeholder(self._current_img_name)
 
     def _set_preview_pixmap(self, pixmap: QPixmap) -> None:
         self.preview.setText("")
@@ -1325,7 +1363,7 @@ class MarketWatchWidget(QWidget):
         # 0 Immagine (solo miniatura)
         img_item = cell()
         img_item.setData(Qt.ItemDataRole.UserRole, ref_id)
-        icon = self._row_icon(ref_id)
+        icon = self._row_icon(ref_id, watch["card_name"])
         if icon is not None:
             img_item.setIcon(icon)
         self.table.setItem(row, 0, img_item)
@@ -1499,31 +1537,54 @@ class MarketWatchWidget(QWidget):
         self.check_now()
 
     # --- miniature nelle righe della watchlist ---
-    def _row_icon(self, ref_id: str):
-        """Icona miniatura per la riga: da cache se c'è, altrimenti la scarica."""
-        image_url = self.repo.catalog_image(PROVIDER, ref_id)
-        turl = _thumb_url(image_url or "")
-        if not turl:
-            return None
+    def _image_url_for(self, ref_id: str, name: str = "") -> str:
+        """URL dell'immagine di una stampa, con ripiego sull'immagine "stock".
+
+        Se la stampa specifica non ha immagine in catalogo, si usa quella di
+        un'altra stampa della stessa carta (stessa arte, rarità diversa)."""
+        url = self.repo.catalog_image(PROVIDER, ref_id) or ""
+        if url:
+            return url
+        if not name:
+            name = self.repo.catalog_name(PROVIDER, ref_id) or ""
+        return self._stock_images.get(name, "")
+
+    def _placeholder_icon(self, name: str) -> QIcon:
+        return QIcon(_make_card_placeholder(name, self.table.iconSize()))
+
+    def _row_icon(self, ref_id: str, name: str = ""):
+        """Icona miniatura per la riga: da cache se c'è, altrimenti la scarica.
+
+        Se non c'è immagine (nemmeno stock) o il download è già fallito, torna
+        il segnaposto invece di lasciare il buco."""
+        turl = _thumb_url(self._image_url_for(ref_id, name))
+        if not turl or turl in self._failed_thumbs:
+            return self._placeholder_icon(name)
         self._url_ref[turl] = ref_id
+        self._url_name[turl] = name
         pixmap = self._row_thumb_cache.get(turl)
         if pixmap is not None:
             return QIcon(pixmap)
         if turl not in self._row_thumb_inflight:
             self._row_thumb_inflight.add(turl)
             self._row_thumb_pool.start(_ThumbTask(turl, self._row_thumb_signals, ROW_THUMB))
-        return None  # arriverà via _on_row_thumb
+        return self._placeholder_icon(name)   # intanto, poi arriva la vera
 
     def _on_row_thumb(self, turl: str, image: QImage) -> None:
         self._row_thumb_inflight.discard(turl)
-        if image.isNull():
-            return
-        pixmap = QPixmap.fromImage(image)
-        self._row_thumb_cache[turl] = pixmap
         ref_id = self._url_ref.get(turl)
+        if image.isNull():
+            # Fallito (403 di Cloudflare, 404, rete): segnalo l'URL come
+            # perso, così i render successivi mostrano subito il segnaposto e
+            # NON si ritenta all'infinito lo stesso download.
+            self._failed_thumbs.add(turl)
+            icon = self._placeholder_icon(self._url_name.get(turl, ""))
+        else:
+            pixmap = QPixmap.fromImage(image)
+            self._row_thumb_cache[turl] = pixmap
+            icon = QIcon(pixmap)
         if ref_id is None:
             return
-        icon = QIcon(pixmap)
         for r in range(self.table.rowCount()):   # applica alla riga giusta (watchlist piccola)
             item = self.table.item(r, 0)
             if item is not None and item.data(Qt.ItemDataRole.UserRole) == ref_id:
@@ -1538,7 +1599,8 @@ class MarketWatchWidget(QWidget):
         ref_id = item.data(Qt.ItemDataRole.UserRole) if item else None
         if not ref_id:
             return
-        self._show_image(self.repo.catalog_image(PROVIDER, ref_id) or "")
+        name = self.repo.catalog_name(PROVIDER, ref_id) or ""
+        self._show_image(self._image_url_for(ref_id, name), name)
 
     def _remove(self, watch_id) -> None:
         removed = self.repo.remove_watch(watch_id)  # pulisce anche storico/annuncio
@@ -1838,6 +1900,11 @@ class MarketWatchWidget(QWidget):
             return
         if self._price_worker is not None and self._price_worker.isRunning():
             return
+        # Il controllo è il gesto "aggiorna tutto": è l'occasione buona per
+        # riprovare le immagini perse (un 403 di Cloudflare è temporaneo).
+        # Altrimenti un segnaposto resterebbe lì fino al riavvio.
+        self._failed_thumbs.clear()
+        self._failed_images.clear()
         self._set_busy(True, tr("Controllo prezzi su CardTrader…"))
         jobs = [(w["ref_id"], self._effective_filters(w)) for w in watches]
         self._price_worker = PriceFetchWorker(self.provider, jobs)

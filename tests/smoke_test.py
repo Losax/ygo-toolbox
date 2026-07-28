@@ -436,6 +436,56 @@ def main() -> int:
     i18n._current = "it"
     print("[OK] i18n: inglese tradotto, chiavi ignote restano in italiano.")
 
+    # 7) immagini mancanti: ripiego "stock" + segnaposto, e niente ritentativi.
+    # (in fondo perché replace_catalog azzera il catalogo del provider)
+    from PySide6.QtGui import QImage  # noqa: E402
+    from modules.market_watch.search_model import _make_card_placeholder  # noqa: E402
+    widget.repo.replace_catalog("cardtrader", [
+        # stessa carta, due stampe: la Secret Rare non ha immagine
+        ("901", "Mirror Force", "Ultra Rare · LOB", "http://x/show_901.jpg", "LOB"),
+        ("902", "Mirror Force", "Secret Rare · DPKB", "", "DPKB"),
+        ("903", "Carta Introvabile", "Rare · XYZ", "", "XYZ"),
+    ])
+    widget._rebuild_completer()
+    # la stampa senza immagine eredita l'arte dell'altra stampa (stessa carta)
+    assert widget._image_url_for("902", "Mirror Force") == "http://x/show_901.jpg", \
+        "stampa senza immagine: doveva ripiegare sull'altra stampa"
+    assert widget._image_url_for("901", "Mirror Force") == "http://x/show_901.jpg"
+    # nessuna stampa con immagine: niente URL, quindi segnaposto
+    assert widget._image_url_for("903", "Carta Introvabile") == ""
+    icon = widget._row_icon("903", "Carta Introvabile")
+    assert icon is not None and not icon.isNull(), "senza immagine serve il segnaposto"
+    # il segnaposto usa le iniziali ed è in cache (stesse iniziali = stesso pixmap)
+    size = widget.table.iconSize()
+    assert _make_card_placeholder("Carta Introvabile", size) is \
+        _make_card_placeholder("Cavallo Imbizzarrito", size), "cache per iniziali attesa"
+    # le paroline minuscole non contano: "Pot of Greed" -> PG, non PO
+    assert _make_card_placeholder("Pot of Greed", size) is \
+        _make_card_placeholder("Pot Greed", size), "articoli/preposizioni da saltare"
+    # download fallito: si ricorda, non si ritenta, e la riga mostra il segnaposto
+    turl = "http://x/preview_901.jpg"
+    widget._url_ref[turl] = "901"
+    widget._url_name[turl] = "Mirror Force"
+    widget._on_row_thumb(turl, QImage())          # immagine nulla = fallimento
+    assert turl in widget._failed_thumbs, "l'URL perso va ricordato"
+    before = len(widget._row_thumb_inflight)
+    assert widget._row_icon("901", "Mirror Force") is not None
+    assert len(widget._row_thumb_inflight) == before, "un URL già fallito non va riscaricato"
+    # i download di immagini sono spaziati: niente raffica verso il CDN
+    from modules.market_watch import search_model as sm  # noqa: E402
+    real_interval = sm._IMG_INTERVAL
+    sm._IMG_INTERVAL = 0.02
+    sm._img_next_at = 0.0
+    import time as _time  # noqa: E402
+    t0 = _time.monotonic()
+    for _ in range(5):
+        sm._img_slot()
+    spent = _time.monotonic() - t0
+    assert spent >= 4 * sm._IMG_INTERVAL * 0.8, f"slot non spaziati ({spent:.3f}s)"
+    sm._IMG_INTERVAL, sm._img_next_at = real_interval, 0.0
+    print("[OK] Immagini: ripiego su altra stampa, segnaposto con iniziali, "
+          "download falliti non ritentati e richieste spaziate.")
+
     widget.stop()
     storage.close()
     print("\nTutti i controlli superati.")

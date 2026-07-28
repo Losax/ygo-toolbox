@@ -31,6 +31,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Sincronizza catalogo** | Pulsante in alto. Scarica tutte le stampe YGO (~48.000) con immagine, rarità e codice set. Operazione una tantum (~4-5 min). |
 | **Ricerca live** | Scrivi nel campo: i risultati compaiono mentre digiti. Cerca per **parole parziali in qualsiasi ordine** su **nome + rarità + codice set** (es. `impulse quarter`). Ogni voce mostra miniatura, nome — rarità e il **codice set** (pill a destra; hover = nome completo). |
 | **Anteprima immagine** | Selezionando un risultato (o una riga in watchlist) l'immagine appare nel riquadro a destra. |
+| **Se l'immagine manca** | Quando una stampa non ha l'immagine, l'app usa quella di **un'altra stampa della stessa carta** (l'arte è identica, cambia solo la rarità). Se non c'è proprio nulla, al posto del buco compare un **riquadro con le iniziali** della carta. Le immagini che non si scaricano vengono riprovate al successivo *Controlla ora*. |
 | **Aggiungi alla watchlist** | Seleziona una stampa, imposta la **soglia di calo %**, clic su *Aggiungi*. |
 | **Controlla ora / Auto** | Riscarica il prezzo più basso; se scende oltre soglia → notifica di sistema. L'intervallo automatico è impostabile. In più, **all'apertura dell'app parte un controllo automatico** (~2,5 s dopo l'avvio), così la Var.% mostra il movimento reale dall'ultima sessione. |
 | **Dati ricordati al riavvio** | L'**ultimo annuncio** di ogni carta (condizione, lingua, venditore, commenti…) è salvato su DB: riaprendo l'app la Panoramica è **subito piena**, con l'orario dell'ultimo controllo. Rimuovendo una carta si cancellano anche i suoi dati (niente accumulo). |
@@ -223,6 +224,24 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     spazi nel testo, che valgono solo per la prima riga. Ora il rientro è
     vero e proprio (si sposta il disegno), quindi tutte le righe del nome sono
     allineate.
+43. **Immagini mancanti: mai più il buco (v1.0.5).** Capitava che l'immagine di
+    una carta non si trovasse (la stampa non ce l'ha in catalogo, oppure il
+    download fallisce). Ora ci sono due ripieghi, nell'ordine:
+    - **immagine "stock" della stessa carta**: si usa quella di un'altra
+      stampa con lo stesso nome — l'arte è identica, cambia solo la rarità.
+      Non costa nessuna richiesta in più: l'elenco si costruisce dal catalogo
+      già in memoria;
+    - **riquadro con le iniziali** della carta (es. *PG* per "Pot of Greed"),
+      in tinta col tema, se non c'è proprio nessuna immagine.
+    In più, un'immagine che non si scarica **non viene più richiesta a ogni
+    ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
+    risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.
+    **La causa vera:** controllando il catalogo scaricato è saltato fuori che
+    le immagini mancanti non esistono — tutte le 47.980 stampe hanno il loro
+    indirizzo. A fallire era lo **scaricamento**, perché le miniature
+    partivano tutte insieme. Ora vengono richieste **una ogni 80 millesimi di
+    secondo**: alla vista non cambia niente, ma CardTrader smette di
+    scambiarci per un robot.
 
 ---
 
