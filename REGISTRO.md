@@ -175,7 +175,8 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
 38. **v1.0.1**: exe ricompilato e nuovo pacchetto `dist\YGO Toolbox v1.0.1.zip`.
     Numero alzato perché il v1.0.0 era già confezionato per essere girato: due
     exe diversi con lo stesso numero creerebbero solo confusione. Il vecchio
-    zip resta in `dist\` come archivio della versione già distribuita.
+    pacchetto è stato **eliminato** (in `dist\` sta solo la versione corrente;
+    all'occorrenza si ricostruisce dal tag/commit di quella release).
 
 ---
 
