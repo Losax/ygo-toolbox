@@ -28,8 +28,8 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `widget.py` | Tutta la UI + logica: ricerca live, watchlist, controlli prezzi, anteprima, Opzioni. |
 | `repository.py` | Accesso DB (tabelle `mw_*`) + migrazioni + settings. |
 | `providers/base.py` | Contratto `PriceProvider`, `CardRef`, `PriceQuote`, `ListingFilters`. |
-| `providers/cardtrader.py` | Client HTTP + parsing + `fetch_catalog` (paginato) + filtri annunci + euristica "americana". |
-| `workers.py` | `QThread`: `PriceFetchWorker`, `CatalogSyncWorker`, `ImageFetchWorker`. |
+| `providers/cardtrader.py` | Client HTTP + parsing + `fetch_catalog` (paginato) + filtri annunci + euristica "americana" + **rate limit** (`LIMITER`, vedi GOTCHA 13). |
+| `workers.py` | `QThread`: `PriceFetchWorker` (una carta alla volta, tollerante agli errori, segnale `progress`), `CatalogSyncWorker`, `ImageFetchWorker`. |
 | `search_model.py` | `ThumbDelegate` (disegno voci popup: miniatura, testo, pill codice, hover animato) + download miniature. NB hover: scala ASIMMETRICA (y 1.07, x 1.018) — oltre i bordi della finestra popup non si può disegnare, con 1.06 anche in X la pill veniva tagliata al bordo. |
 | `flags.py` | Bandierine paesi disegnate a runtime con QPainter (~38 paesi; strisce/croci/casi speciali, pill col codice come ripiego) + `country_name` per i tooltip. Cache per (codice, altezza). Zero asset, zero rete. |
 | `rarity.py` | Badge rarità (pill con sigla community: UR, ScR, QCSR, … e colore/gradiente "foil"). Match per SOTTOSTRINGA dal più specifico al più generico ("rare" per ultimo!); sconosciute → iniziali su pill neutra. Cache per (nome, altezza). |
@@ -78,7 +78,8 @@ del README in `docs/`). Committare e pushare a fine sessione.
   sfoltisce lo storico vecchio al minimo giornaliero.
 - `mw_settings(key, value)` — `filters` (JSON `ListingFilters` globali),
   `last_checked` (timestamp mostrato in colonna "Controllo"), `display`
-  (JSON preferenze visualizzazione: `rarity_icons`, `set_codes`). La vecchia
+  (JSON preferenze visualizzazione: `rarity_icons`, `set_codes`),
+  `api_interval` (spaziatura anti-429 imparata, vedi GOTCHA 13). La vecchia
   chiave `no_match` è migrata in `mw_last_quote` (righe con quote `''`) e rimossa.
   NB: le celle a badge (rarità, venditore) sono cell WIDGET → in vista normale
   la colonna Rarità con badge usa larghezza Fixed (ResizeToContents li ignora).
@@ -175,12 +176,59 @@ confini di parola per non pescare "usato").
     (bug "interruttori che non si spengono"). Per animazioni RIAVVIABILI
     (ToggleSwitch) usare UN oggetto persistente creato nel costruttore,
     senza DeleteWhenStopped.
+    **Ricaduta trovata il 2026-07-28** (nel log di un exe vero): `_smooth_wheel`
+    ricreava l'animazione a ogni scatto con DeleteWhenStopped e ne conservava
+    il riferimento in `self._scroll_anim`. Il `prev.stop()` era protetto da
+    try/except, ma la riga PRIMA — `prev.state()` — no: bastava uno scatto dato
+    dopo la fine dell'animazione precedente per sollevare RuntimeError a ogni
+    rotellina. Ora l'animazione è UNA sola, creata in `__init__` e riavviata
+    (niente DeleteWhenStopped) — che è esattamente la cura già scritta qui
+    sopra. Morale: quando si applica questa regola, coprire TUTTI gli accessi
+    all'oggetto, non solo `stop()`.
 12. **Font offscreen = tofu LARGO:** in `QT_QPA_PLATFORM=offscreen` mancano i
     font e ogni glifo è largo ~1em → `QFontMetrics` gonfia i minimi colonna e
     i test di fit mostrano scroll che sul desktop reale non c'è. Per verifiche
     di layout coi FONT VERI: piattaforma windows di default + finestra con
     `setAttribute(WA_DontShowOnScreen)` prima di `show()` — layout reale,
     niente flash a schermo.
+13. **Rate limit dell'API (429) — il controllo watchlist è una RAFFICA.**
+    `lowest_price` fa UNA chiamata `/marketplace/products` per carta: con
+    qualche decina di carte in watchlist le richieste partivano attaccate e
+    CardTrader rispondeva 429. Peggio: il `try/except` avvolgeva TUTTO il ciclo
+    del worker, quindi un 429 a metà buttava via anche le carte già scaricate.
+    Difese, in ordine di importanza:
+    - `LIMITER` (`_RateLimiter` modulo-level, condiviso da tutti i client: il
+      limite è per token/IP) **spazia** le chiamate. `wait()` prenota lo slot
+      sotto lock e dorme FUORI dal lock, così più thread si accodano senza
+      bloccarsi. Spaziatura **adattiva**: `penalize()` ×2.5 a ogni 429 (tetto
+      `MAX_INTERVAL`), `relax()` ×0.92 a ogni risposta pulita (pavimento
+      `MIN_INTERVAL` = 0.15s). Il limite documentato non lo conosciamo: per
+      questo si tara da sola invece di inseguire un numero fisso.
+    - `_get` **ritenta** il 429 (`RETRY_ATTEMPTS`) rispettando `Retry-After`
+      quando è un numero, altrimenti backoff 2/4/8s. Solo alla resa alza
+      `RateLimited` (sottoclasse di `CardTraderError`: chi cattura la base
+      continua a funzionare).
+    - `PriceFetchWorker` va **carta per carta**: un fallimento non abortisce
+      il giro, ci si arrende dopo `MAX_CONSECUTIVE_FAILURES`=3 di fila
+      consegnando comunque il parziale via `finished_ok(results, failed,
+      last_error)`. `failed` secco solo se non è passato NIENTE.
+    - La spaziatura imparata è **persistita** in `mw_settings.api_interval`
+      (`_load_rate_interval`/`_save_rate_interval` nel widget: il provider
+      resta puro, il DB lo tocca solo la GUI) — senza, ogni avvio ripartirebbe
+      a 0.15s e si riprenderebbe gli stessi 429.
+    - **ATTENZIONE ai parziali:** `_on_prices` ora AGGIORNA `_last_quotes` e
+      `_no_match_refs` solo per i ref presenti in `results`. Riassegnarli in
+      blocco (com'era) trasformerebbe ogni carta non controllata in
+      "Nessuna copia", cancellandone il prezzo. Stesso motivo per cui
+      `set_last_quotes` riceve solo i controllati.
+    - Le attese sono **interrompibili** (`_sleep` a fettine da 100 ms +
+      `client.should_stop`, che i worker legano a
+      `isInterruptionRequested`; `widget.stop()` chiama `requestInterruption()`
+      PRIMA di `wait(2000)`). Senza, chiudere l'app durante un backoff da 8s
+      lasciava il thread appeso.
+    - Corollario: i vecchi `time.sleep(0.1)` in `fetch_catalog`/`_all_blueprints`
+      sono stati tolti — la spaziatura la mette il LIMITER, averla in due posti
+      significa solo rallentare due volte.
 
 ---
 
@@ -192,7 +240,10 @@ confini di parola per non pescare "usato").
   `_on_pick` (`_label_to_ref[label]` → `CardRef`).
 - **Prezzi:** `check_now` costruisce job `(ref_id, filtri_effettivi)` con
   `_effective_filters(watch)` (filtri della carta se presenti, altrimenti i
-  globali) → `PriceFetchWorker` → `lowest_price(card_id, filters)` (ritorna un
+  globali) → `PriceFetchWorker` (carta per carta, chiamate spaziate dal
+  `LIMITER`, `progress(fatte, totali)` → barra di stato "… 12/40"; i
+  fallimenti non abortiscono il giro, vedi GOTCHA 13) →
+  `lowest_price(card_id, filters)` (ritorna un
   `PriceQuote` arricchito: prezzo + campi strutturati condition/language/
   first_edition/zero, venditore, paese, commento, quantità) → `_on_prices`
   (scrive `mw_price_history`, notifica se calo ≥ soglia, salva

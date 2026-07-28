@@ -177,6 +177,28 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     exe diversi con lo stesso numero creerebbero solo confusione. Il vecchio
     pacchetto è stato **eliminato** (in `dist\` sta solo la versione corrente;
     all'occorrenza si ricostruisce dal tag/commit di quella release).
+39. **Basta "Troppe richieste (429)" (v1.0.2).** Il controllo di tutte le carte
+    faceva una richiesta per carta **tutte attaccate**: con una watchlist piena
+    CardTrader si difendeva e il controllo falliva **in blocco**, senza
+    aggiornare niente. Ora:
+    - le richieste sono **distanziate** nel tempo, e la distanza si **tara da
+      sola**: si allarga se CardTrader si lamenta, si restringe quando tutto
+      fila. La taratura viene **ricordata** anche dopo la chiusura dell'app,
+      così non si ricomincia da capo ogni volta;
+    - un 429 non è più un errore: la carta viene **ritentata** dopo una pausa
+      (rispettando l'attesa chiesta dal server);
+    - se qualche carta proprio non passa, **le altre vengono comunque
+      aggiornate e salvate** — prima si perdeva tutto il giro. Le carte non
+      controllate **mantengono il prezzo precedente**, non diventano
+      "Nessuna copia";
+    - durante il controllo la barra di stato mostra **l'avanzamento**
+      (es. "Controllo prezzi… 12/40"), e se qualcosa è rimasto indietro lo
+      dice ("Controllo parziale (38 carte su 40): 2 non aggiornate").
+40. **Bug della rotellina risolto** (trovato nel log durante le prove del punto
+    39): scorrendo la watchlist, ogni scatto dato *dopo* che l'animazione
+    precedente era finita generava un errore interno (finiva in
+    `~/.ygo_toolbox/log.txt` senza chiudere l'app, ma era un rischio di crash
+    nell'exe). Lo scorrimento animato ora usa un solo oggetto riutilizzato.
 
 ---
 

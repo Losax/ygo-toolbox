@@ -56,6 +56,7 @@ from . import config
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
 from .rarity import rarity_pixmap
+from .providers import cardtrader
 from .providers.base import CardRef, ListingFilters, PriceQuote
 from .providers.cardtrader import CardTraderClient, CardTraderProvider
 from .repository import MarketWatchRepository
@@ -336,6 +337,16 @@ class MarketWatchWidget(QWidget):
         self._img_cache: dict[str, QPixmap] = {}
         self._current_img_url: str = ""
         self._filters = ListingFilters.from_dict(self._load_filters())
+        self._load_rate_interval()   # spaziatura anti-429 imparata in passato
+        # Scorrimento animato della rotellina: UN SOLO oggetto persistente,
+        # riavviato a ogni scatto. Ricrearlo ogni volta con DeleteWhenStopped
+        # lasciava un wrapper Python su un C++ già distrutto → RuntimeError al
+        # primo scatto DOPO la fine dell'animazione precedente (vedi GOTCHA 11).
+        self._scroll_target = 0
+        self._scroll_anim = QVariantAnimation(self)
+        self._scroll_anim.setDuration(150)
+        self._scroll_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._scroll_anim.valueChanged.connect(self._on_scroll_anim)
         # preferenze di visualizzazione della watchlist (rarità icona/nome,
         # set codice/nome, animazioni on/off) — dialogo Opzioni
         self._display = self._load_display()
@@ -389,6 +400,21 @@ class MarketWatchWidget(QWidget):
         else:
             self.client = None
             self.provider = None
+
+    # --- spaziatura fra le chiamate API (anti-429) ---
+    # Il limitatore si tara da solo durante l'uso, ma vive in memoria: senza
+    # ricordarla, ogni avvio ripartirebbe troppo veloce e si riprenderebbe gli
+    # stessi 429 prima di ricalibrarsi. Qui la si porta avanti fra le sessioni.
+    def _load_rate_interval(self) -> None:
+        try:
+            saved = float(self.repo.get_setting("api_interval", "") or 0)
+        except (TypeError, ValueError):
+            return
+        if saved > 0:
+            cardtrader.LIMITER.adopt(saved)
+
+    def _save_rate_interval(self) -> None:
+        self.repo.set_setting("api_interval", f"{cardtrader.LIMITER.interval:.3f}")
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -663,27 +689,19 @@ class MarketWatchWidget(QWidget):
         sb = self.table.verticalScrollBar()
         if sb.maximum() <= 0:
             return False
-        prev = getattr(self, "_scroll_anim", None)
-        running = (prev is not None
-                   and prev.state() == QAbstractAnimation.State.Running)
+        running = self._scroll_anim.state() == QAbstractAnimation.State.Running
         base = self._scroll_target if running else sb.value()
         # ~108 px per scatto di rotellina; gli scatti rapidi si accumulano
         self._scroll_target = max(0, min(sb.maximum(),
                                          base - round(event.angleDelta().y() * 0.9)))
-        if prev is not None:
-            try:
-                prev.stop()
-            except RuntimeError:
-                pass
-        anim_ = QVariantAnimation(self)
-        anim_.setDuration(150)
-        anim_.setEasingCurve(QEasingCurve.Type.OutCubic)
-        anim_.setStartValue(float(sb.value()))
-        anim_.setEndValue(float(self._scroll_target))
-        anim_.valueChanged.connect(lambda v: sb.setValue(round(float(v))))
-        self._scroll_anim = anim_
-        anim_.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+        self._scroll_anim.stop()
+        self._scroll_anim.setStartValue(float(sb.value()))
+        self._scroll_anim.setEndValue(float(self._scroll_target))
+        self._scroll_anim.start()
         return True
+
+    def _on_scroll_anim(self, value) -> None:
+        self.table.verticalScrollBar().setValue(round(float(value)))
 
     def _sp(self, base: float) -> int:
         """Scala un valore in pixel con la scala UI corrente."""
@@ -1672,15 +1690,27 @@ class MarketWatchWidget(QWidget):
         jobs = [(w["ref_id"], self._effective_filters(w)) for w in watches]
         self._price_worker = PriceFetchWorker(self.provider, jobs)
         self._price_worker.finished_ok.connect(self._on_prices)
+        self._price_worker.progress.connect(self._on_price_progress)
         self._price_worker.failed.connect(self._on_error)
         self._price_worker.start()
 
+    def _on_price_progress(self, done: int, total: int) -> None:
+        """Le chiamate sono spaziate per non farsi limitare dall'API: su molte
+        carte il controllo dura, quindi va mostrato che sta lavorando."""
+        self._set_busy(True, tr("Controllo prezzi su CardTrader… {done}/{total}")
+                       .format(done=done, total=total))
+
     def _on_error(self, message: str) -> None:
         self.sync_btn.setEnabled(self.provider is not None)
+        self._save_rate_interval()
         self._set_busy(False, tr("Errore: {msg}").format(msg=message))
 
-    def _on_prices(self, results: list[dict]) -> None:
-        self._last_quotes = {r["ref_id"]: r["quote"] for r in results}  # per le info in Panoramica
+    def _on_prices(self, results: list[dict], failed: int = 0, last_error: str = "") -> None:
+        # AGGIORNAMENTO PARZIALE: `results` contiene solo le carte davvero
+        # controllate. Le altre mantengono prezzo e stato precedenti — non
+        # vanno azzerate né scambiate per "Nessuna copia".
+        for result in results:
+            self._last_quotes[result["ref_id"]] = result["quote"]
         watches = {w["ref_id"]: w for w in self.repo.list_watches() if w["provider"] == PROVIDER}
         for result in results:
             watch = watches.get(result["ref_id"])
@@ -1697,8 +1727,13 @@ class MarketWatchWidget(QWidget):
                         tr("Nuovo prezzo più basso su CardTrader"),
                         f"{watch['card_name']}: {old:.2f} € → {new:.2f} € (-{drop_pct:.1f}%)",
                     )
-        # carte per cui nessun annuncio soddisfa i filtri (o nessun annuncio attivo)
-        self._no_match_refs = {r["ref_id"] for r in results if r.get("quote") is None}
+        # carte per cui nessun annuncio soddisfa i filtri (o nessun annuncio
+        # attivo) — solo fra quelle controllate ora
+        for result in results:
+            if result["quote"] is None:
+                self._no_match_refs.add(result["ref_id"])
+            else:
+                self._no_match_refs.discard(result["ref_id"])
         # persiste l'ultimo annuncio per carta (upsert, '' = "Nessuna copia"):
         # al riavvio la Panoramica riparte da qui invece che vuota
         self.repo.set_last_quotes(PROVIDER, [
@@ -1707,8 +1742,15 @@ class MarketWatchWidget(QWidget):
         ])
         checked = datetime.now().strftime("%d/%m %H:%M")
         self.repo.set_setting("last_checked", checked)
+        self._save_rate_interval()
         self._render_after_check(checked)
-        self._set_busy(False, tr("Ultimo controllo: {when}.").format(when=checked))
+        if failed:
+            # controllo incompleto: dirlo, ma i prezzi arrivati sono già salvati
+            self._set_busy(False, tr(
+                "Controllo parziale ({done} carte su {total}): {n} non aggiornate. {msg}"
+            ).format(done=len(results), total=len(results) + failed, n=failed, msg=last_error))
+        else:
+            self._set_busy(False, tr("Ultimo controllo: {when}.").format(when=checked))
 
     def _render_after_check(self, checked: str, pulse: bool = True) -> None:
         # updates sospesi durante il rebuild: un solo repaint alla fine
@@ -1832,4 +1874,8 @@ class MarketWatchWidget(QWidget):
         self.timer.stop()
         for worker in (self._price_worker, self._sync_worker, self._img_worker):
             if worker is not None and worker.isRunning():
+                # prima CHIEDI di fermarsi (le attese del rate limit mollano
+                # subito), poi aspetta: senza questo la chiusura può restare
+                # appesa a un backoff da qualche secondo
+                worker.requestInterruption()
                 worker.wait(2000)

@@ -126,6 +126,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "Filtri rimossi.": "Filters cleared.",
         "Visualizzazione aggiornata.": "Display updated.",
         "Controllo prezzi su CardTrader…": "Checking prices on CardTrader…",
+        "Controllo prezzi su CardTrader… {done}/{total}":
+            "Checking prices on CardTrader… {done}/{total}",
+        "Controllo parziale ({done} carte su {total}): {n} non aggiornate. {msg}":
+            "Partial check ({done} of {total} cards): {n} not updated. {msg}",
         "Controllo automatico all'avvio…": "Automatic check on startup…",
         "Ultimo controllo: {when}.": "Last check: {when}.",
         "Watchlist vuota.": "Watchlist is empty.",

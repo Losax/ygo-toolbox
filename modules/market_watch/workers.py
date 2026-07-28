@@ -15,8 +15,18 @@ from .providers.cardtrader import CardTraderClient, CardTraderError, fetch_catal
 
 
 class PriceFetchWorker(QThread):
-    finished_ok = Signal(list)  # [{"ref_id": str, "quote": PriceQuote|None}, ...]
-    failed = Signal(str)
+    """Controlla i prezzi UNA CARTA ALLA VOLTA, con tolleranza agli errori.
+
+    Una carta che fallisce non fa più buttare via il lavoro delle altre: il
+    controllo prosegue e alla fine la GUI riceve i risultati raccolti più il
+    conto dei fallimenti. Ci si arrende solo dopo alcuni errori DI FILA
+    (rete giù o rate limit serio), consegnando comunque il parziale."""
+
+    finished_ok = Signal(list, int, str)  # (risultati, n° falliti, ultimo errore)
+    progress = Signal(int, int)           # (fatte, totali)
+    failed = Signal(str)                  # nessun risultato: errore secco
+
+    MAX_CONSECUTIVE_FAILURES = 3
 
     def __init__(self, provider: PriceProvider, jobs: list, parent=None) -> None:
         # jobs: lista di (ref_id, filters) — filtri effettivi (globali o della carta)
@@ -26,14 +36,39 @@ class PriceFetchWorker(QThread):
 
     def run(self) -> None:
         results: list[dict] = []
+        failed = 0
+        consecutive = 0
+        last_error = ""
+        total = len(self._jobs)
+        # le attese del rate limit devono mollare subito se l'app si chiude
+        client = getattr(self._provider, "client", None)
+        if client is not None:
+            client.should_stop = self.isInterruptionRequested
         try:
-            for ref_id, filters in self._jobs:
-                quote: PriceQuote | None = self._provider.lowest_price(ref_id, filters)
+            for done, (ref_id, filters) in enumerate(self._jobs, start=1):
+                if self.isInterruptionRequested():
+                    break
+                try:
+                    quote: PriceQuote | None = self._provider.lowest_price(ref_id, filters)
+                except CardTraderError as exc:
+                    failed += 1
+                    consecutive += 1
+                    last_error = str(exc)
+                    if consecutive >= self.MAX_CONSECUTIVE_FAILURES:
+                        break   # inutile insistere: consegna il parziale
+                    continue
+                finally:
+                    self.progress.emit(done, total)
+                consecutive = 0
                 results.append({"ref_id": ref_id, "quote": quote})
-        except CardTraderError as exc:
-            self.failed.emit(str(exc))
+        finally:
+            if client is not None:
+                client.should_stop = None
+
+        if not results and failed:
+            self.failed.emit(last_error)   # non è passato NIENTE: errore secco
             return
-        self.finished_ok.emit(results)
+        self.finished_ok.emit(results, failed, last_error)
 
 
 class ImageFetchWorker(QThread):
@@ -71,9 +106,12 @@ class CatalogSyncWorker(QThread):
         self._client = client
 
     def run(self) -> None:
+        self._client.should_stop = self.isInterruptionRequested
         try:
             rows = fetch_catalog(self._client, progress=self.progress.emit)
         except CardTraderError as exc:
             self.failed.emit(str(exc))
             return
+        finally:
+            self._client.should_stop = None
         self.finished_ok.emit(rows)

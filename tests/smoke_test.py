@@ -288,6 +288,94 @@ def main() -> int:
     assert dlg.result_filters().language == "it"
     print("[OK] Filtri: lingua sempre modificabile, americana si spegne da sola.")
 
+    # 5b) rate limit: il 429 non deve più far fallire il controllo.
+    # Il client ritenta rispettando Retry-After e allarga la spaziatura.
+    from modules.market_watch.providers import cardtrader as ct  # noqa: E402
+
+    class FakeResponse:
+        def __init__(self, status, payload=None, retry_after=None):
+            self.status_code = status
+            self._payload = payload if payload is not None else {}
+            self.headers = {} if retry_after is None else {"Retry-After": str(retry_after)}
+
+        def json(self):
+            return self._payload
+
+    class FlakySession:
+        """Risponde 429 le prime `n` volte, poi 200."""
+
+        def __init__(self, n):
+            self.left = n
+            self.calls = 0
+
+        def get(self, url, params=None, headers=None, timeout=None):
+            self.calls += 1
+            if self.left > 0:
+                self.left -= 1
+                return FakeResponse(429, retry_after=0)   # 0 = non rallentare il test
+            return FakeResponse(200, {"ok": True})
+
+    real_min, real_wait = ct.MIN_INTERVAL, ct.MAX_RETRY_WAIT
+    # attese ridotte al minimo: il test verifica la LOGICA, non gli orologi
+    # (non zero: con spaziatura 0 la penalità moltiplicativa non crescerebbe)
+    ct.MIN_INTERVAL, ct.MAX_RETRY_WAIT = 0.001, 0.0
+    ct.LIMITER = ct._RateLimiter()            # limitatore pulito per il test
+    flaky = FlakySession(2)
+    client = ct.CardTraderClient("token-finto", session=flaky)
+    assert client._get("/qualsiasi") == {"ok": True}, "il 429 deve essere ritentato"
+    assert flaky.calls == 3, f"attesi 2 tentativi falliti + 1 buono, fatti {flaky.calls}"
+    assert ct.LIMITER.interval > ct.MIN_INTERVAL, "dopo un 429 la spaziatura deve allargarsi"
+    print(f"[OK] Rate limit: 429 ritentato ({flaky.calls} chiamate), "
+          f"spaziatura salita a {ct.LIMITER.interval / ct.MIN_INTERVAL:.1f}× il minimo.")
+
+    # 429 che non passa mai: errore parlante, non un crash
+    ct.LIMITER = ct._RateLimiter()
+    stubborn = FlakySession(99)
+    try:
+        ct.CardTraderClient("token-finto", session=stubborn)._get("/qualsiasi")
+        raise AssertionError("doveva sollevare RateLimited")
+    except ct.RateLimited as exc:
+        assert "429" in str(exc)
+    assert stubborn.calls == ct.RETRY_ATTEMPTS, f"attesi {ct.RETRY_ATTEMPTS} tentativi"
+
+    # should_stop: le attese mollano subito (chiusura app durante un backoff)
+    stopped = ct.CardTraderClient("token-finto", session=FlakySession(99),
+                                  should_stop=lambda: True)
+    try:
+        stopped._get("/qualsiasi")
+        raise AssertionError("doveva interrompersi")
+    except ct.CardTraderError as exc:
+        assert "interrotta" in str(exc).lower(), exc
+    ct.MIN_INTERVAL, ct.MAX_RETRY_WAIT = real_min, real_wait   # ripristino
+    ct.LIMITER = ct._RateLimiter()
+    print("[OK] Rate limit: resa con errore parlante e interruzione immediata alla chiusura.")
+
+    # 5c) risultati PARZIALI: le carte non controllate non vanno azzerate
+    widget._last_quotes = {"111": PriceQuote(amount=5.0, currency="EUR", detail="vecchio")}
+    widget._no_match_refs = {"222"}
+    widget._on_prices([{"ref_id": "333", "quote": None}], failed=2, last_error="Troppe richieste (429)")
+    assert "111" in widget._last_quotes, "una carta non controllata non deve perdere il prezzo"
+    assert widget._last_quotes["111"].amount == 5.0
+    assert "222" in widget._no_match_refs, "'Nessuna copia' non deve sparire per una carta non controllata"
+    assert "333" in widget._no_match_refs, "la carta controllata senza annunci è 'Nessuna copia'"
+    assert "parziale" in widget.status.text().lower(), widget.status.text()
+    print("[OK] Controllo parziale: prezzi delle carte non controllate preservati.")
+
+    # 5d) la spaziatura imparata sopravvive al riavvio (niente 429 da rifare)
+    ct.LIMITER.adopt(1.25)
+    widget._save_rate_interval()
+    ct.LIMITER = ct._RateLimiter()                      # "riavvio": limitatore nuovo
+    assert ct.LIMITER.interval == ct.MIN_INTERVAL
+    widget._load_rate_interval()
+    assert abs(ct.LIMITER.interval - 1.25) < 1e-6, ct.LIMITER.interval
+    ct.LIMITER.adopt(999)                               # valore assurdo: va tagliato
+    assert ct.LIMITER.interval == ct.MAX_INTERVAL
+    widget.repo.set_setting("api_interval", "non-un-numero")
+    widget._load_rate_interval()                        # non deve esplodere
+    print(f"[OK] Rate limit: spaziatura ricordata fra i riavvii "
+          f"(1.25s riletta, valori assurdi tagliati a {ct.MAX_INTERVAL}s).")
+    ct.LIMITER = ct._RateLimiter()
+
     # 6) i18n: traduzioni presenti, fallback sicuro, cambio lingua
     from core import i18n  # noqa: E402
     assert i18n.tr("Nessuna copia") == "Nessuna copia"      # default: italiano
