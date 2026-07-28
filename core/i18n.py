@@ -115,6 +115,35 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "Total value of the folder (sum of the latest known prices).",
         "Variazione del valore totale della cartella dall'ultimo cambio di prezzo.":
             "Change in the folder's total value since the last price change.",
+        # basi (mazzi)
+        "Base (mazzo)": "Base (deck)",
+        "Nuova base…": "New base…",
+        "Modifica base…": "Edit base…",
+        "Modifica la base: nome, filtri, carte e copie":
+            "Edit the base: name, filters, cards and copies",
+        "Nuova base: un mazzo di carte in più copie, con filtri comuni":
+            "New base: a deck of cards in multiple copies, with shared filters",
+        "Una base è un gruppo di carte in più copie con filtri in comune: "
+        "imposta i filtri una volta, poi aggiungi le carte e le copie.":
+            "A base is a group of cards in multiple copies sharing filters: "
+            "set the filters once, then add the cards and their copies.",
+        "Nome della base (es. Snake-Eye)": "Base name (e.g. Snake-Eye)",
+        "Filtri validi per tutte le carte della base":
+            "Filters applied to every card in the base",
+        "Filtri della base": "Base filters",
+        "Filtri propri della base": "The base has its own filters",
+        "Filtri: propri": "Filters: own",
+        "Filtri: predefiniti": "Filters: default",
+        "Cerca una carta da aggiungere…": "Search a card to add…",
+        "Carta": "Card",
+        "Copie": "Copies",
+        "Togli dalla base": "Remove from the base",
+        "{n} carte · {c} copie in totale": "{n} cards · {c} copies in total",
+        "{c} copie": "{c} copies",
+        "Numero di copie…": "Number of copies…",
+        "Quante copie di {name}?": "How many copies of {name}?",
+        "Base «{name}»: {n} carte, {c} copie. Controllo i prezzi…":
+            "Base “{name}”: {n} cards, {c} copies. Checking prices…",
         "Rinomina cartella": "Rename folder",
         "Elimina cartella (le carte tornano fuori)":
             "Delete folder (cards move back out)",

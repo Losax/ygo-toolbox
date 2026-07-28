@@ -41,6 +41,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Filtri per singola carta** | Icona **sliders** su ogni riga della watchlist: filtri validi solo per quella carta (con opzione "usa i filtri predefiniti"). Sovrascrivono i predefiniti. |
 | **Quali carte hanno filtri propri** | Un **imbutino teal davanti al nome** marca le carte con filtri diversi dai predefiniti, così si vedono scorrendo l'elenco; anche l'icona sliders di quella riga diventa **teal** invece che grigia. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
+| **Basi (mazzi)** | Pulsante **carte impilate** nell'header (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. Invio aggiunge il primo risultato; cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
 | **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
 | **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
 | **Filtri predefiniti (imbuto)** | Pulsante a **imbuto nell'header**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana). Sono i filtri che una carta si porta dietro se la aggiungi senza impostarne di propri, e valgono per tutte quelle che non ne hanno. |
@@ -296,6 +297,26 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     Il **prezzo** resta comunque visibile (l'ultimo noto con quei filtri):
     a sparire è solo la percentuale, che è la cosa che mentiva. Lo storico
     completo resta nel database, per il grafico che verrà.
+49. **Basi, cioè mazzi (v1.0.13).** Nuova funzione: una **base** è un gruppo di
+    carte in più copie con **filtri in comune**, cioè quello che serve per
+    seguire il prezzo di un mazzo intero.
+    - **Un modulo unico** (pulsante *carte impilate* nell'header): nome,
+      filtri della base impostati **una volta sola**, ricerca delle carte e
+      **numero di copie** per ciascuna. Invio aggiunge il primo risultato;
+      cercando di nuovo una carta già in elenco si aggiunge una copia.
+    - In watchlist la base è una cartella: **totale che moltiplica per le
+      copie** (3× Ash Blossom vale tre Ash Blossom) e carte marcate `3×`, con
+      il prezzo della singola copia.
+    - I filtri seguono una **cascata**: quelli della carta, se ne ha di propri;
+      altrimenti quelli della base; altrimenti i predefiniti.
+    - Si modifica dalla **matita** sulla riga della base. Togliere una carta
+      dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
+      storico dei prezzi resta.
+    - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
+50. **Pulsanti fantasma spariti.** Su alcune righe restavano appiccicate a
+    sinistra, davanti al nome, due iconcine che non ci dovevano stare: erano
+    pulsanti di render precedenti che Qt non aveva buttato. Ora a ogni
+    ridisegno si fa pulizia.
     In più, un'immagine che non si scarica **non viene più richiesta a ogni
     ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
     risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.

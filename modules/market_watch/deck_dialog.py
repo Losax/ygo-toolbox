@@ -1,0 +1,229 @@
+"""Dialogo "base": un mazzo di carte, in più copie, con filtri comuni.
+
+Perché non è una `CardDialog` come gli altri: quelle sono `Qt.Popup` e si
+chiudono al primo clic fuori. Va benissimo per due interruttori, è pessimo per
+un modulo di inserimento dove si compone un mazzo di venti carte — un clic
+distratto butterebbe via tutto. Qui serve una finestra normale, modale, che si
+chiude solo con OK o Annulla.
+"""
+from __future__ import annotations
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import (
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from core import theme
+from core.i18n import tr
+
+MAX_RESULTS = 40      # il popup dei risultati resta corto e reattivo
+MAX_COPIES = 99
+
+
+class DeckDialog(QDialog):
+    """Compone/modifica una base.
+
+    `search(testo) -> [(etichetta, CardRef)]` la passa il widget: la ricerca
+    "a token" sull'indice del catalogo è già sua, non ha senso rifarla qui.
+    """
+
+    def __init__(self, search, name: str = "", filters_json: str = "",
+                 cards=None, filters_editor=None, parent=None) -> None:
+        super().__init__(parent)
+        self._search = search
+        self._filters_json = filters_json
+        self._filters_editor = filters_editor   # callable(json) -> json | None
+        self.setWindowTitle(tr("Base (mazzo)"))
+        self.setModal(True)
+        self.setMinimumWidth(620)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(18, 16, 18, 14)
+        root.setSpacing(12)
+
+        intro = QLabel(tr("Una base è un gruppo di carte in più copie con filtri in comune: "
+                          "imposta i filtri una volta, poi aggiungi le carte e le copie."))
+        intro.setObjectName("subtitle")
+        intro.setWordWrap(True)
+        root.addWidget(intro)
+
+        # --- nome + filtri della base ---
+        top = QHBoxLayout()
+        top.setSpacing(8)
+        self.name_input = QLineEdit(name)
+        self.name_input.setPlaceholderText(tr("Nome della base (es. Snake-Eye)"))
+        self.name_input.textChanged.connect(lambda _t: self._refresh_summary())
+        self.filters_btn = QPushButton()
+        self.filters_btn.setToolTip(tr("Filtri validi per tutte le carte della base"))
+        self.filters_btn.clicked.connect(self._edit_filters)
+        top.addWidget(self.name_input, 1)
+        top.addWidget(self.filters_btn)
+        root.addLayout(top)
+
+        # --- ricerca carte ---
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText(tr("Cerca una carta da aggiungere…"))
+        self.search_input.textEdited.connect(self._on_search)
+        root.addWidget(self.search_input)
+        self.results = QListWidget()
+        self.results.setMaximumHeight(120)
+        self.results.itemActivated.connect(self._add_selected)
+        self.results.itemDoubleClicked.connect(self._add_selected)
+        root.addWidget(self.results)
+        # Invio nel campo = aggiungi il primo risultato: comporre un mazzo
+        # significa ripetere questo gesto decine di volte, il mouse è di troppo.
+        self.search_input.returnPressed.connect(self._add_first)
+
+        # --- carte della base ---
+        # Copie e "togli" stanno nella STESSA cella: con una colonna a parte
+        # per il pulsante, la barra di scorrimento verticale la spingeva fuori
+        # dal bordo e spariva.
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels([tr("Carta"), tr("Copie")])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setColumnWidth(1, 150)
+        # Righe alte: il tema dà ai campi un padding generoso, e nelle righe
+        # da 30px di default lo spinbox veniva tagliato (si vedevano solo le
+        # freccette, senza il numero).
+        self.table.verticalHeader().setDefaultSectionSize(44)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
+        self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        root.addWidget(self.table, 1)
+
+        self.summary = QLabel()
+        self.summary.setObjectName("subtitle")
+        root.addWidget(self.summary)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
+                                   | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+        self._ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+        self._cards: list[list] = []   # [ref, copie]
+        for ref, copies in (cards or []):
+            self._cards.append([ref, copies])
+        self._rebuild_table()
+        self._refresh_filters_btn()
+        QTimer.singleShot(0, self.name_input.setFocus)
+
+    # ------------------------------------------------------------- filtri
+    def _refresh_filters_btn(self) -> None:
+        custom = bool(self._filters_json)
+        self.filters_btn.setText(tr("Filtri: propri") if custom else tr("Filtri: predefiniti"))
+        self.filters_btn.setStyleSheet(
+            f"color: {theme.ACCENT};" if custom else "")
+
+    def _edit_filters(self) -> None:
+        if self._filters_editor is None:
+            return
+        result = self._filters_editor(self._filters_json)
+        if result is None:      # annullato
+            return
+        self._filters_json = result
+        self._refresh_filters_btn()
+
+    # ------------------------------------------------------------ ricerca
+    def _on_search(self, text: str) -> None:
+        self.results.clear()
+        text = text.strip()
+        if not text:
+            return
+        for label, ref in self._search(text)[:MAX_RESULTS]:
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, ref)
+            self.results.addItem(item)
+
+    def _add_first(self) -> None:
+        if self.results.count():
+            self._add(self.results.item(0).data(Qt.ItemDataRole.UserRole))
+
+    def _add_selected(self, item) -> None:
+        self._add(item.data(Qt.ItemDataRole.UserRole))
+
+    def _add(self, ref) -> None:
+        """Carta già presente = una copia in più: è quello che ci si aspetta
+        cercandola di nuovo, invece di una riga doppia."""
+        for entry in self._cards:
+            if entry[0].id == ref.id:
+                entry[1] = min(MAX_COPIES, entry[1] + 1)
+                self._rebuild_table()
+                break
+        else:
+            self._cards.append([ref, 1])
+            self._rebuild_table()
+        self.search_input.clear()
+        self.results.clear()
+        self.search_input.setFocus()
+
+    # ------------------------------------------------------------- tabella
+    def _rebuild_table(self) -> None:
+        self.table.setRowCount(len(self._cards))
+        for row, (ref, copies) in enumerate(self._cards):
+            label = ref.name if not ref.detail else f"{ref.name} · {ref.detail}"
+            name_item = QTableWidgetItem(label)
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            self.table.setItem(row, 0, name_item)
+            spin = QSpinBox()
+            spin.setRange(1, MAX_COPIES)
+            spin.setValue(copies)
+            spin.setMinimumWidth(72)
+            spin.valueChanged.connect(lambda v, r=row: self._set_copies(r, v))
+            drop = QPushButton("✕")
+            drop.setObjectName("ghost")
+            drop.setFixedSize(30, 30)
+            drop.setToolTip(tr("Togli dalla base"))
+            drop.setCursor(Qt.CursorShape.PointingHandCursor)
+            drop.clicked.connect(lambda _=False, r=row: self._remove(r))
+            box = QWidget()
+            box.setStyleSheet("background: transparent;")
+            lay = QHBoxLayout(box)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.setSpacing(4)
+            lay.addWidget(spin, 1)
+            lay.addWidget(drop)
+            self.table.setCellWidget(row, 1, box)
+        self._refresh_summary()
+
+    def _set_copies(self, row: int, value: int) -> None:
+        if 0 <= row < len(self._cards):
+            self._cards[row][1] = value
+            self._refresh_summary()
+
+    def _remove(self, row: int) -> None:
+        if 0 <= row < len(self._cards):
+            del self._cards[row]
+            self._rebuild_table()
+
+    def _refresh_summary(self) -> None:
+        n = len(self._cards)
+        copies = sum(c for _ref, c in self._cards)
+        self.summary.setText(tr("{n} carte · {c} copie in totale").format(n=n, c=copies))
+        self._ok_btn.setEnabled(bool(self.name_input.text().strip()) and n > 0)
+
+    # ------------------------------------------------------------ risultati
+    def result_name(self) -> str:
+        return self.name_input.text().strip()
+
+    def result_filters_json(self) -> str:
+        return self._filters_json
+
+    def result_cards(self) -> list[tuple]:
+        return [(ref, copies) for ref, copies in self._cards]

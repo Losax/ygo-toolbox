@@ -59,6 +59,7 @@ from core import anim, i18n, theme
 from core.i18n import tr
 
 from . import config
+from .deck_dialog import DeckDialog
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
 from .rarity import rarity_pixmap
@@ -217,6 +218,25 @@ def _make_pencil_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
     ln(9, 23, 13, 27)      # base della punta
     ln(9, 23, 6, 30)       # punta
     ln(13, 27, 6, 30)
+    p.end()
+    return QIcon(pm)
+
+
+def _make_deck_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
+    """Icona 'base/mazzo': tre carte impilate, a tratto."""
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    pen = QPen(QColor(color))
+    pen.setWidthF(size / 16.0)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    u = size / 32.0
+    r = 2.0 * u
+    for dx, dy in ((0, 0), (3, 3), (6, 6)):   # dalla più arretrata alla prima
+        p.drawRoundedRect(QRectF((6 + dx) * u, (5 + dy) * u, 15 * u, 19 * u), r, r)
     p.end()
     return QIcon(pm)
 
@@ -564,6 +584,8 @@ class MarketWatchWidget(QWidget):
         self._img_cache: dict[str, QPixmap] = {}
         self._current_img_url: str = ""
         self._filters = ListingFilters.from_dict(self._load_filters())
+        self._folders_by_id: dict = {}
+        self._refresh_folder_cache()
         self._adopt_history_keys()   # storico dei DB vecchi: vedi il metodo
         self._load_rate_interval()   # spaziatura anti-429 imparata in passato
         # Scorrimento animato della rotellina: UN SOLO oggetto persistente,
@@ -689,6 +711,10 @@ class MarketWatchWidget(QWidget):
             "Filtri predefiniti: si applicano alle carte che aggiungi senza "
             "impostarne di propri"))
         self.defaults_btn.clicked.connect(self.open_default_filters)
+        self.deck_btn = QPushButton()
+        self.deck_btn.setIcon(_make_deck_icon())
+        self.deck_btn.setToolTip(tr("Nuova base: un mazzo di carte in più copie, con filtri comuni"))
+        self.deck_btn.clicked.connect(lambda: self.open_deck())
         self.options_btn = QPushButton()
         self.options_btn.setIcon(_make_gear_icon())   # sliders = filtri di UNA carta
         self.options_btn.setToolTip(tr("Opzioni di visualizzazione della watchlist"))
@@ -698,12 +724,13 @@ class MarketWatchWidget(QWidget):
         self.overview_btn.setCheckable(True)
         self.overview_btn.setToolTip(tr("Panoramica: nasconde la ricerca e allarga la watchlist"))
         self.overview_btn.toggled.connect(self._toggle_overview)
-        self._header_buttons = (self.token_btn, self.sync_btn, self.defaults_btn,
-                                self.options_btn, self.overview_btn)
+        self._header_buttons = (self.token_btn, self.sync_btn, self.deck_btn,
+                                self.defaults_btn, self.options_btn, self.overview_btn)
         header.addWidget(self.token_label)
         header.addWidget(self.catalog_label)
         header.addWidget(self.token_btn)
         header.addWidget(self.sync_btn)
+        header.addWidget(self.deck_btn)
         header.addWidget(self.defaults_btn)
         header.addWidget(self.options_btn)
         header.addWidget(self.overview_btn)
@@ -894,8 +921,9 @@ class MarketWatchWidget(QWidget):
         anim.hover_lift(panel, base_blur=30, hover_blur=46, dy=8, alpha=110)
         anim.hover_lift(self.preview, base_blur=20, hover_blur=32, dy=5, alpha=120)
         # Glow teal al passaggio del mouse sui bottoni interattivi.
-        for btn in (self.token_btn, self.sync_btn, self.defaults_btn, self.options_btn,
-                    self.overview_btn, self.filters_btn, self.check_btn, self.add_btn):
+        for btn in (self.token_btn, self.sync_btn, self.deck_btn, self.defaults_btn,
+                    self.options_btn, self.overview_btn, self.filters_btn,
+                    self.check_btn, self.add_btn):
             anim.hover_glow(btn)
 
         # Dimensioni iniziali coerenti con la scala corrente (1.0 all'avvio).
@@ -1546,7 +1574,12 @@ class MarketWatchWidget(QWidget):
         # 1 Nome — il rientro delle carte in cartella lo fa `_IndentDelegate`
         # (spostando il rect): con gli spazi nel testo rientrava solo la prima
         # riga e in Panoramica i nomi a capo restavano disallineati.
-        self.table.setItem(row, 1, cell(watch["card_name"]))
+        # Le copie stanno davanti al nome ("3× Dark Magician"): in una base è
+        # la prima cosa che si vuole vedere, e il prezzo mostrato resta quello
+        # UNITARIO (il conto delle copie lo fa il totale della base).
+        copies = watch["copies"] if "copies" in watch.keys() else 1
+        name_text = watch["card_name"] if copies <= 1 else f"{copies}×  {watch['card_name']}"
+        self.table.setItem(row, 1, cell(name_text))
         # 2 Rarità: badge colorato oppure testo (opzione Visualizzazione)
         if self._display.get("rarity_icons") and rarity:
             self.table.setItem(row, 2, cell(""))
@@ -1714,14 +1747,33 @@ class MarketWatchWidget(QWidget):
                 continue
             self.repo.adopt_history_key(PROVIDER, watch["ref_id"], self._watch_key(watch))
 
+    def _refresh_folder_cache(self) -> None:
+        """`_effective_filters` gira per ogni carta a ogni render/controllo:
+        le cartelle si leggono una volta sola, non una query per carta."""
+        self._folders_by_id = {f["id"]: f for f in self.repo.list_folders(PROVIDER)}
+
+    @staticmethod
+    def _parse_filters(raw: str):
+        try:
+            return ListingFilters.from_dict(json.loads(raw)) if raw else None
+        except (ValueError, TypeError):
+            return None
+
     def _effective_filters(self, watch):
-        """Filtri della singola carta se presenti, altrimenti quelli globali."""
-        raw = watch["filters"] if "filters" in watch.keys() else ""
-        if raw:
-            try:
-                return ListingFilters.from_dict(json.loads(raw))
-            except (ValueError, TypeError):
-                pass
+        """A cascata: filtri della CARTA → della sua BASE/cartella → predefiniti.
+
+        La base serve proprio a questo: imposti i filtri una volta e valgono per
+        tutte le carte che contiene, senza doverli ripetere carta per carta."""
+        own = self._parse_filters(watch["filters"] if "filters" in watch.keys() else "")
+        if own is not None:
+            return own
+        fid = watch["folder_id"] if "folder_id" in watch.keys() else None
+        if fid is not None:
+            folder = self._folders_by_id.get(fid)
+            if folder is not None and "filters" in folder.keys():
+                shared = self._parse_filters(folder["filters"])
+                if shared is not None:
+                    return shared
         return self._filters
 
     def _open_item_settings(self, watch_id, raw_filters: str, card_name: str) -> None:
@@ -2064,12 +2116,18 @@ class MarketWatchWidget(QWidget):
             sub.addSeparator()
             sub.addAction(tr("Nuova cartella…"),
                           lambda wid=w["id"]: self._new_folder(move_watch_id=wid))
+            menu.addAction(tr("Numero di copie…"),
+                           lambda wid=w["id"], nm=w["card_name"],
+                           c=(w["copies"] if "copies" in w.keys() else 1):
+                           self._ask_copies(wid, nm, c))
         elif entry is not None and entry[0] == "folder":
             f = entry[1]
+            menu.addAction(tr("Modifica base…"), lambda folder=f: self.open_deck(folder))
             menu.addAction(tr("Rinomina cartella…"), lambda folder=f: self._rename_folder(folder))
             menu.addAction(tr("Elimina cartella (le carte tornano fuori)"),
                            lambda folder=f: self._delete_folder(folder))
         menu.addSeparator()
+        menu.addAction(tr("Nuova base…"), lambda: self.open_deck())
         menu.addAction(tr("Nuova cartella…"), lambda: self._new_folder())
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
@@ -2090,6 +2148,96 @@ class MarketWatchWidget(QWidget):
             self._flash_watch(move_watch_id)
         else:
             self._flash_folder(fid)
+
+    # ------------------------------------------------------------- basi (mazzi)
+    def _deck_search(self, text: str) -> list:
+        """Ricerca per il dialogo della base: stesso indice "a token" della
+        barra principale, così i risultati sono identici."""
+        words = text.lower().split()
+        out = []
+        for low, label in self._search_index:
+            if all(w in low for w in words):
+                ref = self._label_to_ref.get(label)
+                if ref is not None:
+                    out.append((label, ref))
+                if len(out) >= 60:
+                    break
+        return out
+
+    def _edit_deck_filters(self, current_json: str):
+        """Editor dei filtri usato DENTRO il dialogo della base.
+        Ritorna il nuovo JSON ('' = predefiniti) o None se annullato."""
+        base = self._parse_filters(current_json) or self._filters
+        dlg = FiltersDialog(base, self, allow_global=True,
+                            use_global=not current_json,
+                            title=tr("Filtri della base"))
+        if dlg.open_near() != QDialog.DialogCode.Accepted:
+            return None
+        return "" if dlg.uses_global() else json.dumps(dlg.result_filters().to_dict())
+
+    def open_deck(self, folder=None) -> None:
+        """Crea o modifica una base: nome, filtri comuni, carte e copie."""
+        if self.repo.all_catalog(PROVIDER) == []:
+            QMessageBox.information(self, tr("Catalogo vuoto"),
+                                    tr("Sincronizza prima il catalogo per cercare le carte"))
+            return
+        cards = []
+        name = filters_json = ""
+        if folder is not None:
+            name = folder["name"]
+            filters_json = folder["filters"] if "filters" in folder.keys() else ""
+            for w in self.repo.list_watches():
+                if w["provider"] == PROVIDER and w["folder_id"] == folder["id"]:
+                    cards.append((CardRef(id=str(w["ref_id"]), name=w["card_name"],
+                                          detail=w["detail"] or ""),
+                                  w["copies"] if "copies" in w.keys() else 1))
+        dlg = DeckDialog(self._deck_search, name=name, filters_json=filters_json,
+                         cards=cards, filters_editor=self._edit_deck_filters, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._save_deck(folder, dlg.result_name(), dlg.result_filters_json(), dlg.result_cards())
+
+    def _save_deck(self, folder, name: str, filters_json: str, cards: list) -> None:
+        if folder is None:
+            fid = self.repo.add_folder(PROVIDER, name, filters_json)
+        else:
+            fid = folder["id"]
+            self.repo.rename_folder(fid, name)
+            self.repo.set_folder_filters(fid, filters_json)
+        existing = {w["ref_id"]: w for w in self.repo.list_watches()
+                    if w["provider"] == PROVIDER}
+        wanted = {ref.id for ref, _c in cards}
+        for ref, copies in cards:
+            watch = existing.get(ref.id)
+            if watch is None:
+                self.repo.add_watch(PROVIDER, ref.id, ref.name, ref.detail,
+                                    self.threshold_spin.value(), "", copies)
+                watch = [w for w in self.repo.list_watches() if w["ref_id"] == ref.id][0]
+            else:
+                self.repo.set_watch_copies(watch["id"], copies)
+            if watch["folder_id"] != fid:
+                self._move_watch(watch["id"], fid)
+        # Carte tolte dalla base: NON si cancellano dalla watchlist (si
+        # perderebbe lo storico prezzi), escono solo dalla base.
+        for watch in existing.values():
+            if watch["folder_id"] == fid and watch["ref_id"] not in wanted:
+                self._move_watch(watch["id"], None)
+        self._refresh_folder_cache()
+        self._reload_table()
+        self._flash_folder(fid)
+        copies_tot = sum(c for _r, c in cards)
+        self._set_busy(False, tr("Base «{name}»: {n} carte, {c} copie. Controllo i prezzi…")
+                       .format(name=name, n=len(cards), c=copies_tot))
+        self.check_now()
+
+    def _ask_copies(self, watch_id, card_name: str, current: int) -> None:
+        value, ok = QInputDialog.getInt(
+            self, tr("Copie"), tr("Quante copie di {name}?").format(name=card_name),
+            current, 1, 99)
+        if not ok:
+            return
+        self.repo.set_watch_copies(watch_id, value)
+        self._reload_table()
 
     def _rename_folder(self, folder) -> None:
         name, ok = QInputDialog.getText(self, tr("Rinomina cartella"), tr("Nuovo nome:"),
@@ -2135,6 +2283,7 @@ class MarketWatchWidget(QWidget):
         # Altrimenti un segnaposto resterebbe lì fino al riavvio.
         self._failed_thumbs.clear()
         self._failed_images.clear()
+        self._refresh_folder_cache()   # i filtri effettivi dipendono dalle basi
         self._set_busy(True, tr("Controllo prezzi su CardTrader…"))
         jobs = [(w["ref_id"], self._effective_filters(w)) for w in watches]
         self._price_worker = PriceFetchWorker(self.provider, jobs)
@@ -2211,11 +2360,33 @@ class MarketWatchWidget(QWidget):
         self.table.setUpdatesEnabled(False)
         try:
             self._do_render(checked, pulse)
+            self._sweep_orphan_cell_widgets()
         finally:
             self.table.setUpdatesEnabled(True)
 
+    def _sweep_orphan_cell_widgets(self) -> None:
+        """Butta i cell widget FANTASMA rimasti dai render precedenti.
+
+        Sostituendo o togliendo un cell widget Qt non sempre lo distrugge
+        subito: resta figlio del viewport, disegnato dov'era. I primi render
+        avvengono prima che le colonne abbiano la larghezza definitiva, quindi
+        i pulsanti Azioni di allora restavano appiccicati a SINISTRA — si
+        vedevano due iconcine davanti al nome della cartella. Qui si spazza:
+        tutto ciò che non è il widget di una cella viva se ne va."""
+        viewport = self.table.viewport()
+        alive = {id(self.table.cellWidget(r, c))
+                 for r in range(self.table.rowCount())
+                 for c in range(self.table.columnCount())
+                 if self.table.cellWidget(r, c) is not None}
+        for child in viewport.findChildren(QWidget):
+            if child.parent() is viewport and id(child) not in alive:
+                child.hide()
+                child.setParent(None)
+                child.deleteLater()
+
     def _do_render(self, checked: str, pulse: bool) -> None:
         self._last_checked = checked
+        self._refresh_folder_cache()   # i filtri di base servono qui sotto
         watches = self.repo.list_watches()
         folders = self.repo.list_folders(PROVIDER)
         by_folder: dict = {}
@@ -2228,22 +2399,31 @@ class MarketWatchWidget(QWidget):
         # 200 € pesa quanto vale, coerente col totale mostrato accanto.
         # Le carte senza uno storico precedente entrano identiche in entrambe
         # le somme, quindi non falsano il segno.
+        # Le COPIE moltiplicano: una base con 3× Ash Blossom vale tre Ash
+        # Blossom. Vale per il totale e, di conseguenza, per la sua variazione.
         summary: dict = {}
         for fid, ws in by_folder.items():
             if fid is None:
                 continue
             now = before = 0.0
+            copies_tot = 0
+            comparable = False   # almeno una carta ha un prezzo precedente VERO
             for w_ in ws:
+                n = w_["copies"] if "copies" in w_.keys() else 1
+                copies_tot += n
                 if str(w_["ref_id"]) in self._no_match_refs:
                     continue
                 prices = self.repo.last_price_change(w_["provider"], w_["ref_id"],
                                                      self._watch_key(w_))
                 if not prices:
                     continue
-                now += prices[0]
-                before += prices[1] if len(prices) > 1 else prices[0]
-            delta = ((now - before) / before * 100.0) if before else None
-            summary[fid] = (now, delta)
+                now += prices[0] * n
+                before += (prices[1] if len(prices) > 1 else prices[0]) * n
+                comparable = comparable or len(prices) > 1
+            # senza nemmeno un precedente vero il conto darebbe 0.0%, che si
+            # legge come "non si è mosso" invece che "non lo so ancora"
+            delta = ((now - before) / before * 100.0) if (comparable and before) else None
+            summary[fid] = (now, delta, copies_tot)
         # modello visuale: cartelle (con le loro carte, se espanse) e poi le
         # carte fuori dalle cartelle
         entries: list[tuple[str, object]] = []
@@ -2268,10 +2448,10 @@ class MarketWatchWidget(QWidget):
         default_h = self.table.verticalHeader().defaultSectionSize()
         for row, (kind, payload) in enumerate(entries):
             if kind == "folder":
-                total, delta = summary.get(payload["id"], (0.0, None))
+                total, delta, copies_tot = summary.get(payload["id"], (0.0, None, 0))
                 self._set_folder_row(row, payload,
                                      len(by_folder.get(payload["id"], [])),
-                                     total, delta)
+                                     total, delta, copies_tot)
                 continue
             self.table.setRowHeight(row, default_h)  # annulla eventuali altezze da cartella
             watch = payload
@@ -2291,7 +2471,7 @@ class MarketWatchWidget(QWidget):
                     anim.pulse_item(price_item, color, self.table)
 
     def _set_folder_row(self, row: int, folder, count: int, total: float = 0.0,
-                        change: float | None = None) -> None:
+                        change: float | None = None, copies_tot: int = 0) -> None:
         """Riga-cartella allineata alle COLONNE, come se fosse una carta.
 
         Prima era un unico item spalmato su tutte le colonne (`setSpan`), con
@@ -2329,10 +2509,14 @@ class MarketWatchWidget(QWidget):
         #   appenderlo lì troncherebbe il nome ("Da comprare …").
         counted = (tr("vuota") if not count else
                    (tr("1 carta") if count == 1 else tr("{n} carte").format(n=count)))
+        if copies_tot > count:      # è una base: le copie sono l'informazione utile
+            counted += "  ·  " + tr("{c} copie").format(c=copies_tot)
         name_item = band_cell(folder["name"] if not self.table.isColumnHidden(14)
                               else f"{folder['name']}   ·   {counted}")
         name_item.setFont(bold)
-        name_item.setToolTip(f"{folder['name']} · {counted}\n{tip}")
+        shared = folder["filters"] if "filters" in folder.keys() else ""
+        tip_filters = ("\n" + tr("Filtri propri della base")) if shared else ""
+        name_item.setToolTip(f"{folder['name']} · {counted}{tip_filters}\n{tip}")
         self.table.setItem(row, 1, name_item)
 
         # 8 Prezzo = valore totale della cartella
@@ -2351,8 +2535,9 @@ class MarketWatchWidget(QWidget):
                                   "dall'ultimo cambio di prezzo."))
         self.table.setItem(row, 9, change_item)
 
-        # 14 Q.tà = numero di carte (visibile in Panoramica)
-        qty_item = band_cell(str(count) if count else "")
+        # 14 Q.tà = copie totali della base (o numero di carte, se nessuna
+        # carta è in più copie): visibile in Panoramica
+        qty_item = band_cell(str(copies_tot or count) if count else "")
         qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         self.table.setItem(row, 14, qty_item)
 
@@ -2364,8 +2549,10 @@ class MarketWatchWidget(QWidget):
         arow.setSpacing(2)
         icon_sz = QSize(self._rp(16), self._rp(16))
         for icon, tip, slot in (
-            (self._pencil_icon, tr("Rinomina cartella"),
-             lambda _=False, f=folder: self._rename_folder(f)),
+            # la matita apre l'editor completo della base (nome, filtri, carte
+            # e copie): rinominare è solo una delle cose che ci si vuole fare
+            (self._pencil_icon, tr("Modifica la base: nome, filtri, carte e copie"),
+             lambda _=False, f=folder: self.open_deck(f)),
             (self._trash_icon, tr("Elimina cartella (le carte tornano fuori)"),
              lambda _=False, f=folder: self._delete_folder(f)),
         ):

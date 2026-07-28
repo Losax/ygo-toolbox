@@ -428,6 +428,77 @@ def main() -> int:
     widget._update_card_filters_btn()
     print("[OK] Filtri: predefiniti separati; la carta selezionata nasce coi suoi.")
 
+    # 5a-ter) BASI (mazzi): filtri comuni + copie che moltiplicano il totale
+    from modules.market_watch.deck_dialog import DeckDialog  # noqa: E402
+    widget.repo.replace_catalog("cardtrader", [
+        ("701", "Ash Blossom & Joyous Spring", "Ultra Rare · RA01", "", "RA01"),
+        ("702", "Effect Veiler", "Super Rare · SDSE", "", "SDSE"),
+    ])
+    widget._rebuild_completer()
+    vero_check2, widget.check_now = widget.check_now, lambda: None
+    base_filtri = _json.dumps(ListingFilters(language="it").to_dict())
+    ref701 = widget._label_to_ref[[l for l in widget._label_to_ref if "Ash Blossom" in l][0]]
+    ref702 = widget._label_to_ref[[l for l in widget._label_to_ref if "Effect Veiler" in l][0]]
+    widget._save_deck(None, "Snake-Eye", base_filtri, [(ref701, 3), (ref702, 2)])
+    base = [f for f in widget.repo.list_folders("cardtrader") if f["name"] == "Snake-Eye"][0]
+    assert base["filters"] == base_filtri, "i filtri della base non sono salvati"
+    in_base = {w["ref_id"]: w for w in widget.repo.list_watches()
+               if w["folder_id"] == base["id"]}
+    assert set(in_base) == {"701", "702"}, in_base.keys()
+    assert in_base["701"]["copies"] == 3 and in_base["702"]["copies"] == 2
+
+    # i filtri della base valgono per le sue carte, senza ripeterli carta per carta
+    widget._refresh_folder_cache()
+    assert widget._effective_filters(in_base["701"]).language == "it", "filtri della base ignorati"
+    # ...ma una carta coi filtri PROPRI li scavalca
+    widget.repo.set_watch_filters(in_base["702"]["id"],
+                                  _json.dumps(ListingFilters(language="fr").to_dict()))
+    ricarica = {w["ref_id"]: w for w in widget.repo.list_watches()}
+    assert widget._effective_filters(ricarica["702"]).language == "fr", "i filtri della carta vincono"
+    widget.repo.set_watch_filters(in_base["702"]["id"], "")
+
+    # le copie moltiplicano il totale: 3×10 + 2×5 = 40
+    chiave_base = widget._watch_key(
+        {**{k: in_base["701"][k] for k in in_base["701"].keys()}})
+    widget.repo.record_price("cardtrader", "701", 10.00, "EUR", chiave_base)
+    widget.repo.record_price("cardtrader", "702", 5.00, "EUR", chiave_base)
+    widget._reload_table()
+    frow = [r for r, (k, p) in enumerate(widget._row_entries)
+            if k == "folder" and p["id"] == base["id"]][0]
+    assert widget.table.item(frow, 8).text() == "40.00 €", widget.table.item(frow, 8).text()
+    assert widget.table.item(frow, 14).text() == "5", widget.table.item(frow, 14).text()
+    # e la carta mostra le copie davanti al nome, col prezzo UNITARIO
+    crow = [r for r, (k, p) in enumerate(widget._row_entries)
+            if k == "watch" and p["ref_id"] == "701"][0]
+    assert widget.table.item(crow, 1).text().startswith("3×"), widget.table.item(crow, 1).text()
+    assert widget.table.item(crow, 8).text() == "10.00 €", widget.table.item(crow, 8).text()
+
+    # modificare la base: cambio copie e tolgo una carta (che NON si perde)
+    widget._save_deck(base, "Snake-Eye 2", "", [(ref701, 1)])
+    base2 = [f for f in widget.repo.list_folders("cardtrader") if f["id"] == base["id"]][0]
+    assert base2["name"] == "Snake-Eye 2" and base2["filters"] == ""
+    ricarica = {w["ref_id"]: w for w in widget.repo.list_watches()}
+    assert ricarica["701"]["copies"] == 1 and ricarica["701"]["folder_id"] == base["id"]
+    assert ricarica["702"]["folder_id"] is None, \
+        "una carta tolta dalla base resta in watchlist, fuori dalla base"
+    for ref in ("701", "702"):
+        widget.repo.remove_watch(ricarica[ref]["id"])
+    widget.repo.delete_folder(base["id"])
+    widget.check_now = vero_check2
+    # nessun cell widget fantasma rimasto dai render precedenti (si vedevano
+    # come iconcine appiccicate a sinistra, davanti al nome della cartella)
+    from PySide6.QtWidgets import QWidget as _QW  # noqa: E402
+    vp = widget.table.viewport()
+    vivi = {id(widget.table.cellWidget(r, c))
+            for r in range(widget.table.rowCount())
+            for c in range(widget.table.columnCount())
+            if widget.table.cellWidget(r, c) is not None}
+    orfani = [ch for ch in vp.findChildren(_QW)
+              if ch.parent() is vp and id(ch) not in vivi]
+    assert not orfani, f"{len(orfani)} cell widget fantasma nel viewport"
+    print("[OK] Basi: filtri comuni a cascata, copie che moltiplicano il totale, "
+          "modifica senza perdere carte, nessun pulsante fantasma.")
+
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.
     from modules.market_watch.providers import cardtrader as ct  # noqa: E402

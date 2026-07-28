@@ -33,6 +33,7 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `search_model.py` | `ThumbDelegate` (disegno voci popup: miniatura, testo, pill codice, hover animato) + download miniature. NB hover: scala ASIMMETRICA (y 1.07, x 1.018) — oltre i bordi della finestra popup non si può disegnare, con 1.06 anche in X la pill veniva tagliata al bordo. |
 | `flags.py` | Bandierine paesi disegnate a runtime con QPainter (~38 paesi; strisce/croci/casi speciali, pill col codice come ripiego) + `country_name` per i tooltip. Cache per (codice, altezza). Zero asset, zero rete. |
 | `rarity.py` | Badge rarità (pill con sigla community: UR, ScR, QCSR, … e colore/gradiente "foil"). Match per SOTTOSTRINGA dal più specifico al più generico ("rare" per ultimo!); sconosciute → iniziali su pill neutra. Cache per (nome, altezza). |
+| `deck_dialog.py` | `DeckDialog`: compone/modifica una **base** (mazzo) — nome, filtri comuni, carte e copie. **NON è una `CardDialog`**: quelle sono `Qt.Popup` e si chiudono al primo clic fuori, il che va bene per due interruttori ma è pessimo per un modulo dove si compongono venti carte. Qui serve una finestra modale normale. La ricerca non è riscritta: il widget passa `_deck_search`, che usa lo stesso indice "a token" della barra principale. Copie e pulsante "togli" stanno nella STESSA cella (con una colonna a parte, la barra di scorrimento verticale la spingeva fuori dal bordo) e le righe sono alte 44px, perché il padding del tema tagliava lo spinbox nelle righe da 30. |
 | `filters_dialog.py` | Dialoghi "in-app": `CardDialog` (base SENZA cornice di Windows: **Qt.Popup** + FramelessWindowHint + WA_TranslucentBackground → il clic fuori chiude da solo; `reject()` reindirizza ad `accept()` = **chiudere applica**, solo il pulsante Annulla scarta via `_cancel`; le QComboBox interne NON chiudono il popup). Card `QFrame#popover` con ombra; `open_near(anchor)` posiziona accanto al pulsante ed entra con **fade + scivolamento** — NB: `setWindowOpacity` è inaffidabile sulle finestre translucide di Windows → si usa `anim.fade_in` (effetto opacità annidato sopra l'ombra della card: widget diversi = lecito). `FiltersDialog` = solo filtri annunci, con tre chiamanti (predefiniti dall'imbuto in header, carta-in-arrivo e per-riga entrambi con `allow_global`; lingua ≠ en spegne l'americana via `_on_language_changed`, MAI bloccare la combo). `DisplayDialog` = solo visualizzazione (pulsante Opzioni). `ToggleSwitch` = QCheckBox ridipinto a interruttore (pallino animato, traccia teal); freccette combo = PNG chevron generato da `theme._chevron_url` (cache in ~/.ygo_toolbox/cache — il QSS accetta solo url() per ::down-arrow). `AnimatedCombo` = tendina animata (fade sulla view + scivolamento) con menu ARROTONDATO: contenitore QComboBoxPrivateContainer reso translucido (flags Popup+Frameless+NoDropShadow, WA_TranslucentBackground) e trasparente con stylesheet a dichiarazione NUDA (il selettore di classe privata NON fa presa nei fogli di widget!) + stylesheet esplicito sulla view per ripristinarne il look; `setMaxVisibleItems(30)` per non far comparire i QComboBoxPrivateScroller (strisce-freccia squadrate sopra/sotto). Uscita card animata in `CardDialog.done()` (closeEvent con event.ignore() + reject, chiusura vera al finished; guardia `_exiting`). |
 | `net.py` | `requests.Session` condivisa (keep-alive). |
 | `config.py` | Token (file / env). |
@@ -64,8 +65,13 @@ del README in `docs/`). Committare e pushare a fine sessione.
   added_at, position, folder_id)` — `filters` = JSON `ListingFilters` della
   singola carta (`''` = usa i globali); `position` = ordinamento manuale
   (drag&drop, a parità → alfabetico); `folder_id` = cartella (NULL = fuori).
-- `mw_folders(id, provider, name, position, expanded)` — cartelle espandibili
-  della watchlist; eliminandone una le carte tornano a folder_id NULL.
+- `mw_folders(id, provider, name, position, expanded, filters)` — cartelle
+  espandibili della watchlist; eliminandone una le carte tornano a folder_id
+  NULL. `filters` = JSON `ListingFilters` validi per TUTTE le carte contenute
+  ('' = usa i predefiniti): è ciò che rende una cartella una **base**.
+- `mw_watchlist.copies` — quante copie della carta (default 1). Moltiplica il
+  prezzo nei totali di base; il prezzo mostrato sulla riga resta UNITARIO,
+  col numero di copie davanti al nome ("3× Ash Blossom").
 - `mw_price_history(id, provider, ref_id, price, currency, filters_key, captured_at)` —
   storico del minimo, UNA riga per CAMBIO di prezzo (`record_price` scarta i
   controlli col prezzo invariato). La Var.% usa `last_price_change` = ultimo
@@ -265,6 +271,17 @@ confini di parola per non pescare "usato").
     - Corollario: i vecchi `time.sleep(0.1)` in `fetch_catalog`/`_all_blueprints`
       sono stati tolti — la spaziatura la mette il LIMITER, averla in due posti
       significa solo rallentare due volte.
+14. **Cell widget FANTASMA nella tabella.** Sostituendo o togliendo un cell
+    widget, Qt non sempre lo distrugge subito: resta figlio del viewport e
+    continua a essere disegnato dov'era. I primi render avvengono prima che le
+    colonne abbiano la larghezza definitiva, quindi i pulsanti Azioni di
+    allora restavano incollati a SINISTRA — due iconcine davanti al nome della
+    cartella, apparse con le basi ma presenti da prima. Diagnosi: confrontare
+    i figli di `viewport()` con l'insieme dei `cellWidget(r, c)` vivi (le
+    posizioni erano corrette, i widget in più no). Cura:
+    `_sweep_orphan_cell_widgets()` in coda a ogni `_render_after_check`.
+    Morale: quando in una schermata compare qualcosa che "non dovrebbe
+    esserci", non liquidarlo come artefatto del `grab()` — si conta.
 
 ---
 
@@ -346,6 +363,12 @@ confini di parola per non pescare "usato").
      `_update_card_filters_btn()` dopo il dialogo, anche su Annulla, altrimenti
      resterebbe acceso per il toggle automatico del clic.
   3. `_open_item_settings` (sliders sulla **riga**) → `repo.set_watch_filters`.
+  4. `_edit_deck_filters`, dentro `DeckDialog` → `mw_folders.filters`, validi per
+     tutte le carte della base.
+  **Cascata** (`_effective_filters`): carta → **base/cartella** → predefiniti.
+  Le cartelle si leggono una volta per render (`_refresh_folder_cache`), non
+  una query per carta: `_effective_filters` gira per ogni carta a ogni
+  render E a ogni controllo.
   Icona: **imbuto = predefiniti**, **sliders = filtri di una carta** (riga e
   carta-in-arrivo: stesso mestiere, stesso glifo). Opzioni è passata da
   sliders a **ingranaggio** (`_make_gear_icon`) proprio per liberare gli

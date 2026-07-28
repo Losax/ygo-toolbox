@@ -38,6 +38,7 @@ class MarketWatchRepository:
                 detail        TEXT    NOT NULL DEFAULT '',
                 threshold_pct REAL    NOT NULL DEFAULT 0.0,
                 filters       TEXT    NOT NULL DEFAULT '',
+                copies        INTEGER NOT NULL DEFAULT 1,
                 added_at      TEXT    NOT NULL DEFAULT (datetime('now')),
                 UNIQUE(provider, ref_id)
             )
@@ -107,6 +108,11 @@ class MarketWatchRepository:
                 "ALTER TABLE mw_price_history ADD COLUMN filters_key TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        try:  # copie della carta (una "base"/mazzo ne vuole più di una)
+            self.storage.execute(
+                "ALTER TABLE mw_watchlist ADD COLUMN copies INTEGER NOT NULL DEFAULT 1")
+        except sqlite3.OperationalError:
+            pass
         self.storage.execute(
             """
             CREATE TABLE IF NOT EXISTS mw_folders (
@@ -114,7 +120,8 @@ class MarketWatchRepository:
                 provider TEXT    NOT NULL,
                 name     TEXT    NOT NULL,
                 position INTEGER NOT NULL DEFAULT 0,
-                expanded INTEGER NOT NULL DEFAULT 1
+                expanded INTEGER NOT NULL DEFAULT 1,
+                filters  TEXT    NOT NULL DEFAULT ''
             )
             """
         )
@@ -125,10 +132,15 @@ class MarketWatchRepository:
                 self.storage.execute(f"ALTER TABLE mw_watchlist ADD COLUMN {col} {decl}")
             except sqlite3.OperationalError:
                 pass
+        try:  # filtri validi per tutte le carte di una cartella/base
+            self.storage.execute(
+                "ALTER TABLE mw_folders ADD COLUMN filters TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
 
     # --- watchlist ---
     def add_watch(self, provider, ref_id, card_name, detail, threshold_pct,
-                  filters_json: str = "") -> int | None:
+                  filters_json: str = "", copies: int = 1) -> int | None:
         """Aggiunge una carta alla watchlist, eventualmente già coi suoi filtri
         (`filters_json` = '' → usa i globali).
 
@@ -137,12 +149,20 @@ class MarketWatchRepository:
         significa niente)."""
         cur = self.storage.execute(
             "INSERT OR IGNORE INTO mw_watchlist "
-            "(provider, ref_id, card_name, detail, threshold_pct, filters, position) "
-            "VALUES (?, ?, ?, ?, ?, ?, "
+            "(provider, ref_id, card_name, detail, threshold_pct, filters, copies, position) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, "
             " (SELECT COALESCE(MAX(position), 0) + 1 FROM mw_watchlist WHERE provider = ?))",
-            (provider, str(ref_id), card_name, detail, threshold_pct, filters_json, provider),
+            (provider, str(ref_id), card_name, detail, threshold_pct, filters_json,
+             max(1, int(copies)), provider),
         )
         return cur.lastrowid if cur.rowcount else None
+
+    def set_watch_copies(self, watch_id, copies: int) -> None:
+        """Quante copie della carta si possiedono/servono (le basi ne vogliono
+        più di una). Il valore moltiplica il prezzo nei totali."""
+        self.storage.execute(
+            "UPDATE mw_watchlist SET copies = ? WHERE id = ?", (max(1, int(copies)), watch_id)
+        )
 
     def remove_watch(self, watch_id) -> tuple[str, str] | None:
         """Rimuove la carta E i suoi dati collegati (storico, ultimo annuncio):
@@ -181,16 +201,23 @@ class MarketWatchRepository:
             "SELECT * FROM mw_folders WHERE provider = ? ORDER BY position, id", (provider,)
         )
 
-    def add_folder(self, provider, name) -> int:
+    def add_folder(self, provider, name, filters_json: str = "") -> int:
         cur = self.storage.execute(
-            "INSERT INTO mw_folders (provider, name, position) VALUES (?, ?, "
+            "INSERT INTO mw_folders (provider, name, filters, position) VALUES (?, ?, ?, "
             " (SELECT COALESCE(MAX(position), 0) + 1 FROM mw_folders WHERE provider = ?))",
-            (provider, name, provider),
+            (provider, name, filters_json, provider),
         )
         return cur.lastrowid
 
     def rename_folder(self, folder_id, name) -> None:
         self.storage.execute("UPDATE mw_folders SET name = ? WHERE id = ?", (name, folder_id))
+
+    def set_folder_filters(self, folder_id, filters_json: str) -> None:
+        """Filtri validi per TUTTE le carte della cartella ('' = usa i
+        predefiniti). Una carta con filtri propri li scavalca comunque."""
+        self.storage.execute(
+            "UPDATE mw_folders SET filters = ? WHERE id = ?", (filters_json, folder_id)
+        )
 
     def set_folder_expanded(self, folder_id, expanded: bool) -> None:
         self.storage.execute(
