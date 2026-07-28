@@ -39,7 +39,8 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Interfaccia adattiva** | Tutta l'app (testi, righe, miniature, colonne, sidebar) **scala con la dimensione della finestra** (fino a +30% a schermo intero). In Panoramica, sotto lo schermo intero **l'intera vista si rimpicciolisce** (righe, font, miniature, badge) per restare usabile a qualsiasi larghezza, senza scroll orizzontale; se serve le intestazioni si abbreviano (Cond., Vend., … — nome completo nel tooltip). |
 | **Filtri per singola carta** | Icona **impostazioni** (sliders) su ogni riga: filtri validi solo per quella carta (con opzione "usa i filtri globali"). Sovrascrivono i globali. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
-| **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella mostra **📁 nome · n° carte · totale €** con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
+| **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
+| **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
 | **Filtri annunci (imbuto)** | Pulsante a **imbuto accanto alla barra di ricerca**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana), per tutte le carte senza filtri propri. |
 | **Opzioni (visualizzazione)** | Pulsante *Opzioni* (sliders) nell'header: preferenze di **visualizzazione** della watchlist (rarità come badge, set come codice), **animazioni dell'interfaccia** on/off (effetto immediato) e **lingua dell'app** (Italiano/English, si applica al riavvio). |
 | **Finestre "in-app"** | Le impostazioni non si aprono più come finestre di Windows: sono **card del tema** senza cornice, con ombra e dissolvenza, posizionate accanto al pulsante che le apre. **Clic fuori dalla card = chiudi e applica** (come un menu; per scartare c'è *Annulla*). |
@@ -199,6 +200,23 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     precedente era finita generava un errore interno (finiva in
     `~/.ygo_toolbox/log.txt` senza chiudere l'app, ma era un rischio di crash
     nell'exe). Lo scorrimento animato ora usa un solo oggetto riutilizzato.
+41. **Cartelle rifatte (v1.0.3).**
+    - **Incolonnate come le carte:** il nome sta sotto *Nome*, il **valore
+      totale** sotto *Prezzo* e la **variazione %** sotto *Var.* — prima erano
+      tutti infilati in un'unica riga di testo che ignorava le intestazioni.
+      A cartella **chiusa** si legge quindi il riepilogo con lo stesso colpo
+      d'occhio di una carta. In Panoramica il numero di carte finisce nella
+      colonna *Q.tà*.
+    - **Nuova variazione di cartella:** è la variazione del **valore totale**
+      (somma di adesso contro somma di prima), non la media delle percentuali:
+      una carta da 200 € pesa quanto vale, coerentemente col totale mostrato
+      accanto. Le carte "Nessuna copia" restano fuori dal conto.
+    - **Si vede dove finisce una cartella:** una barra verticale teal
+      accompagna tutta la cartella e una riga di chiusura la sigilla in fondo,
+      prima delle carte sciolte.
+    - **Più curate:** l'emoji 📁 ha lasciato il posto a un'**icona disegnata
+      dall'app** (con la freccetta di apertura), in tinta col tema e nitida a
+      ogni dimensione; nome in grassetto su fascia continua.
 
 ---
 

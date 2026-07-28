@@ -228,6 +228,45 @@ def main() -> int:
                for k, p in widget._row_entries), "carta persa dopo l'eliminazione della cartella"
     print("[OK] Cartelle: sposta dentro/fuori, chiusa nasconde le carte, eliminazione sicura.")
 
+    # 3f) riepilogo di cartella: totale e variazione allineati alle colonne
+    for ref, name, prev, now in (("801", "Carta A", 100.0, 110.0),
+                                 ("802", "Carta B", 50.0, 45.0),
+                                 ("803", "Carta C", 10.0, 10.0)):
+        widget.repo.add_watch("cardtrader", ref, name, "", 0.0)
+        widget.repo.record_price("cardtrader", ref, prev, "EUR")
+        widget.repo.record_price("cardtrader", ref, now, "EUR")
+    fid2 = widget.repo.add_folder("cardtrader", "Riepilogo")
+    for ref in ("801", "802", "803"):
+        wid = [w for w in widget.repo.list_watches() if w["ref_id"] == ref][0]["id"]
+        widget._move_watch(wid, fid2)
+    widget.repo.set_folder_expanded(fid2, False)
+    widget._reload_table()
+    frow = [r for r, (k, p) in enumerate(widget._row_entries)
+            if k == "folder" and p["id"] == fid2][0]
+    # totale = 110 + 45 + 10 = 165; prima era 100 + 50 + 10 = 160 -> +3.1%
+    assert widget.table.item(frow, 1).text().startswith("Riepilogo"), widget.table.item(frow, 1).text()
+    assert widget.table.item(frow, 8).text() == "165.00 €", widget.table.item(frow, 8).text()
+    assert widget.table.item(frow, 9).text() == "+3.1%", widget.table.item(frow, 9).text()
+    assert widget.table.item(frow, 14).text() == "3", "Q.tà deve contare le carte"
+    assert widget.table.columnSpan(frow, 0) == 1, "la riga cartella non deve piu' usare setSpan"
+    # una carta "Nessuna copia" non deve entrare nel totale
+    widget._no_match_refs = {"801"}
+    widget._reload_table()
+    assert widget.table.item(frow, 8).text() == "55.00 €", widget.table.item(frow, 8).text()
+    widget._no_match_refs = set()
+    # gruppo disegnato: cartella chiusa = solo la sua riga; aperta = riga + carte
+    assert (frow, frow) in widget.table._groups, widget.table._groups
+    widget.repo.set_folder_expanded(fid2, True)
+    widget._reload_table()
+    frow = [r for r, (k, p) in enumerate(widget._row_entries)
+            if k == "folder" and p["id"] == fid2][0]
+    assert (frow, frow + 3) in widget.table._groups, widget.table._groups
+    for ref in ("801", "802", "803"):
+        wid = [w for w in widget.repo.list_watches() if w["ref_id"] == ref][0]["id"]
+        widget.repo.remove_watch(wid)
+    widget._delete_folder({"id": fid2})
+    print("[OK] Cartelle: totale 165.00 € e var. +3.1% sotto Prezzo/Var., gruppo evidenziato.")
+
     # 4) filtri annunci: lingua/condizione/Zero decidono quali annunci contano
     from modules.market_watch.providers.base import ListingFilters  # noqa: E402
     from modules.market_watch.providers.cardtrader import _listing_matches  # noqa: E402

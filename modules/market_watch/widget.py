@@ -17,6 +17,8 @@ from PySide6.QtCore import (
     QAbstractAnimation,
     QEasingCurve,
     QEvent,
+    QPointF,
+    QRect,
     QRectF,
     QSize,
     Qt,
@@ -229,17 +231,77 @@ def _make_settings_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
     return QIcon(pm)
 
 
+_folder_icon_cache: dict[tuple[bool, int], QIcon] = {}
+
+
+def _make_folder_icon(open_: bool, size: int = 24) -> QIcon:
+    """Icona cartella (chiusa/aperta) con chevron, disegnata a runtime.
+
+    Sostituisce le emoji 📁/📂: quelle cambiano faccia da un sistema all'altro,
+    non seguono il tema e stonano accanto alle altre icone, tutte a tratto.
+    Qui il glifo usa l'accento del tema ed è nitido a qualsiasi scala.
+    Cache per (aperta, dimensione) come per rarità e bandierine."""
+    key = (open_, size)
+    cached = _folder_icon_cache.get(key)
+    if cached is not None:
+        return cached
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    u = size / 32.0
+
+    # chevron di apertura, a sinistra: ▸ chiusa, ▾ aperta
+    pen = QPen(QColor(theme.TEXT_MUTED))
+    pen.setWidthF(max(1.1, 2.2 * u))
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    if open_:
+        p.drawLine(QPointF(1.5 * u, 13.5 * u), QPointF(5.0 * u, 17.5 * u))
+        p.drawLine(QPointF(5.0 * u, 17.5 * u), QPointF(8.5 * u, 13.5 * u))
+    else:
+        p.drawLine(QPointF(3.0 * u, 11.0 * u), QPointF(7.0 * u, 15.5 * u))
+        p.drawLine(QPointF(7.0 * u, 15.5 * u), QPointF(3.0 * u, 20.0 * u))
+
+    # corpo della cartella: linguetta + rettangolo arrotondato
+    stroke = QPen(QColor(theme.ACCENT))
+    stroke.setWidthF(max(1.0, 1.8 * u))
+    stroke.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    fill = QColor(theme.ACCENT)
+    fill.setAlpha(34 if open_ else 66)   # aperta = più "vuota"
+    p.setPen(stroke)
+    p.setBrush(fill)
+    r = 2.2 * u
+    p.drawRoundedRect(QRectF(11 * u, 8.0 * u, 8.5 * u, 4.5 * u), r, r)   # linguetta
+    p.drawRoundedRect(QRectF(11 * u, 11.0 * u, 19 * u, 13.5 * u), r, r)  # corpo
+    if open_:   # bordo del coperchio sollevato
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawLine(QPointF(11 * u, 15.5 * u), QPointF(30 * u, 15.5 * u))
+    p.end()
+    icon = QIcon(pm)
+    _folder_icon_cache[key] = icon
+    return icon
+
+
 class _WatchTable(QTableWidget):
     """Tabella watchlist con drag&drop di RIGHE delegato all'esterno.
 
     Il drop di Qt sposterebbe i singoli item (rompendo span delle cartelle e
     cell widget): qui si intercetta e si emette solo (riga_sorgente,
     riga_destinazione); la logica di spostamento e il re-render li fa il
-    widget, che è l'unico a conoscere cartelle e posizioni."""
+    widget, che è l'unico a conoscere cartelle e posizioni.
+
+    Disegna inoltre i GRUPPI-cartella: una barra verticale d'accento lungo
+    tutta la cartella (intestazione + carte contenute) e una riga di chiusura
+    sotto l'ultima carta. È così che si vede a colpo d'occhio dove finisce una
+    cartella e dove ricominciano le carte sciolte — con i soli sfondi delle
+    celle il confine restava ambiguo."""
     row_moved = Signal(int, int)   # riga trascinata, riga di destinazione (-1 = in fondo)
 
     def __init__(self, rows: int, cols: int, parent=None) -> None:
         super().__init__(rows, cols, parent)
+        self._groups: list[tuple[int, int]] = []   # (prima riga, ultima riga)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.viewport().setAcceptDrops(True)
@@ -254,6 +316,34 @@ class _WatchTable(QTableWidget):
         event.accept()
         if source >= 0:
             self.row_moved.emit(source, target)
+
+    def set_groups(self, groups: list[tuple[int, int]]) -> None:
+        self._groups = groups
+        self.viewport().update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (firma Qt)
+        super().paintEvent(event)
+        if not self._groups:
+            return
+        painter = QPainter(self.viewport())
+        width = self.viewport().width()
+        bar_w = max(2, round(3 * self.fontMetrics().height() / 14))
+        bar = QColor(theme.ACCENT)
+        bar.setAlpha(150)
+        edge = QColor(theme.ACCENT)
+        edge.setAlpha(70)
+        for start, end in self._groups:
+            if start >= self.rowCount() or end >= self.rowCount():
+                continue   # render in corso: gruppi non ancora riallineati
+            top = self.rowViewportPosition(start)
+            bottom = self.rowViewportPosition(end) + self.rowHeight(end)
+            if bottom < 0 or top > self.viewport().height():
+                continue   # gruppo fuori dalla parte visibile
+            # barra verticale = "queste righe stanno insieme"
+            painter.fillRect(QRect(0, top, bar_w, max(0, bottom - top)), bar)
+            # riga di chiusura = "la cartella finisce qui"
+            painter.fillRect(QRect(0, bottom - 1, width, 1), edge)
+        painter.end()
 
 
 _set_pill_cache: dict[tuple[str, int], QPixmap] = {}
@@ -1571,10 +1661,11 @@ class MarketWatchWidget(QWidget):
         def on_done() -> None:
             try:
                 self.table.setRowHeight(row, full_h)
+                band = QColor(theme.SURFACE_2)
                 for it in items:  # torna agli sfondi di default (QSS/alternati)
                     it.setData(Qt.ItemDataRole.BackgroundRole, None)
-                if is_folder and items:
-                    items[0].setBackground(QColor(theme.SURFACE_2))
+                    if is_folder:
+                        it.setBackground(band)   # la fascia copre TUTTE le celle
             except RuntimeError:
                 pass
 
@@ -1769,15 +1860,27 @@ class MarketWatchWidget(QWidget):
         for w in watches:
             fid = w["folder_id"] if "folder_id" in w.keys() else None
             by_folder.setdefault(fid, []).append(w)
-        # totale (somma degli ultimi prezzi noti) per l'intestazione di cartella
-        totals: dict = {}
+        # Riepilogo per l'intestazione di cartella: valore totale e sua
+        # variazione. La variazione è quella del TOTALE (somma di adesso vs
+        # somma di prima), non la media delle percentuali: così una carta da
+        # 200 € pesa quanto vale, coerente col totale mostrato accanto.
+        # Le carte senza uno storico precedente entrano identiche in entrambe
+        # le somme, quindi non falsano il segno.
+        summary: dict = {}
         for fid, ws in by_folder.items():
             if fid is None:
                 continue
-            totals[fid] = sum(
-                self.repo.last_price(w_["provider"], w_["ref_id"]) or 0.0
-                for w_ in ws if str(w_["ref_id"]) not in self._no_match_refs
-            )
+            now = before = 0.0
+            for w_ in ws:
+                if str(w_["ref_id"]) in self._no_match_refs:
+                    continue
+                prices = self.repo.last_price_change(w_["provider"], w_["ref_id"])
+                if not prices:
+                    continue
+                now += prices[0]
+                before += prices[1] if len(prices) > 1 else prices[0]
+            delta = ((now - before) / before * 100.0) if before else None
+            summary[fid] = (now, delta)
         # modello visuale: cartelle (con le loro carte, se espanse) e poi le
         # carte fuori dalle cartelle
         entries: list[tuple[str, object]] = []
@@ -1788,14 +1891,24 @@ class MarketWatchWidget(QWidget):
         entries.extend(("watch", w) for w in by_folder.get(None, []))
         self._row_entries = entries
 
-        self.table.clearSpans()   # gli span delle cartelle si ricreano da zero
+        self.table.clearSpans()   # eredità delle versioni con la riga a span
         self.table.setRowCount(len(entries))
+        # gruppi da evidenziare: dalla riga della cartella all'ultima carta
+        # che contiene (se chiusa, il gruppo è la sola intestazione)
+        groups: list[tuple[int, int]] = []
+        for row, (kind, _payload) in enumerate(entries):
+            if kind == "folder":
+                groups.append((row, row))
+            elif groups and groups[-1][1] == row - 1 and self._folder_at(row) is not None:
+                groups[-1] = (groups[-1][0], row)
+        self.table.set_groups(groups)
         default_h = self.table.verticalHeader().defaultSectionSize()
         for row, (kind, payload) in enumerate(entries):
             if kind == "folder":
+                total, delta = summary.get(payload["id"], (0.0, None))
                 self._set_folder_row(row, payload,
                                      len(by_folder.get(payload["id"], [])),
-                                     totals.get(payload["id"], 0.0))
+                                     total, delta)
                 continue
             self.table.setRowHeight(row, default_h)  # annulla eventuali altezze da cartella
             watch = payload
@@ -1813,29 +1926,73 @@ class MarketWatchWidget(QWidget):
                     color = theme.POSITIVE if change >= 0 else theme.NEGATIVE
                     anim.pulse_item(price_item, color, self.table)
 
-    def _set_folder_row(self, row: int, folder, count: int, total: float = 0.0) -> None:
-        """Riga-cartella 'canonica': freccia + icona cartella + nome +
-        numero di carte + totale €, e pulsanti dedicati (rinomina/elimina)
-        nella colonna Azioni."""
+    def _set_folder_row(self, row: int, folder, count: int, total: float = 0.0,
+                        change: float | None = None) -> None:
+        """Riga-cartella allineata alle COLONNE, come se fosse una carta.
+
+        Prima era un unico item spalmato su tutte le colonne (`setSpan`), con
+        nome, conteggio e totale infilati nella stessa stringa: leggibile, ma
+        scollegato dalle intestazioni. Ora il nome sta sotto "Nome", il totale
+        sotto "Prezzo" e la variazione aggregata sotto "Var." — a cartella
+        chiusa si legge il riepilogo con lo stesso colpo d'occhio delle carte."""
         expanded = bool(folder["expanded"])
-        arrow = "▾" if expanded else "▸"
-        icon_char = "📂" if expanded else "📁"
-        pieces = [(tr("1 carta") if count == 1 else tr("{n} carte").format(n=count))
-                  if count else tr("vuota")]
-        if total > 0:
-            pieces.append(f"{total:.2f} €")
-        label = f"  {arrow}  {icon_char}  {folder['name']}    ·    " + "    ·    ".join(pieces)
         for c in range(16):   # via i resti di un eventuale render precedente
             self.table.removeCellWidget(row, c)
             self.table.setItem(row, c, QTableWidgetItem(""))
-        item = QTableWidgetItem(label)
-        font = QFont(self.table.font())
-        font.setBold(True)
-        item.setFont(font)
-        item.setBackground(QColor(theme.SURFACE_2))
-        item.setToolTip(tr("Clic per aprire/chiudere · trascina qui le carte per spostarle dentro"))
-        self.table.setItem(row, 0, item)
-        # azioni della cartella (colonna Azioni, fuori dallo span)
+
+        band = QColor(theme.SURFACE_2)
+        bold = QFont(self.table.font())
+        bold.setBold(True)
+        tip = tr("Clic per aprire/chiudere · trascina qui le carte per spostarle dentro")
+
+        def band_cell(text: str = "") -> QTableWidgetItem:
+            it = QTableWidgetItem(text)
+            it.setBackground(band)
+            it.setToolTip(tip)
+            return it
+
+        for c in range(15):   # fascia continua sotto tutta la riga (Azioni esclusa)
+            self.table.setItem(row, c, band_cell())
+
+        # 0 icona cartella (al posto della miniatura: stessa colonna delle carte)
+        icon_item = band_cell()
+        icon_item.setIcon(_make_folder_icon(expanded, self._rp(24)))
+        self.table.setItem(row, 0, icon_item)
+
+        # 1 Nome (+ conteggio come coda discreta: la cartella resta allineata
+        #   ai nomi delle carte, che partono dalla stessa x). In Panoramica la
+        #   colonna Nome è stretta e il conteggio ha già la sua casa in Q.tà:
+        #   appenderlo lì troncherebbe il nome ("Da comprare …").
+        counted = (tr("vuota") if not count else
+                   (tr("1 carta") if count == 1 else tr("{n} carte").format(n=count)))
+        name_item = band_cell(folder["name"] if not self.table.isColumnHidden(14)
+                              else f"{folder['name']}   ·   {counted}")
+        name_item.setFont(bold)
+        name_item.setToolTip(f"{folder['name']} · {counted}\n{tip}")
+        self.table.setItem(row, 1, name_item)
+
+        # 8 Prezzo = valore totale della cartella
+        total_item = band_cell(f"{total:.2f} €" if total > 0 else "—")
+        total_item.setFont(bold)
+        total_item.setToolTip(tr("Valore totale della cartella (somma degli ultimi prezzi noti)."))
+        self.table.setItem(row, 8, total_item)
+
+        # 9 Var. = variazione del VALORE TOTALE, non media delle percentuali:
+        #   una carta da 200 € pesa più di una da 2 €, come nel totale sopra.
+        change_item = band_cell("—" if change is None else f"{change:+.1f}%")
+        if change is not None:
+            change_item.setForeground(QColor(theme.POSITIVE) if change >= 0 else QColor(theme.NEGATIVE))
+            change_item.setFont(bold)
+        change_item.setToolTip(tr("Variazione del valore totale della cartella "
+                                  "dall'ultimo cambio di prezzo."))
+        self.table.setItem(row, 9, change_item)
+
+        # 14 Q.tà = numero di carte (visibile in Panoramica)
+        qty_item = band_cell(str(count) if count else "")
+        qty_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.table.setItem(row, 14, qty_item)
+
+        # azioni della cartella (colonna Azioni)
         actions = QWidget()
         actions.setStyleSheet("background: transparent;")
         arow = QHBoxLayout(actions)
@@ -1857,8 +2014,11 @@ class MarketWatchWidget(QWidget):
             btn.clicked.connect(slot)
             arow.addWidget(btn)
         self.table.setCellWidget(row, 15, actions)
-        self.table.setSpan(row, 0, 1, 15)   # tutte le colonne tranne Azioni
-        self.table.setRowHeight(row, self._rp(40))
+        # NIENTE setSpan: le celle devono restare sotto le rispettive
+        # intestazioni. (Lo span va comunque azzerato a ogni render — vedi
+        # clearSpans() in _do_render — per i DB che vengono da versioni
+        # precedenti già renderizzate con lo span.)
+        self.table.setRowHeight(row, self._rp(44))
 
     # ----------------------------------------------------------- helpers
     def _apply_interval(self) -> None:

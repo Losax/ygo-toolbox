@@ -272,12 +272,33 @@ confini di parola per non pescare "usato").
   del paese + badge `_make_pro_badge` per i PRO, sfondo trasparente.
 - **Cartelle & drag&drop:** il modello visuale è `self._row_entries`
   (lista di `("folder", riga)` / `("watch", riga)`); `_render_after_check`
-  costruisce cartelle → carte (se `expanded`) → carte fuori. Riga-cartella =
-  item unico con `setSpan(row, 0, 1, 15)` — la colonna Azioni resta FUORI
-  dallo span e ospita i pulsanti rinomina (matita)/elimina della cartella;
-  etichetta = freccia + 📁/📂 + nome + n° carte + totale € (somma ultimi
-  prezzi, esclusi i "Nessuna copia"). Ricordarsi `clearSpans()` a ogni render
-  e di resettare le altezze riga. Il drop di Qt sposterebbe i singoli
+  costruisce cartelle → carte (se `expanded`) → carte fuori. **Riga-cartella
+  allineata alle colonne** (`_set_folder_row`): NIENTE `setSpan` — prima era un
+  unico item spalmato su 0-14 con nome/conteggio/totale nella stessa stringa,
+  scollegato dalle intestazioni. Ora: 0 = icona cartella
+  (`_make_folder_icon`, disegnata a runtime con chevron, cache per
+  (aperta, dimensione) — via le emoji 📁/📂, che cambiano faccia per sistema e
+  ignorano il tema), 1 = nome in grassetto (+ "· N carte" SOLO in vista
+  normale: in Panoramica la colonna è stretta e il conteggio ha già casa in
+  Q.tà, appenderlo troncava il nome), 8 = totale €, 9 = **variazione del
+  totale**, 14 = numero di carte, 15 = pulsanti rinomina/elimina. Tutte le
+  celle 0-14 portano lo sfondo `SURFACE_2` (la fascia). `clearSpans()` resta a
+  ogni render per i layout ereditati dalle versioni con lo span, e vanno
+  resettate le altezze riga.
+  **Var. di cartella:** somma dei prezzi di ADESSO vs somma dei prezzi di
+  PRIMA (`last_price_change`), non media delle percentuali — così una carta da
+  200 € pesa quanto vale, coerente col totale accanto. Le carte senza storico
+  precedente entrano identiche in entrambe le somme (non falsano il segno); i
+  "Nessuna copia" sono esclusi da entrambe.
+  **Confine dei gruppi:** `_WatchTable.set_groups([(prima, ultima)])` +
+  `paintEvent` che, DOPO il disegno base, traccia una barra verticale d'accento
+  lungo il gruppo e una riga di chiusura sotto l'ultima carta. Serviva perché
+  coi soli sfondi non si capiva dove finisse una cartella e ricominciassero le
+  carte sciolte. Si disegna sopra, quindi solo decorazioni che non coprono
+  testo (x < ~3px e 1px di linea); gli sfondi restano sugli item. I gruppi si
+  ricalcolano in `_do_render` e il disegno segue da solo la fisarmonica
+  (legge `rowViewportPosition`/`rowHeight` a ogni frame).
+  Il drop di Qt sposterebbe i singoli
   item rompendo span/cell widget → `_WatchTable.dropEvent` lo intercetta
   (`IgnoreAction`) ed emette `row_moved(da, a)`; `_on_row_moved` decide
   (carta→riordina/in cartella, cartella→riordina cartelle) e `_move_watch`

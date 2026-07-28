@@ -96,6 +96,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "{n} carte": "{n} cards", "1 carta": "1 card", "vuota": "empty",
         "Clic per aprire/chiudere · trascina qui le carte per spostarle dentro":
             "Click to open/close · drag cards here to move them inside",
+        "Valore totale della cartella (somma degli ultimi prezzi noti).":
+            "Total value of the folder (sum of the latest known prices).",
+        "Variazione del valore totale della cartella dall'ultimo cambio di prezzo.":
+            "Change in the folder's total value since the last price change.",
         "Rinomina cartella": "Rename folder",
         "Elimina cartella (le carte tornano fuori)":
             "Delete folder (cards move back out)",
