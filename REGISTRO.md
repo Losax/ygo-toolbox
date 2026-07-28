@@ -217,6 +217,12 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     - **Più curate:** l'emoji 📁 ha lasciato il posto a un'**icona disegnata
       dall'app** (con la freccetta di apertura), in tinta col tema e nitida a
       ogni dimensione; nome in grassetto su fascia continua.
+42. **Nomi allineati in Panoramica (v1.0.4).** In Panoramica i nomi lunghi
+    vanno a capo e, per le carte dentro una cartella, la **prima riga** del
+    nome risultava spostata rispetto alle successive: il rientro era fatto con
+    spazi nel testo, che valgono solo per la prima riga. Ora il rientro è
+    vero e proprio (si sposta il disegno), quindi tutte le righe del nome sono
+    allineate.
 
 ---
 

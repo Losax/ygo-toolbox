@@ -261,6 +261,17 @@ def main() -> int:
     frow = [r for r, (k, p) in enumerate(widget._row_entries)
             if k == "folder" and p["id"] == fid2][0]
     assert (frow, frow + 3) in widget.table._groups, widget.table._groups
+    # rientro delle carte in cartella: px sul disegno, NON spazi nel testo
+    # (gli spazi rientravano solo la prima riga -> in Panoramica, dove i nomi
+    # vanno a capo, le righe successive restavano disallineate)
+    card_row = frow + 1
+    assert not widget.table.item(card_row, 1).text().startswith(" "), \
+        "il nome non deve piu' essere rientrato con spazi"
+    assert widget._row_indent(card_row) > 0, "carta in cartella: serve il rientro"
+    assert widget._row_indent(frow) == 0, "la riga cartella non va rientrata"
+    loose = [r for r, (k, p) in enumerate(widget._row_entries)
+             if k == "watch" and widget._folder_at(r) is None]
+    assert loose and widget._row_indent(loose[0]) == 0, "carta sciolta: nessun rientro"
     for ref in ("801", "802", "803"):
         wid = [w for w in widget.repo.list_watches() if w["ref_id"] == ref][0]["id"]
         widget.repo.remove_watch(wid)

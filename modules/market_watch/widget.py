@@ -30,6 +30,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QIcon, QImage, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QCompleter,
     QDialog,
     QDoubleSpinBox,
@@ -44,6 +45,9 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
+    QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -229,6 +233,51 @@ def _make_settings_icon(color: str = "#94a1b2", size: int = 32) -> QIcon:
         p.setPen(pen)
     p.end()
     return QIcon(pm)
+
+
+class _IndentDelegate(QStyledItemDelegate):
+    """Rientro del NOME per le carte dentro una cartella, spostando il
+    RETTANGOLO di disegno invece di infilare spazi nel testo.
+
+    Con gli spazi rientrava solo la PRIMA riga: in Panoramica i nomi lunghi
+    vanno a capo, e le righe successive tornavano a sinistra (disallineate).
+    Spostando il rect rientra tutto il blocco, e il testo va a capo dentro lo
+    spazio giusto."""
+
+    def __init__(self, indent_px, parent=None) -> None:
+        super().__init__(parent)
+        self._indent_px = indent_px   # callable(row) -> px (0 = nessun rientro)
+
+    def _shifted(self, option, index):
+        indent = self._indent_px(index.row())
+        if not indent:
+            return option
+        shifted = QStyleOptionViewItem(option)
+        shifted.rect = option.rect.adjusted(indent, 0, 0, 0)
+        return shifted
+
+    def paint(self, painter, option, index) -> None:  # noqa: N802 (firma Qt)
+        if self._indent_px(index.row()):
+            # Lo sfondo va dipinto sul rect PIENO: disegnando solo quello
+            # rientrato resterebbe a sinistra una striscia scoperta (si vedeva
+            # come una linea verticale lungo la colonna Nome). Prima lo sfondo
+            # (zebra/selezione, via lo stile, con testo e icona svuotati),
+            # poi il contenuto spostato.
+            back = QStyleOptionViewItem(option)
+            self.initStyleOption(back, index)
+            back.text = ""
+            back.icon = QIcon()
+            widget = back.widget
+            style = widget.style() if widget is not None else QApplication.style()
+            style.drawControl(QStyle.ControlElement.CE_ItemViewItem, back, painter, widget)
+        super().paint(painter, self._shifted(option, index), index)
+
+    def sizeHint(self, option, index):  # noqa: N802 (firma Qt)
+        # larghezza ridotta dal rientro → il calcolo del ritorno a capo usa
+        # lo spazio davvero disponibile
+        size = super().sizeHint(self._shifted(option, index), index)
+        size.setWidth(size.width() + self._indent_px(index.row()))
+        return size
 
 
 _folder_icon_cache: dict[tuple[bool, int], QIcon] = {}
@@ -675,6 +724,9 @@ class MarketWatchWidget(QWidget):
         self.table.verticalHeader().setDefaultSectionSize(ROW_H_NORMAL)
         self.table.setIconSize(ROW_ICON_NORMAL)
         self.table.setWordWrap(True)          # commenti su più righe in Panoramica
+        # rientro delle carte in cartella: solo sulla colonna Nome
+        self._name_delegate = _IndentDelegate(self._row_indent, self.table)
+        self.table.setItemDelegateForColumn(1, self._name_delegate)
         self._table_base_font = self.table.font()
         self.table.setShowGrid(False)
         # righe alternate: differenzia le voci a colpo d'occhio (i colori
@@ -1277,9 +1329,10 @@ class MarketWatchWidget(QWidget):
         if icon is not None:
             img_item.setIcon(icon)
         self.table.setItem(row, 0, img_item)
-        # 1 Nome (leggermente indentato se la carta sta in una cartella)
-        in_folder = ("folder_id" in watch.keys()) and watch["folder_id"] is not None
-        self.table.setItem(row, 1, cell(("    " if in_folder else "") + watch["card_name"]))
+        # 1 Nome — il rientro delle carte in cartella lo fa `_IndentDelegate`
+        # (spostando il rect): con gli spazi nel testo rientrava solo la prima
+        # riga e in Panoramica i nomi a capo restavano disallineati.
+        self.table.setItem(row, 1, cell(watch["card_name"]))
         # 2 Rarità: badge colorato oppure testo (opzione Visualizzazione)
         if self._display.get("rarity_icons") and rarity:
             self.table.setItem(row, 2, cell(""))
@@ -1563,6 +1616,14 @@ class MarketWatchWidget(QWidget):
                 for r, h in heights.items()])
             self._folder_anim = anim_
             anim_.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def _row_indent(self, row: int) -> int:
+        """Rientro in px del nome: solo per le CARTE dentro una cartella
+        (la riga della cartella resta a filo, come le carte sciolte)."""
+        if not (0 <= row < len(self._row_entries)):
+            return 0
+        kind, _payload = self._row_entries[row]
+        return self._rp(16) if (kind == "watch" and self._folder_at(row) is not None) else 0
 
     def _folder_at(self, row: int):
         """Cartella 'di pertinenza' della riga visuale (None = fuori)."""
