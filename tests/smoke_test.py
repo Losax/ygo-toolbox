@@ -430,8 +430,10 @@ def main() -> int:
 
     # 5a-ter) BASI (mazzi): filtri comuni + copie che moltiplicano il totale
     from modules.market_watch.deck_dialog import DeckDialog  # noqa: E402
+    from modules.market_watch.search_model import _thumb_url as _thumb_url_test  # noqa: E402
     widget.repo.replace_catalog("cardtrader", [
-        ("701", "Ash Blossom & Joyous Spring", "Ultra Rare · RA01", "", "RA01"),
+        ("701", "Ash Blossom & Joyous Spring", "Ultra Rare · RA01",
+         "http://x/show_701.jpg", "RA01"),
         ("702", "Effect Veiler", "Super Rare · SDSE", "", "SDSE"),
     ])
     widget._rebuild_completer()
@@ -496,6 +498,30 @@ def main() -> int:
     orfani = [ch for ch in vp.findChildren(_QW)
               if ch.parent() is vp and id(ch) not in vivi]
     assert not orfani, f"{len(orfani)} cell widget fantasma nel viewport"
+
+    # il dialogo della base: miniatura accanto al nome, e la sua tabella
+    # (ricostruita a ogni carta aggiunta) non deve lasciare fantasmi
+    from PySide6.QtCore import Qt as _Qt  # noqa: E402
+    from PySide6.QtGui import QPixmap as _QP  # noqa: E402
+    from modules.market_watch import deck_dialog as _dd  # noqa: E402
+    dlg = DeckDialog(widget._deck_search, cards=[(ref701, 2)],
+                     thumb_items=widget._completer_items,
+                     resolve=widget._label_to_ref.get)
+    finta = _QP(_dd.ICON)
+    finta.fill(_Qt.GlobalColor.darkRed)
+    dlg._icons[_thumb_url_test(ref701.image_url)] = finta
+    dlg._rebuild_table()
+    dlg._rebuild_table()      # una seconda volta: è il caso che lasciava fantasmi
+    assert not dlg.table.item(0, 0).icon().isNull(), "manca la miniatura nell'elenco della base"
+    dvp = dlg.table.viewport()
+    dvivi = {id(dlg.table.cellWidget(r, c))
+             for r in range(dlg.table.rowCount())
+             for c in range(dlg.table.columnCount())
+             if dlg.table.cellWidget(r, c) is not None}
+    assert not [ch for ch in dvp.findChildren(_QW)
+                if ch.parent() is dvp and id(ch) not in dvivi], \
+        "fantasmi nella tabella del dialogo"
+    dlg.deleteLater()
     print("[OK] Basi: filtri comuni a cascata, copie che moltiplicano il totale, "
           "modifica senza perdere carte, nessun pulsante fantasma.")
 

@@ -74,6 +74,7 @@ from .search_model import (
     _ThumbTask,
     _thumb_url,
     stock_pixmap,
+    sweep_orphan_cell_widgets,
 )
 from .workers import CatalogSyncWorker, ImageFetchWorker, PriceFetchWorker
 
@@ -2192,8 +2193,12 @@ class MarketWatchWidget(QWidget):
             filters_json = folder["filters"] if "filters" in folder.keys() else ""
             for w in self.repo.list_watches():
                 if w["provider"] == PROVIDER and w["folder_id"] == folder["id"]:
+                    # con l'immagine, altrimenti nell'elenco della base le
+                    # carte già presenti sarebbero le uniche senza miniatura
+                    exact, stock = self._image_urls_for(str(w["ref_id"]), w["card_name"])
                     cards.append((CardRef(id=str(w["ref_id"]), name=w["card_name"],
-                                          detail=w["detail"] or ""),
+                                          detail=w["detail"] or "",
+                                          image_url=exact or stock),
                                   w["copies"] if "copies" in w.keys() else 1))
         dlg = DeckDialog(self._deck_search, name=name, filters_json=filters_json,
                          cards=cards, filters_editor=self._edit_deck_filters,
@@ -2373,22 +2378,12 @@ class MarketWatchWidget(QWidget):
     def _sweep_orphan_cell_widgets(self) -> None:
         """Butta i cell widget FANTASMA rimasti dai render precedenti.
 
-        Sostituendo o togliendo un cell widget Qt non sempre lo distrugge
-        subito: resta figlio del viewport, disegnato dov'era. I primi render
-        avvengono prima che le colonne abbiano la larghezza definitiva, quindi
-        i pulsanti Azioni di allora restavano appiccicati a SINISTRA — si
-        vedevano due iconcine davanti al nome della cartella. Qui si spazza:
-        tutto ciò che non è il widget di una cella viva se ne va."""
-        viewport = self.table.viewport()
-        alive = {id(self.table.cellWidget(r, c))
-                 for r in range(self.table.rowCount())
-                 for c in range(self.table.columnCount())
-                 if self.table.cellWidget(r, c) is not None}
-        for child in viewport.findChildren(QWidget):
-            if child.parent() is viewport and id(child) not in alive:
-                child.hide()
-                child.setParent(None)
-                child.deleteLater()
+        I primi render avvengono prima che le colonne abbiano la larghezza
+        definitiva, quindi i pulsanti Azioni di allora restavano appiccicati a
+        SINISTRA — si vedevano due iconcine davanti al nome della cartella.
+        La spazzata sta in `search_model` perché serve anche all'elenco della
+        base, che si ricostruisce a ogni carta aggiunta."""
+        sweep_orphan_cell_widgets(self.table)
 
     def _do_render(self, checked: str, pulse: bool) -> None:
         self._last_checked = checked

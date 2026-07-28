@@ -8,8 +8,8 @@ chiude solo con OK o Annulla.
 """
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QStringListModel, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QSize, Qt, QStringListModel, QThreadPool, QTimer
+from PySide6.QtGui import QFont, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QCompleter,
     QDialog,
@@ -29,7 +29,16 @@ from PySide6.QtWidgets import (
 from core import theme
 from core.i18n import tr
 
-from .search_model import ThumbDelegate
+from .search_model import (
+    ThumbDelegate,
+    _make_empty_frame,
+    _ThumbSignals,
+    _ThumbTask,
+    _thumb_url,
+    sweep_orphan_cell_widgets,
+)
+
+ICON = QSize(34, 48)      # proporzioni di carta, dentro la riga da 52
 
 MAX_RESULTS = 60      # come la ricerca principale
 MAX_COPIES = 99
@@ -138,6 +147,7 @@ class DeckDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        self.table.setIconSize(ICON)
         root.addWidget(self.table, 1)
 
         self.summary = QLabel()
@@ -150,6 +160,17 @@ class DeckDialog(QDialog):
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
         self._ok_btn = buttons.button(QDialogButtonBox.StandardButton.Ok)
+
+        # Miniature accanto ai nomi: stesso scaricatore delle altre (quindi
+        # anche la stessa spaziatura anti-403 verso il CDN). Il primo posto
+        # dove cercarle è la cache del delegate: se la carta è appena passata
+        # nel popup, l'immagine c'è già e non si riscarica.
+        self._icons: dict[str, QPixmap] = {}
+        self._icons_asked: set[str] = set()
+        self._icon_pool = QThreadPool(self)
+        self._icon_pool.setMaxThreadCount(4)
+        self._icon_signals = _ThumbSignals(self)
+        self._icon_signals.done.connect(self._on_icon)
 
         self._cards: list[list] = []   # [ref, copie]
         for ref, copies in (cards or []):
@@ -215,6 +236,7 @@ class DeckDialog(QDialog):
             label = ref.name if not ref.detail else f"{ref.name} · {ref.detail}"
             name_item = QTableWidgetItem(label)
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            name_item.setIcon(self._card_icon(ref))
             self.table.setItem(row, 0, name_item)
             spin = QSpinBox()
             spin.setRange(1, MAX_COPIES)
@@ -239,7 +261,40 @@ class DeckDialog(QDialog):
             lay.addWidget(drop)
             self.table.setCellWidget(row, 1, box)
             self.table.setRowHeight(row, self.ROW_H)
+        # la tabella si ricostruisce a ogni carta aggiunta: senza pulizia i
+        # vecchi spinbox restano disegnati sopra le righe (GOTCHA 14)
+        sweep_orphan_cell_widgets(self.table)
         self._refresh_summary()
+
+    # ------------------------------------------------------------ miniature
+    def _card_icon(self, ref) -> QIcon:
+        """Miniatura della carta; intanto (o se non c'è) una cornice vuota."""
+        turl = _thumb_url(getattr(ref, "image_url", "") or "")
+        if not turl:
+            return QIcon(_make_empty_frame(ICON))
+        cached = self._icons.get(turl)
+        if cached is None:      # magari l'ha già scaricata il popup di ricerca
+            from_popup = self._thumbs._cache.get(turl)
+            if from_popup is not None and not from_popup.isNull():
+                cached = from_popup.scaled(ICON, Qt.AspectRatioMode.KeepAspectRatio,
+                                           Qt.TransformationMode.SmoothTransformation)
+                self._icons[turl] = cached
+        if cached is not None:
+            return QIcon(cached)
+        if turl not in self._icons_asked:
+            self._icons_asked.add(turl)
+            self._icon_pool.start(_ThumbTask(turl, self._icon_signals, ICON))
+        return QIcon(_make_empty_frame(ICON))
+
+    def _on_icon(self, url: str, image) -> None:
+        if image.isNull():
+            return          # persa: resta la cornice, non si ritenta
+        self._icons[url] = QPixmap.fromImage(image)
+        for row, (ref, _copies) in enumerate(self._cards):
+            if _thumb_url(getattr(ref, "image_url", "") or "") == url:
+                item = self.table.item(row, 0)
+                if item is not None:
+                    item.setIcon(QIcon(self._icons[url]))
 
     def _set_copies(self, row: int, value: int) -> None:
         if 0 <= row < len(self._cards):

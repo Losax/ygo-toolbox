@@ -279,7 +279,10 @@ confini di parola per non pescare "usato").
     cartella, apparse con le basi ma presenti da prima. Diagnosi: confrontare
     i figli di `viewport()` con l'insieme dei `cellWidget(r, c)` vivi (le
     posizioni erano corrette, i widget in più no). Cura:
-    `_sweep_orphan_cell_widgets()` in coda a ogni `_render_after_check`.
+    `search_model.sweep_orphan_cell_widgets(table)`, chiamata in coda a ogni
+    `_render_after_check` E in `DeckDialog._rebuild_table` (che si rifà a ogni
+    carta aggiunta: senza, i vecchi spinbox restavano disegnati sopra le
+    righe). Sta in `search_model` proprio perché serve a due tabelle diverse.
     Morale: quando in una schermata compare qualcosa che "non dovrebbe
     esserci", non liquidarlo come artefatto del `grab()` — si conta.
 

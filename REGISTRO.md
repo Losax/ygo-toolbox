@@ -309,6 +309,8 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       codice set.
     - Finestra più grande e **numero di copie ben leggibile**: prima le righe
       erano troppo basse e del numero si vedeva solo una fettina centrale.
+    - Nell'elenco della base ogni carta ha la sua **miniatura** accanto al
+      nome. Se l'immagine è già stata vista nella ricerca non si riscarica.
     - In watchlist la base è una cartella: **totale che moltiplica per le
       copie** (3× Ash Blossom vale tre Ash Blossom) e carte marcate `3×`, con
       il prezzo della singola copia.

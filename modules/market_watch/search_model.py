@@ -27,7 +27,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtCore import QRectF
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter, QPen, QPixmap
-from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QToolTip
+from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QToolTip, QWidget
 
 from core import theme
 
@@ -50,6 +50,25 @@ _SEPARATOR = QColor(255, 255, 255, 38)  # linea sottile tra le voci
 def _thumb_url(image_url: str) -> str:
     """Dalla variante 'show_' ricava quella 'preview_' (più leggera)."""
     return image_url.replace("/show_", "/preview_") if image_url else ""
+
+
+def sweep_orphan_cell_widgets(table) -> None:
+    """Butta i cell widget FANTASMA di una tabella.
+
+    Sostituendo o togliendo un cell widget, Qt non sempre lo distrugge subito:
+    resta figlio del viewport e continua a essere disegnato dov'era, magari a
+    una posizione vecchia. Serve a ogni tabella che ricostruisce le righe —
+    watchlist e elenco della base."""
+    viewport = table.viewport()
+    alive = {id(table.cellWidget(r, c))
+             for r in range(table.rowCount())
+             for c in range(table.columnCount())
+             if table.cellWidget(r, c) is not None}
+    for child in viewport.findChildren(QWidget):
+        if child.parent() is viewport and id(child) not in alive:
+            child.hide()
+            child.setParent(None)
+            child.deleteLater()
 
 
 _placeholder_cache: dict[tuple[int, int], QPixmap] = {}
