@@ -278,6 +278,16 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     non c'è. In più l'icona sliders di quella riga è **teal** invece che
     grigia, e il tooltip dice esplicitamente se la carta ha filtri propri o
     sta usando i predefiniti.
+47. **Niente più crolli inventati dopo un cambio di filtri (v1.0.11).**
+    Cambiando i filtri di una carta il prezzo cambia parecchio — normale, si
+    sta guardando un'altra versione (altra lingua, altra condizione, altra
+    stampa). Ma la **Var.%** lo confrontava col prezzo di prima e mostrava un
+    tracollo che non è mai avvenuto; peggio, poteva far scattare **l'avviso di
+    calo**. Ora ogni prezzo in archivio ricorda **con quali filtri** è stato
+    rilevato, e si confronta solo con prezzi presi con gli stessi: dopo un
+    cambio la Var. resta "—" finché non c'è un movimento vero.
+    La storia precedente **non si perde**: tornando ai filtri di prima, il
+    confronto riprende da dove era rimasto.
     In più, un'immagine che non si scarica **non viene più richiesta a ogni
     ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
     risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.

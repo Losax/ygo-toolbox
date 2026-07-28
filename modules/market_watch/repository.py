@@ -51,6 +51,7 @@ class MarketWatchRepository:
                 ref_id      TEXT    NOT NULL,
                 price       REAL    NOT NULL,
                 currency    TEXT    NOT NULL DEFAULT 'EUR',
+                filters_key TEXT    NOT NULL DEFAULT '',
                 captured_at TEXT    NOT NULL DEFAULT (datetime('now'))
             )
             """
@@ -99,6 +100,11 @@ class MarketWatchRepository:
                 pass  # la colonna esiste già
         try:  # filtri per singola carta (override di quelli globali)
             self.storage.execute("ALTER TABLE mw_watchlist ADD COLUMN filters TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:  # con quali filtri è stato rilevato ogni prezzo (vedi record_price)
+            self.storage.execute(
+                "ALTER TABLE mw_price_history ADD COLUMN filters_key TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass
         self.storage.execute(
@@ -214,45 +220,71 @@ class MarketWatchRepository:
         )
 
     # --- storico prezzi ---
-    def record_price(self, provider, ref_id, price, currency) -> None:
+    # Ogni punto porta con sé i FILTRI con cui è stato rilevato (`filters_key`).
+    # Prezzi presi con filtri diversi NON sono confrontabili: sono stampe/lingue
+    # /condizioni diverse, quindi "un altro prodotto". Confrontarli faceva
+    # apparire crolli o impennate inventati appena si cambiavano i filtri.
+    # Passando `filters_key=None` si guarda comunque a tutta la storia (serve
+    # allo sfoltimento e ai casi generici).
+    def record_price(self, provider, ref_id, price, currency, filters_key: str = "") -> None:
         """Aggiunge un punto allo storico SOLO se il prezzo è cambiato rispetto
-        all'ultimo registrato: lo storico è la serie dei CAMBI di prezzo.
-        Così controlli ravvicinati (es. quello automatico all'avvio) non
-        azzerano la Var.% né gonfiano la tabella con duplicati."""
-        if self.last_price(provider, ref_id) == price:
+        all'ultimo registrato CON GLI STESSI FILTRI: lo storico è la serie dei
+        CAMBI di prezzo. Così controlli ravvicinati (es. quello automatico
+        all'avvio) non azzerano la Var.% né gonfiano la tabella con duplicati."""
+        if self.last_price(provider, ref_id, filters_key) == price:
             return
         self.storage.execute(
-            "INSERT INTO mw_price_history (provider, ref_id, price, currency) VALUES (?, ?, ?, ?)",
-            (provider, str(ref_id), price, currency),
+            "INSERT INTO mw_price_history (provider, ref_id, price, currency, filters_key) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (provider, str(ref_id), price, currency, filters_key),
         )
 
-    def last_price(self, provider, ref_id) -> float | None:
+    @staticmethod
+    def _key_clause(filters_key) -> tuple[str, tuple]:
+        return ("", ()) if filters_key is None else (" AND filters_key = ?", (filters_key,))
+
+    def last_price(self, provider, ref_id, filters_key: str | None = None) -> float | None:
+        clause, extra = self._key_clause(filters_key)
         rows = self.storage.query(
-            "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ? "
-            "ORDER BY captured_at DESC, id DESC LIMIT 1",
-            (provider, str(ref_id)),
+            "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ?" + clause +
+            " ORDER BY captured_at DESC, id DESC LIMIT 1",
+            (provider, str(ref_id)) + extra,
         )
         return rows[0]["price"] if rows else None
 
-    def last_price_change(self, provider, ref_id) -> list[float]:
+    def last_price_change(self, provider, ref_id, filters_key: str | None = None) -> list[float]:
         """[ultimo prezzo, ultimo prezzo DIVERSO precedente] (o meno elementi
         se non c'è abbastanza storia). La Var.% si calcola sull'ultimo CAMBIO
         di prezzo, non sull'ultimo controllo: robusto anche sui DB vecchi che
         contengono controlli consecutivi con lo stesso prezzo."""
+        clause, extra = self._key_clause(filters_key)
         rows = self.storage.query(
-            "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ? "
-            "ORDER BY captured_at DESC, id DESC LIMIT 1",
-            (provider, str(ref_id)),
+            "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ?" + clause +
+            " ORDER BY captured_at DESC, id DESC LIMIT 1",
+            (provider, str(ref_id)) + extra,
         )
         if not rows:
             return []
         last = rows[0]["price"]
         prev = self.storage.query(
-            "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ? "
-            "AND price != ? ORDER BY captured_at DESC, id DESC LIMIT 1",
-            (provider, str(ref_id), last),
+            "SELECT price FROM mw_price_history WHERE provider = ? AND ref_id = ?" + clause +
+            " AND price != ? ORDER BY captured_at DESC, id DESC LIMIT 1",
+            (provider, str(ref_id)) + extra + (last,),
         )
         return [last, prev[0]["price"]] if prev else [last]
+
+    def adopt_history_key(self, provider, ref_id, filters_key: str) -> None:
+        """Assegna `filters_key` ai punti storici che ne sono privi.
+
+        Serve una volta sola, sui DB nati prima della colonna: quei prezzi sono
+        stati rilevati con i filtri che la carta ha ADESSO, quindi restano
+        confrontabili. Senza, ogni carta ripartirebbe da zero e la Var.
+        resterebbe vuota per un giro senza motivo."""
+        self.storage.execute(
+            "UPDATE mw_price_history SET filters_key = ? "
+            "WHERE provider = ? AND ref_id = ? AND filters_key = ''",
+            (filters_key, provider, str(ref_id)),
+        )
 
     # --- ultimo annuncio per carta (persistenza tra i riavvii) ---
     def set_last_quotes(self, provider, items) -> None:
@@ -285,16 +317,20 @@ class MarketWatchRepository:
 
     def prune_history(self, days: int = 90) -> None:
         """Sfoltisce lo storico: oltre `days` giorni tiene solo il prezzo
-        MINIMO di ogni giornata per carta (basta e avanza per un grafico).
-        Con l'auto-controllo ogni 30 min lo storico passerebbe da ~48 a
-        1 riga/giorno/carta per i dati vecchi."""
+        MINIMO di ogni giornata per carta E PER INSIEME DI FILTRI (basta e
+        avanza per un grafico). Con l'auto-controllo ogni 30 min lo storico
+        passerebbe da ~48 a 1 riga/giorno per i dati vecchi.
+
+        Il raggruppamento include `filters_key`: senza, due serie diverse
+        della stessa carta si mangerebbero a vicenda e resterebbe il minimo
+        della più economica, falsando entrambe."""
         cutoff = f"-{int(days)} days"
         self.storage.execute(
             "DELETE FROM mw_price_history WHERE captured_at < datetime('now', ?) "
             "AND id NOT IN (SELECT id FROM ("
             "    SELECT id, MIN(price) FROM mw_price_history "
             "    WHERE captured_at < datetime('now', ?) "
-            "    GROUP BY provider, ref_id, date(captured_at)"
+            "    GROUP BY provider, ref_id, filters_key, date(captured_at)"
             "))",
             (cutoff, cutoff),
         )

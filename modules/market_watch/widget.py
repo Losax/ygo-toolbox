@@ -564,6 +564,7 @@ class MarketWatchWidget(QWidget):
         self._img_cache: dict[str, QPixmap] = {}
         self._current_img_url: str = ""
         self._filters = ListingFilters.from_dict(self._load_filters())
+        self._adopt_history_keys()   # storico dei DB vecchi: vedi il metodo
         self._load_rate_interval()   # spaziatura anti-429 imparata in passato
         # Scorrimento animato della rotellina: UN SOLO oggetto persistente,
         # riavviato a ogni scatto. Ricrearlo ogni volta con DeleteWhenStopped
@@ -1685,6 +1686,34 @@ class MarketWatchWidget(QWidget):
         v.addStretch(1)
         return box
 
+    @staticmethod
+    def _filters_key(filters: ListingFilters) -> str:
+        """Firma stabile di un insieme di filtri (chiavi ordinate): due insiemi
+        equivalenti danno la stessa stringa. Marca i punti dello storico, così
+        si confrontano fra loro solo prezzi rilevati con gli STESSI filtri."""
+        return json.dumps(filters.to_dict(), sort_keys=True)
+
+    def _watch_key(self, watch) -> str:
+        return self._filters_key(self._effective_filters(watch))
+
+    def _adopt_history_keys(self) -> None:
+        """Una tantum sui DB nati prima della colonna `filters_key`: assegna ai
+        vecchi punti i filtri con cui, verosimilmente, sono stati rilevati.
+
+        SOLO per le carte che usano i predefiniti. Se una carta ha filtri
+        PROPRI vuol dire che qualcuno glieli ha messi, e i prezzi precedenti
+        sono con ogni probabilità di prima: adottarli riproporrebbe proprio il
+        confronto fasullo che stiamo togliendo di mezzo. Quelle carte
+        ripartono puliti — la vecchia serie resta comunque nel DB, marcata ''.
+        """
+        for watch in self.repo.list_watches():
+            if watch["provider"] != PROVIDER:
+                continue
+            own = watch["filters"] if "filters" in watch.keys() else ""
+            if own:
+                continue
+            self.repo.adopt_history_key(PROVIDER, watch["ref_id"], self._watch_key(watch))
+
     def _effective_filters(self, watch):
         """Filtri della singola carta se presenti, altrimenti quelli globali."""
         raw = watch["filters"] if "filters" in watch.keys() else ""
@@ -2137,9 +2166,13 @@ class MarketWatchWidget(QWidget):
             quote = result["quote"]
             if watch is None or quote is None:
                 continue  # nessun annuncio attivo per questa carta
-            old = self.repo.last_price(PROVIDER, result["ref_id"])
+            # confronto SOLO con i prezzi rilevati con gli stessi filtri: dopo
+            # un cambio di filtri il prezzo è di un altro prodotto, e un calo
+            # inventato non deve né comparire in Var. né far scattare l'avviso
+            key = self._watch_key(watch)
+            old = self.repo.last_price(PROVIDER, result["ref_id"], key)
             new = quote.amount
-            self.repo.record_price(PROVIDER, result["ref_id"], new, quote.currency)
+            self.repo.record_price(PROVIDER, result["ref_id"], new, quote.currency, key)
             if old is not None and new < old:
                 drop_pct = (old - new) / old * 100.0
                 if drop_pct >= watch["threshold_pct"]:
@@ -2203,7 +2236,8 @@ class MarketWatchWidget(QWidget):
             for w_ in ws:
                 if str(w_["ref_id"]) in self._no_match_refs:
                     continue
-                prices = self.repo.last_price_change(w_["provider"], w_["ref_id"])
+                prices = self.repo.last_price_change(w_["provider"], w_["ref_id"],
+                                                     self._watch_key(w_))
                 if not prices:
                     continue
                 now += prices[0]
@@ -2242,7 +2276,8 @@ class MarketWatchWidget(QWidget):
             self.table.setRowHeight(row, default_h)  # annulla eventuali altezze da cartella
             watch = payload
             no_match = str(watch["ref_id"]) in self._no_match_refs
-            prices = self.repo.last_price_change(watch["provider"], watch["ref_id"])
+            prices = self.repo.last_price_change(watch["provider"], watch["ref_id"],
+                                                 self._watch_key(watch))
             last = prices[0] if prices else None
             prev = prices[1] if len(prices) > 1 else None
             change = None

@@ -66,10 +66,23 @@ del README in `docs/`). Committare e pushare a fine sessione.
   (drag&drop, a parità → alfabetico); `folder_id` = cartella (NULL = fuori).
 - `mw_folders(id, provider, name, position, expanded)` — cartelle espandibili
   della watchlist; eliminandone una le carte tornano a folder_id NULL.
-- `mw_price_history(id, provider, ref_id, price, currency, captured_at)` — storico
-  del minimo, UNA riga per CAMBIO di prezzo (`record_price` scarta i controlli
-  col prezzo invariato). La Var.% usa `last_price_change` = ultimo prezzo vs
-  ultimo prezzo DIVERSO (robusto anche sui duplicati dei DB vecchi).
+- `mw_price_history(id, provider, ref_id, price, currency, filters_key, captured_at)` —
+  storico del minimo, UNA riga per CAMBIO di prezzo (`record_price` scarta i
+  controlli col prezzo invariato). La Var.% usa `last_price_change` = ultimo
+  prezzo vs ultimo prezzo DIVERSO (robusto anche sui duplicati dei DB vecchi).
+  **`filters_key` = con quali filtri è stato rilevato quel prezzo**
+  (`_filters_key` = JSON dei filtri effettivi a chiavi ordinate). Prezzi presi
+  con filtri diversi NON sono confrontabili: sono lingua/condizione/stampa
+  diverse, cioè un altro prodotto. `last_price`, `last_price_change` e
+  `record_price` filtrano per chiave (`None` = tutta la storia, per lo
+  sfoltimento); `prune_history` raggruppa anche per `filters_key`, altrimenti
+  due serie della stessa carta si mangerebbero a vicenda.
+  **Migrazione (`adopt_history_key`):** i punti nati prima della colonna hanno
+  chiave `''`. All'avvio `_adopt_history_keys` li assegna ai filtri correnti
+  **solo per le carte che usano i predefiniti**: se una carta ha filtri PROPRI
+  vuol dire che glieli hanno messi, e i prezzi precedenti sono verosimilmente
+  di prima — adottarli riproporrebbe il confronto fasullo. Quelle ripartono
+  pulite; la vecchia serie resta comunque nel DB, marcata `''`.
 - `mw_catalog(provider, ref_id, name, detail, image_url, set_code)` — cache catalogo. `detail` = "rarità · espansione".
 - `mw_last_quote(provider, ref_id PK, quote, captured_at)` — ULTIMO annuncio
   scelto per carta (JSON di `PriceQuote.to_dict()`; `''` = "Nessuna copia").

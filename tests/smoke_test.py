@@ -28,7 +28,7 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from core.context import AppContext, Notifier  # noqa: E402
 from core.storage import Storage  # noqa: E402
-from modules.market_watch.providers.base import PriceQuote  # noqa: E402
+from modules.market_watch.providers.base import ListingFilters, PriceQuote  # noqa: E402
 from modules.market_watch.providers.cardtrader import (  # noqa: E402
     CardTraderProvider,
     fetch_catalog,
@@ -113,7 +113,10 @@ def main() -> int:
 
     # 3) avviso su nuovo prezzo più basso oltre soglia
     widget.repo.add_watch("cardtrader", "555", "Blue-Eyes White Dragon", "LOB", threshold_pct=5.0)
-    widget.repo.record_price("cardtrader", "555", 20.00, "EUR")  # prezzo di partenza
+    # il prezzo di partenza va marcato coi filtri in vigore, altrimenti non è
+    # confrontabile con quelli che registrerà _on_prices (vedi filters_key)
+    chiave = widget._filters_key(widget._filters)
+    widget.repo.record_price("cardtrader", "555", 20.00, "EUR", chiave)
     widget._on_prices([{"ref_id": "555", "quote": PriceQuote(17.00, "EUR", "NM")}])  # -15%
     assert notifier.messages, "Nessuna notifica su calo oltre soglia!"
     print(f"[OK] Notifica calo: {notifier.messages[-1][1]}")
@@ -165,9 +168,30 @@ def main() -> int:
     widget._on_prices([{"ref_id": "555", "quote": PriceQuote(12.00, "EUR", "NM")}])  # identico
     n1 = len(widget.repo.storage.query("SELECT id FROM mw_price_history WHERE ref_id = '555'"))
     assert n1 == n0, "un controllo con prezzo identico non deve aggiungere righe"
-    pair = widget.repo.last_price_change("cardtrader", "555")
+    pair = widget.repo.last_price_change("cardtrader", "555", chiave)
     assert pair == [12.00, 25.00], pair
     print("[OK] Var.% dall'ultimo cambio di prezzo (i ricontrolli non la azzerano).")
+
+    # 3b-ter) CAMBIO DI FILTRI: il prezzo diventa quello di un'altra versione,
+    # quindi niente Var. inventata e niente notifica di crollo.
+    watch555 = [w for w in widget.repo.list_watches() if w["ref_id"] == "555"][0]
+    widget.repo.set_watch_filters(watch555["id"], _json.dumps(
+        ListingFilters(language="it", first_edition_only=True).to_dict()))
+    before = len(notifier.messages)
+    widget._on_prices([{"ref_id": "555", "quote": PriceQuote(3.00, "EUR", "NM")}])  # -75% finto
+    assert len(notifier.messages) == before, \
+        "un cambio di filtri non deve far scattare l'avviso di calo"
+    nuova_chiave = widget._watch_key(
+        [w for w in widget.repo.list_watches() if w["ref_id"] == "555"][0])
+    assert nuova_chiave != chiave
+    assert widget.repo.last_price_change("cardtrader", "555", nuova_chiave) == [3.00], \
+        "col nuovo filtro la storia riparte: nessun precedente con cui fare la Var."
+    assert widget.table.item(0, 9).text() == "—", widget.table.item(0, 9).text()
+    # la vecchia serie non è persa: tornando ai filtri di prima si riprende
+    assert widget.repo.last_price_change("cardtrader", "555", chiave) == [12.00, 25.00]
+    widget.repo.set_watch_filters(watch555["id"], "")
+    print("[OK] Cambio filtri: nessun crollo inventato in Var. né notifica; "
+          "la serie precedente resta e si riprende tornando indietro.")
 
     # 3c) rimozione carta = pulizia completa (storico + ultimo annuncio)
     watch_id = [w for w in widget.repo.list_watches() if w["ref_id"] == "555"][0]["id"]
@@ -233,8 +257,9 @@ def main() -> int:
                                  ("802", "Carta B", 50.0, 45.0),
                                  ("803", "Carta C", 10.0, 10.0)):
         widget.repo.add_watch("cardtrader", ref, name, "", 0.0)
-        widget.repo.record_price("cardtrader", ref, prev, "EUR")
-        widget.repo.record_price("cardtrader", ref, now, "EUR")
+        # senza filtri propri la chiave è quella dei predefiniti
+        widget.repo.record_price("cardtrader", ref, prev, "EUR", chiave)
+        widget.repo.record_price("cardtrader", ref, now, "EUR", chiave)
     fid2 = widget.repo.add_folder("cardtrader", "Riepilogo")
     for ref in ("801", "802", "803"):
         wid = [w for w in widget.repo.list_watches() if w["ref_id"] == ref][0]["id"]
@@ -279,7 +304,6 @@ def main() -> int:
     print("[OK] Cartelle: totale 165.00 € e var. +3.1% sotto Prezzo/Var., gruppo evidenziato.")
 
     # 4) filtri annunci: lingua/condizione/Zero decidono quali annunci contano
-    from modules.market_watch.providers.base import ListingFilters  # noqa: E402
     from modules.market_watch.providers.cardtrader import _listing_matches  # noqa: E402
 
     listings = [
