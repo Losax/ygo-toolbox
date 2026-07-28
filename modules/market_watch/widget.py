@@ -464,6 +464,9 @@ class MarketWatchWidget(QWidget):
         self.repo.cleanup_orphans(PROVIDER)
         self.repo.prune_history()
         self._selected_ref: CardRef | None = None
+        # filtri preparati per la carta selezionata ma NON ancora aggiunta
+        # (None = userà i predefiniti); si azzerano a ogni cambio selezione
+        self._pending_filters: ListingFilters | None = None
         self._label_to_ref: dict[str, CardRef] = {}
         self._search_index: list[tuple[str, str]] = []  # (label_minuscolo, label)
         # ref senza annuncio conforme ai filtri: persistito, così "Nessuna copia"
@@ -606,6 +609,15 @@ class MarketWatchWidget(QWidget):
         self.sync_btn.setIcon(_make_sync_icon())
         self.sync_btn.setToolTip(tr("Sincronizza il catalogo Yu-Gi-Oh! (~4-5 minuti, una tantum)"))
         self.sync_btn.clicked.connect(self.sync_catalog)
+        # Filtri PREDEFINITI (imbuto): quelli che una carta si porta dietro
+        # quando la aggiungi senza toccare niente. Stanno nell'header, con le
+        # altre impostazioni valide per tutta l'app.
+        self.defaults_btn = QPushButton()
+        self.defaults_btn.setIcon(_make_filter_icon())
+        self.defaults_btn.setToolTip(tr(
+            "Filtri predefiniti: si applicano alle carte che aggiungi senza "
+            "impostarne di propri"))
+        self.defaults_btn.clicked.connect(self.open_default_filters)
         self.options_btn = QPushButton()
         self.options_btn.setIcon(_make_settings_icon())
         self.options_btn.setToolTip(tr("Opzioni di visualizzazione della watchlist"))
@@ -615,12 +627,13 @@ class MarketWatchWidget(QWidget):
         self.overview_btn.setCheckable(True)
         self.overview_btn.setToolTip(tr("Panoramica: nasconde la ricerca e allarga la watchlist"))
         self.overview_btn.toggled.connect(self._toggle_overview)
-        self._header_buttons = (self.token_btn, self.sync_btn,
+        self._header_buttons = (self.token_btn, self.sync_btn, self.defaults_btn,
                                 self.options_btn, self.overview_btn)
         header.addWidget(self.token_label)
         header.addWidget(self.catalog_label)
         header.addWidget(self.token_btn)
         header.addWidget(self.sync_btn)
+        header.addWidget(self.defaults_btn)
         header.addWidget(self.options_btn)
         header.addWidget(self.overview_btn)
         root.addLayout(header)
@@ -642,16 +655,20 @@ class MarketWatchWidget(QWidget):
         self.search_input.setClearButtonEnabled(True)
         self.search_input.setMinimumHeight(34)
         self.search_input.textEdited.connect(self._on_search_text)
-        # barra di ricerca + pulsante FILTRI (imbuto) affiancato: i filtri
-        # sugli annunci si aprono da qui, non più dalle Opzioni dell'header
+        # Barra di ricerca + pulsante filtri DELLA CARTA SELEZIONATA: si usa
+        # fra "scelgo la carta" e "Aggiungi", per darle filtri suoi già in
+        # partenza. Icona a sliders, la stessa dei filtri per riga in
+        # watchlist: è lo stesso mestiere, su una carta sola. L'imbuto
+        # nell'header è invece per i filtri PREDEFINITI.
         search_row = QHBoxLayout()
         search_row.setSpacing(8)
         search_row.addWidget(self.search_input, 1)
         self.filters_btn = QPushButton()
-        self.filters_btn.setIcon(_make_filter_icon())
-        self.filters_btn.setToolTip(tr("Filtri degli annunci (lingua, condizione, Zero, …)"))
-        self.filters_btn.clicked.connect(self.open_filters)
+        self.filters_btn.setIcon(_make_settings_icon())
+        self.filters_btn.setCheckable(True)   # acceso = questa carta ha filtri suoi
+        self.filters_btn.clicked.connect(self.open_card_filters)
         search_row.addWidget(self.filters_btn)
+        self._update_card_filters_btn()
         pv.addLayout(search_row)
 
         # La ricerca "a token" la facciamo NOI (vedi _apply_search_filter) e
@@ -805,7 +822,7 @@ class MarketWatchWidget(QWidget):
         anim.hover_lift(panel, base_blur=30, hover_blur=46, dy=8, alpha=110)
         anim.hover_lift(self.preview, base_blur=20, hover_blur=32, dy=5, alpha=120)
         # Glow teal al passaggio del mouse sui bottoni interattivi.
-        for btn in (self.token_btn, self.sync_btn, self.options_btn,
+        for btn in (self.token_btn, self.sync_btn, self.defaults_btn, self.options_btn,
                     self.overview_btn, self.filters_btn, self.check_btn, self.add_btn):
             anim.hover_glow(btn)
 
@@ -1132,10 +1149,12 @@ class MarketWatchWidget(QWidget):
                 pass  # riga corrotta: la ignora, verrà sovrascritta al prossimo check
         return quotes
 
-    def open_filters(self) -> None:
-        """Filtri annunci globali: dal pulsante a imbuto accanto alla ricerca."""
-        dialog = FiltersDialog(self._filters, self)
-        if dialog.open_near(self.filters_btn) != QDialog.DialogCode.Accepted:
+    def open_default_filters(self) -> None:
+        """Filtri PREDEFINITI (imbuto nell'header): valgono per le carte che
+        non hanno filtri propri, comprese quelle che aggiungerai."""
+        dialog = FiltersDialog(self._filters, self,
+                               title=tr("Filtri predefiniti"))
+        if dialog.open_near(self.defaults_btn) != QDialog.DialogCode.Accepted:
             return
         self._filters = dialog.result_filters()
         self.repo.set_setting("filters", json.dumps(self._filters.to_dict()))
@@ -1146,6 +1165,47 @@ class MarketWatchWidget(QWidget):
                        else tr("Filtri rimossi."))
         if active or self.repo.list_watches():
             self.check_now()
+
+    # --- filtri della carta selezionata, PRIMA di aggiungerla ---
+    def _update_card_filters_btn(self) -> None:
+        """Il pulsante ha senso solo con una carta selezionata; acceso quando
+        quella carta ha già filtri propri in attesa."""
+        has_card = self._selected_ref is not None
+        self.filters_btn.setEnabled(has_card)
+        self.filters_btn.setChecked(has_card and self._pending_filters is not None)
+        if not has_card:
+            self.filters_btn.setToolTip(tr(
+                "Filtri solo per la carta da aggiungere: scegli prima una carta"))
+        elif self._pending_filters is not None:
+            self.filters_btn.setToolTip(tr(
+                "Filtri propri impostati per {name} (clic per modificarli)"
+            ).format(name=self._selected_ref.name))
+        else:
+            self.filters_btn.setToolTip(tr(
+                "Filtri solo per {name}, invece di quelli predefiniti"
+            ).format(name=self._selected_ref.name))
+
+    def open_card_filters(self) -> None:
+        """Filtri della SOLA carta selezionata, da applicare all'aggiunta.
+
+        Restano in sospeso in `_pending_filters` finché non si preme Aggiungi:
+        la carta non esiste ancora, non c'è una riga su cui scriverli."""
+        ref = self._selected_ref
+        if ref is None:
+            self._update_card_filters_btn()
+            return
+        base = self._pending_filters if self._pending_filters is not None else self._filters
+        dlg = FiltersDialog(base, self, allow_global=True,
+                            use_global=self._pending_filters is None,
+                            title=tr("Filtri · {name}").format(name=ref.name))
+        if dlg.open_near(self.filters_btn) != QDialog.DialogCode.Accepted:
+            self._update_card_filters_btn()   # annullato: il pulsante non deve restare acceso
+            return
+        self._pending_filters = None if dlg.uses_global() else dlg.result_filters()
+        self._update_card_filters_btn()
+        self._set_busy(False, tr("Filtri pronti per {name}: si applicano quando la aggiungi.")
+                       .format(name=ref.name) if self._pending_filters is not None
+                       else tr("{name} userà i filtri predefiniti.").format(name=ref.name))
 
     def open_options(self) -> None:
         """Preferenze di visualizzazione: dal pulsante Opzioni dell'header."""
@@ -1266,8 +1326,11 @@ class MarketWatchWidget(QWidget):
         self._refresh_row_icons()
 
     def _on_search_text(self, text: str) -> None:
-        # ogni modifica manuale annulla la carta selezionata in precedenza
+        # ogni modifica manuale annulla la carta selezionata in precedenza —
+        # e con lei gli eventuali filtri preparati, che erano SOLO per quella
         self._selected_ref = None
+        self._pending_filters = None
+        self._update_card_filters_btn()
         self.add_btn.setEnabled(False)
         self.selected_label.setText(tr("Nessuna carta selezionata"))
         self._show_image("")
@@ -1300,6 +1363,8 @@ class MarketWatchWidget(QWidget):
         if ref is None:
             return
         self._selected_ref = ref
+        self._pending_filters = None      # carta nuova: si riparte dai predefiniti
+        self._update_card_filters_btn()
         self.add_btn.setEnabled(True)
         shown = ref.name if not ref.detail else f"{ref.name} · {ref.detail}"
         self.selected_label.setText(f"✓  {shown}")
@@ -1366,11 +1431,20 @@ class MarketWatchWidget(QWidget):
         ref = self._selected_ref
         if ref is None:
             return
-        self.repo.add_watch(PROVIDER, ref.id, ref.name, ref.detail, self.threshold_spin.value())
+        # i filtri scelti col pulsante accanto alla ricerca nascono con la
+        # carta ('' = usa i predefiniti), così il primo controllo li rispetta già
+        filters_json = ("" if self._pending_filters is None
+                        else json.dumps(self._pending_filters.to_dict()))
+        self.repo.add_watch(PROVIDER, ref.id, ref.name, ref.detail,
+                            self.threshold_spin.value(), filters_json)
+        custom = self._pending_filters is not None
+        self._pending_filters = None
         self._reload_table()
         self.search_input.clear()
         self._on_search_text("")
-        self._set_busy(False, tr("Aggiunta: {name}. Recupero prezzo iniziale…").format(name=ref.name))
+        self._set_busy(False, (
+            tr("Aggiunta: {name}, coi suoi filtri. Recupero prezzo iniziale…") if custom
+            else tr("Aggiunta: {name}. Recupero prezzo iniziale…")).format(name=ref.name))
         self.check_now()
 
     # --------------------------------------------------------------- tabella

@@ -38,11 +38,12 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Nessuna copia** | Se **nessun annuncio** soddisfa i filtri (globali o della carta), la riga mostra "Nessuna copia" invece di un prezzo non conforme. Lo stato è ricordato al riavvio (si aggiorna al prossimo controllo). |
 | **Panoramica** | Pulsante *Panoramica*: nasconde la ricerca e allarga la watchlist con voci grandi. Colonne separate: Immagine, Nome, Rarità, Set, **Condizione**, **Lingua**, **1ª ed.** (✓), **Zero** (✓), Prezzo, Var., **Venditore** (nome + **bandierina** del paese + badge **PRO**), **Commenti**, **Q.tà**. Transizione animata. |
 | **Interfaccia adattiva** | Tutta l'app (testi, righe, miniature, colonne, sidebar) **scala con la dimensione della finestra** (fino a +30% a schermo intero). In Panoramica, sotto lo schermo intero **l'intera vista si rimpicciolisce** (righe, font, miniature, badge) per restare usabile a qualsiasi larghezza, senza scroll orizzontale; se serve le intestazioni si abbreviano (Cond., Vend., … — nome completo nel tooltip). |
-| **Filtri per singola carta** | Icona **impostazioni** (sliders) su ogni riga: filtri validi solo per quella carta (con opzione "usa i filtri globali"). Sovrascrivono i globali. |
+| **Filtri per singola carta** | Icona **sliders** su ogni riga della watchlist: filtri validi solo per quella carta (con opzione "usa i filtri predefiniti"). Sovrascrivono i predefiniti. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
 | **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
-| **Filtri annunci (imbuto)** | Pulsante a **imbuto accanto alla barra di ricerca**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana), per tutte le carte senza filtri propri. |
+| **Filtri predefiniti (imbuto)** | Pulsante a **imbuto nell'header**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana). Sono i filtri che una carta si porta dietro se la aggiungi senza impostarne di propri, e valgono per tutte quelle che non ne hanno. |
+| **Filtri della carta che stai aggiungendo** | Pulsante **sliders accanto alla barra di ricerca**: dopo aver scelto una carta e **prima** di premere *Aggiungi*, puoi darle filtri suoi. Il pulsante si **accende in teal** quando quella carta ha filtri propri; con nessuna carta selezionata è spento. I filtri nascono insieme alla carta, quindi già il primo controllo del prezzo li rispetta. |
 | **Opzioni (visualizzazione)** | Pulsante *Opzioni* (sliders) nell'header: preferenze di **visualizzazione** della watchlist (rarità come badge, set come codice), **animazioni dell'interfaccia** on/off (effetto immediato) e **lingua dell'app** (Italiano/English, si applica al riavvio). |
 | **Finestre "in-app"** | Le impostazioni non si aprono più come finestre di Windows: sono **card del tema** senza cornice, con ombra e dissolvenza, posizionate accanto al pulsante che le apre. **Clic fuori dalla card = chiudi e applica** (come un menu; per scartare c'è *Annulla*). |
 
@@ -250,6 +251,21 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     ne restano scoperte **9**, e la watchlist ha tutte le immagini.
     Non serve risincronizzare il catalogo: la correzione vale anche su quello
     già scaricato.
+45. **Filtri: predefiniti e "di questa carta", separati (v1.0.8).** Prima
+    l'imbuto accanto alla ricerca faceva una cosa sola: cambiare i filtri
+    globali. Ora sono due pulsanti con due mestieri distinti:
+    - **imbuto nell'header** → *filtri predefiniti*: quelli che una carta si
+      porta dietro quando la aggiungi senza toccare niente;
+    - **sliders accanto alla ricerca** → *filtri di questa carta*: dopo aver
+      scelto la carta e prima di premere *Aggiungi*, le dai filtri suoi. Il
+      pulsante è spento se non hai selezionato nulla e si **accende in teal**
+      quando la carta ha filtri propri, così vedi a colpo d'occhio cosa stai
+      per aggiungere. Cambiando carta i filtri preparati si azzerano: erano
+      per quella.
+    I filtri della carta **nascono insieme a lei**, quindi già il primo
+    controllo del prezzo li rispetta (prima si potevano impostare solo dopo,
+    dalla riga in watchlist). L'icona a sliders è la stessa dei filtri per
+    riga: è lo stesso mestiere, su una carta sola.
     In più, un'immagine che non si scarica **non viene più richiesta a ogni
     ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
     risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.

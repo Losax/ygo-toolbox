@@ -33,7 +33,7 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `search_model.py` | `ThumbDelegate` (disegno voci popup: miniatura, testo, pill codice, hover animato) + download miniature. NB hover: scala ASIMMETRICA (y 1.07, x 1.018) — oltre i bordi della finestra popup non si può disegnare, con 1.06 anche in X la pill veniva tagliata al bordo. |
 | `flags.py` | Bandierine paesi disegnate a runtime con QPainter (~38 paesi; strisce/croci/casi speciali, pill col codice come ripiego) + `country_name` per i tooltip. Cache per (codice, altezza). Zero asset, zero rete. |
 | `rarity.py` | Badge rarità (pill con sigla community: UR, ScR, QCSR, … e colore/gradiente "foil"). Match per SOTTOSTRINGA dal più specifico al più generico ("rare" per ultimo!); sconosciute → iniziali su pill neutra. Cache per (nome, altezza). |
-| `filters_dialog.py` | Dialoghi "in-app": `CardDialog` (base SENZA cornice di Windows: **Qt.Popup** + FramelessWindowHint + WA_TranslucentBackground → il clic fuori chiude da solo; `reject()` reindirizza ad `accept()` = **chiudere applica**, solo il pulsante Annulla scarta via `_cancel`; le QComboBox interne NON chiudono il popup). Card `QFrame#popover` con ombra; `open_near(anchor)` posiziona accanto al pulsante ed entra con **fade + scivolamento** — NB: `setWindowOpacity` è inaffidabile sulle finestre translucide di Windows → si usa `anim.fade_in` (effetto opacità annidato sopra l'ombra della card: widget diversi = lecito). `FiltersDialog` = solo filtri annunci (pulsante imbuto; per-carta con allow_global; lingua ≠ en spegne l'americana via `_on_language_changed`, MAI bloccare la combo). `DisplayDialog` = solo visualizzazione (pulsante Opzioni). `ToggleSwitch` = QCheckBox ridipinto a interruttore (pallino animato, traccia teal); freccette combo = PNG chevron generato da `theme._chevron_url` (cache in ~/.ygo_toolbox/cache — il QSS accetta solo url() per ::down-arrow). `AnimatedCombo` = tendina animata (fade sulla view + scivolamento) con menu ARROTONDATO: contenitore QComboBoxPrivateContainer reso translucido (flags Popup+Frameless+NoDropShadow, WA_TranslucentBackground) e trasparente con stylesheet a dichiarazione NUDA (il selettore di classe privata NON fa presa nei fogli di widget!) + stylesheet esplicito sulla view per ripristinarne il look; `setMaxVisibleItems(30)` per non far comparire i QComboBoxPrivateScroller (strisce-freccia squadrate sopra/sotto). Uscita card animata in `CardDialog.done()` (closeEvent con event.ignore() + reject, chiusura vera al finished; guardia `_exiting`). |
+| `filters_dialog.py` | Dialoghi "in-app": `CardDialog` (base SENZA cornice di Windows: **Qt.Popup** + FramelessWindowHint + WA_TranslucentBackground → il clic fuori chiude da solo; `reject()` reindirizza ad `accept()` = **chiudere applica**, solo il pulsante Annulla scarta via `_cancel`; le QComboBox interne NON chiudono il popup). Card `QFrame#popover` con ombra; `open_near(anchor)` posiziona accanto al pulsante ed entra con **fade + scivolamento** — NB: `setWindowOpacity` è inaffidabile sulle finestre translucide di Windows → si usa `anim.fade_in` (effetto opacità annidato sopra l'ombra della card: widget diversi = lecito). `FiltersDialog` = solo filtri annunci, con tre chiamanti (predefiniti dall'imbuto in header, carta-in-arrivo e per-riga entrambi con `allow_global`; lingua ≠ en spegne l'americana via `_on_language_changed`, MAI bloccare la combo). `DisplayDialog` = solo visualizzazione (pulsante Opzioni). `ToggleSwitch` = QCheckBox ridipinto a interruttore (pallino animato, traccia teal); freccette combo = PNG chevron generato da `theme._chevron_url` (cache in ~/.ygo_toolbox/cache — il QSS accetta solo url() per ::down-arrow). `AnimatedCombo` = tendina animata (fade sulla view + scivolamento) con menu ARROTONDATO: contenitore QComboBoxPrivateContainer reso translucido (flags Popup+Frameless+NoDropShadow, WA_TranslucentBackground) e trasparente con stylesheet a dichiarazione NUDA (il selettore di classe privata NON fa presa nei fogli di widget!) + stylesheet esplicito sulla view per ripristinarne il look; `setMaxVisibleItems(30)` per non far comparire i QComboBoxPrivateScroller (strisce-freccia squadrate sopra/sotto). Uscita card animata in `CardDialog.done()` (closeEvent con event.ignore() + reject, chiusura vera al finished; guardia `_exiting`). |
 | `net.py` | `requests.Session` condivisa (keep-alive). |
 | `config.py` | Token (file / env). |
 
@@ -307,8 +307,23 @@ confini di parola per non pescare "usato").
   **0 stampe su 47.980 senza image_url** → il "non trova l'immagine" NON era
   un URL mancante ma il download che falliva; il ripiego stock resta come rete
   di sicurezza, la spaziatura è la cura vera.
-- **Filtri globali:** `open_options` → `FiltersDialog` → salva JSON in
-  `mw_settings.filters` → `provider.filters` → ricontrollo.
+- **Filtri, TRE porte d'ingresso allo stesso `FiltersDialog`:**
+  1. `open_default_filters` (imbuto nell'**header**) → filtri PREDEFINITI →
+     JSON in `mw_settings.filters` → `provider.filters` → ricontrollo.
+  2. `open_card_filters` (sliders accanto alla **ricerca**) → filtri della sola
+     carta SELEZIONATA ma non ancora aggiunta. La riga non esiste ancora, non
+     c'è niente su cui scrivere: restano in `self._pending_filters` (None =
+     userà i predefiniti) e `add_by_name` li passa ad `add_watch(...,
+     filters_json)` — così **nascono con la carta** e già il primo controllo
+     li rispetta. `_pending_filters` si azzera a ogni cambio di selezione
+     (`_on_pick`, `_on_search_text`) e dopo l'aggiunta: erano per QUELLA carta.
+     Il pulsante è `setCheckable(True)` solo per avere il teal del `:checked`
+     come spia "questa carta ha filtri suoi" — lo stato lo riscrive sempre
+     `_update_card_filters_btn()` dopo il dialogo, anche su Annulla, altrimenti
+     resterebbe acceso per il toggle automatico del clic.
+  3. `_open_item_settings` (sliders sulla **riga**) → `repo.set_watch_filters`.
+  Icona: **imbuto = predefiniti**, **sliders = filtri di una carta** (riga e
+  carta-in-arrivo: stesso mestiere, stesso glifo).
 - **Panoramica (`_toggle_overview`):** nasconde il pannello ricerca (animazione
   `anim.animate_collapse`) e delega a `_apply_responsive_sizing()` (righe,
   miniature, font, colonne — tutto già scalato con la UI). Tabella a **16

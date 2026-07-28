@@ -121,14 +121,22 @@ class MarketWatchRepository:
                 pass
 
     # --- watchlist ---
-    def add_watch(self, provider, ref_id, card_name, detail, threshold_pct) -> None:
-        self.storage.execute(
+    def add_watch(self, provider, ref_id, card_name, detail, threshold_pct,
+                  filters_json: str = "") -> int | None:
+        """Aggiunge una carta alla watchlist, eventualmente già coi suoi filtri
+        (`filters_json` = '' → usa i globali).
+
+        Ritorna l'id della riga creata, o None se la carta c'era già
+        (INSERT OR IGNORE: in quel caso `rowcount` è 0 e `lastrowid` non
+        significa niente)."""
+        cur = self.storage.execute(
             "INSERT OR IGNORE INTO mw_watchlist "
-            "(provider, ref_id, card_name, detail, threshold_pct, position) "
-            "VALUES (?, ?, ?, ?, ?, "
+            "(provider, ref_id, card_name, detail, threshold_pct, filters, position) "
+            "VALUES (?, ?, ?, ?, ?, ?, "
             " (SELECT COALESCE(MAX(position), 0) + 1 FROM mw_watchlist WHERE provider = ?))",
-            (provider, str(ref_id), card_name, detail, threshold_pct, provider),
+            (provider, str(ref_id), card_name, detail, threshold_pct, filters_json, provider),
         )
+        return cur.lastrowid if cur.rowcount else None
 
     def remove_watch(self, watch_id) -> tuple[str, str] | None:
         """Rimuove la carta E i suoi dati collegati (storico, ultimo annuncio):

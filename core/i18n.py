@@ -68,8 +68,21 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "🔍  Scrivi il nome della carta (in inglese)…": "🔍  Type the card name…",
         "Sincronizza prima il catalogo per cercare le carte":
             "Sync the catalog first to search cards",
-        "Filtri degli annunci (lingua, condizione, Zero, …)":
-            "Listing filters (language, condition, Zero, …)",
+        "Filtri predefiniti: si applicano alle carte che aggiungi senza "
+        "impostarne di propri":
+            "Default filters: applied to cards you add without setting their own",
+        "Filtri predefiniti": "Default filters",
+        "Filtri solo per la carta da aggiungere: scegli prima una carta":
+            "Filters for the card you're adding: pick a card first",
+        "Filtri propri impostati per {name} (clic per modificarli)":
+            "Own filters set for {name} (click to change them)",
+        "Filtri solo per {name}, invece di quelli predefiniti":
+            "Filters just for {name}, instead of the default ones",
+        "Filtri pronti per {name}: si applicano quando la aggiungi.":
+            "Filters ready for {name}: they apply when you add it.",
+        "{name} userà i filtri predefiniti.": "{name} will use the default filters.",
+        "Aggiunta: {name}, coi suoi filtri. Recupero prezzo iniziale…":
+            "Added: {name}, with its own filters. Fetching initial price…",
         "Nessuna carta selezionata": "No card selected",
         "Avvisa al calo di": "Alert on drop of",
         "Avvisa quando il prezzo cala almeno di questa percentuale (0 = qualsiasi calo)":

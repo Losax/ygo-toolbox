@@ -338,6 +338,48 @@ def main() -> int:
     assert dlg.result_filters().language == "it"
     print("[OK] Filtri: lingua sempre modificabile, americana si spegne da sola.")
 
+    # 5a-bis) due pulsanti distinti: predefiniti (header) e carta-da-aggiungere.
+    from modules.market_watch.providers.base import CardRef  # noqa: E402
+    assert not widget.filters_btn.isEnabled(), "senza carta selezionata va disabilitato"
+    widget._selected_ref = CardRef(id="556", name="Dark Magician", detail="Secret Rare · LOB")
+    widget._pending_filters = None
+    widget._update_card_filters_btn()
+    assert widget.filters_btn.isEnabled() and not widget.filters_btn.isChecked()
+    # filtri preparati per QUELLA carta -> il pulsante si accende
+    widget._pending_filters = ListingFilters(language="it", first_edition_only=True)
+    widget._update_card_filters_btn()
+    assert widget.filters_btn.isChecked(), "con filtri propri il pulsante deve accendersi"
+    # ...e nascono insieme alla carta, senza toccare i predefiniti.
+    # check_now va neutralizzato: senza token apre un QMessageBox modale, che
+    # in un test headless resta lì per sempre.
+    vero_check, widget.check_now = widget.check_now, lambda: None
+    globali_prima = widget.repo.get_setting("filters")
+    widget.threshold_spin.setValue(3.0)
+    widget.add_by_name()
+    nuova = [w for w in widget.repo.list_watches() if w["ref_id"] == "556"][0]
+    assert _json.loads(nuova["filters"]) == {"language": "it", "first_edition_only": True,
+                                             **{k: v for k, v in
+                                                ListingFilters().to_dict().items()
+                                                if k not in ("language", "first_edition_only")}}, \
+        nuova["filters"]
+    assert widget.repo.get_setting("filters") == globali_prima, \
+        "i filtri della singola carta non devono toccare i predefiniti"
+    assert widget._pending_filters is None, "dopo l'aggiunta i filtri in sospeso si azzerano"
+    assert not widget.filters_btn.isEnabled(), "selezione consumata: pulsante di nuovo spento"
+    # una carta aggiunta SENZA toccare nulla eredita i predefiniti ('' = globali)
+    widget._selected_ref = CardRef(id="557", name="Kuriboh", detail="Rare · LOB")
+    widget._pending_filters = None
+    widget.add_by_name()
+    liscia = [w for w in widget.repo.list_watches() if w["ref_id"] == "557"][0]
+    assert (liscia["filters"] or "") == "", "senza filtri propri deve usare i predefiniti"
+    for ref in ("556", "557"):
+        wid = [w for w in widget.repo.list_watches() if w["ref_id"] == ref][0]["id"]
+        widget.repo.remove_watch(wid)
+    widget.check_now = vero_check
+    widget._selected_ref = None
+    widget._update_card_filters_btn()
+    print("[OK] Filtri: predefiniti separati; la carta selezionata nasce coi suoi.")
+
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.
     from modules.market_watch.providers import cardtrader as ct  # noqa: E402
