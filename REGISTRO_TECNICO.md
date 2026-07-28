@@ -68,7 +68,14 @@ del README in `docs/`). Committare e pushare a fine sessione.
 - `mw_folders(id, provider, name, position, expanded, filters)` — cartelle
   espandibili della watchlist; eliminandone una le carte tornano a folder_id
   NULL. `filters` = JSON `ListingFilters` validi per TUTTE le carte contenute
-  ('' = usa i predefiniti): è ciò che rende una cartella una **base**.
+  ('' = usa i predefiniti). `is_deck` = **base (mazzo)** invece di cartella
+  semplice: cambia icona (carte impilate, la stessa del pulsante che le crea)
+  e aggiunge il badge "BASE" in colonna 2. Serve un flag ESPLICITO perché una
+  base coi filtri predefiniti e una copia per carta sarebbe indistinguibile
+  da una cartella. Lo mette `_save_deck` (anche modificando una cartella
+  esistente: passare dall'editor la promuove) e, una tantum per i DB
+  precedenti, `_adopt_deck_flags` — filtri propri o carte in più copie sono
+  dati che una cartella semplice non avrebbe motivo di avere.
 - `mw_watchlist.copies` — quante copie della carta (default 1). Moltiplica il
   prezzo nei totali di base; il prezzo mostrato sulla riga resta UNITARIO,
   col numero di copie davanti al nome ("3× Ash Blossom").

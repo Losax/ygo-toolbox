@@ -121,7 +121,8 @@ class MarketWatchRepository:
                 name     TEXT    NOT NULL,
                 position INTEGER NOT NULL DEFAULT 0,
                 expanded INTEGER NOT NULL DEFAULT 1,
-                filters  TEXT    NOT NULL DEFAULT ''
+                filters  TEXT    NOT NULL DEFAULT '',
+                is_deck  INTEGER NOT NULL DEFAULT 0
             )
             """
         )
@@ -135,6 +136,11 @@ class MarketWatchRepository:
         try:  # filtri validi per tutte le carte di una cartella/base
             self.storage.execute(
                 "ALTER TABLE mw_folders ADD COLUMN filters TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
+        try:  # base (mazzo) vs cartella semplice: cambia come viene mostrata
+            self.storage.execute(
+                "ALTER TABLE mw_folders ADD COLUMN is_deck INTEGER NOT NULL DEFAULT 0")
         except sqlite3.OperationalError:
             pass
 
@@ -201,13 +207,22 @@ class MarketWatchRepository:
             "SELECT * FROM mw_folders WHERE provider = ? ORDER BY position, id", (provider,)
         )
 
-    def add_folder(self, provider, name, filters_json: str = "") -> int:
+    def add_folder(self, provider, name, filters_json: str = "", is_deck: bool = False) -> int:
         cur = self.storage.execute(
-            "INSERT INTO mw_folders (provider, name, filters, position) VALUES (?, ?, ?, "
+            "INSERT INTO mw_folders (provider, name, filters, is_deck, position) "
+            "VALUES (?, ?, ?, ?, "
             " (SELECT COALESCE(MAX(position), 0) + 1 FROM mw_folders WHERE provider = ?))",
-            (provider, name, filters_json, provider),
+            (provider, name, filters_json, 1 if is_deck else 0, provider),
         )
         return cur.lastrowid
+
+    def set_folder_deck(self, folder_id, is_deck: bool = True) -> None:
+        """Segna la cartella come BASE (mazzo): cambia icona e badge nella
+        watchlist. Lo diventa passando dall'editor delle basi."""
+        self.storage.execute(
+            "UPDATE mw_folders SET is_deck = ? WHERE id = ?",
+            (1 if is_deck else 0, folder_id),
+        )
 
     def rename_folder(self, folder_id, name) -> None:
         self.storage.execute("UPDATE mw_folders SET name = ? WHERE id = ?", (name, folder_id))

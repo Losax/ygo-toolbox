@@ -444,6 +444,27 @@ def main() -> int:
     widget._save_deck(None, "Snake-Eye", base_filtri, [(ref701, 3), (ref702, 2)])
     base = [f for f in widget.repo.list_folders("cardtrader") if f["name"] == "Snake-Eye"][0]
     assert base["filters"] == base_filtri, "i filtri della base non sono salvati"
+    assert base["is_deck"], "una base va marcata come tale, non come cartella"
+    # una cartella semplice NON è una base, e nella riga non ha il badge
+    fid_semplice = widget.repo.add_folder("cardtrader", "Solo una cartella")
+    semplice = [f for f in widget.repo.list_folders("cardtrader")
+                if f["id"] == fid_semplice][0]
+    assert not semplice["is_deck"]
+    widget._reload_table()
+    rbase = [r for r, (k, p) in enumerate(widget._row_entries)
+             if k == "folder" and p["id"] == base["id"]][0]
+    rcart = [r for r, (k, p) in enumerate(widget._row_entries)
+             if k == "folder" and p["id"] == fid_semplice][0]
+    assert widget.table.cellWidget(rbase, 2) is not None, "manca il badge BASE"
+    assert widget.table.cellWidget(rcart, 2) is None, "la cartella non deve avere il badge"
+    # cartelle nate prima della colonna: chi ha filtri propri diventa base
+    widget.repo.set_folder_filters(fid_semplice, base_filtri)
+    widget.repo.set_folder_deck(fid_semplice, False)
+    widget._adopt_deck_flags()
+    assert [f for f in widget.repo.list_folders("cardtrader")
+            if f["id"] == fid_semplice][0]["is_deck"], \
+        "una cartella con filtri propri e' una base"
+    widget.repo.delete_folder(fid_semplice)
     in_base = {w["ref_id"]: w for w in widget.repo.list_watches()
                if w["folder_id"] == base["id"]}
     assert set(in_base) == {"701", "702"}, in_base.keys()

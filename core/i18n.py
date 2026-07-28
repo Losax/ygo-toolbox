@@ -117,6 +117,8 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "Change in the folder's total value since the last price change.",
         # basi (mazzi)
         "Base (mazzo)": "Base (deck)",
+        "BASE": "DECK",
+        "Base (mazzo): filtri comuni e copie": "Base (deck): shared filters and copies",
         "Nuova base…": "New base…",
         "Modifica base…": "Edit base…",
         "Modifica la base: nome, filtri, carte e copie":

@@ -375,17 +375,15 @@ class _IndentDelegate(QStyledItemDelegate):
         return size
 
 
-_folder_icon_cache: dict[tuple[bool, int], QIcon] = {}
+_folder_icon_cache: dict[tuple[bool, int, str], QIcon] = {}
 
 
-def _make_folder_icon(open_: bool, size: int = 24) -> QIcon:
-    """Icona cartella (chiusa/aperta) con chevron, disegnata a runtime.
+def _make_base_icon(open_: bool, size: int = 24) -> QIcon:
+    """Icona di una BASE (mazzo): chevron + carte impilate.
 
-    Sostituisce le emoji 📁/📂: quelle cambiano faccia da un sistema all'altro,
-    non seguono il tema e stonano accanto alle altre icone, tutte a tratto.
-    Qui il glifo usa l'accento del tema ed è nitido a qualsiasi scala.
-    Cache per (aperta, dimensione) come per rarità e bandierine."""
-    key = (open_, size)
+    Deve distinguersi a colpo d'occhio dalla cartella semplice, ed è lo stesso
+    glifo del pulsante che crea le basi: chi lo ha premuto lo riconosce."""
+    key = (open_, size, "deck")
     cached = _folder_icon_cache.get(key)
     if cached is not None:
         return cached
@@ -394,8 +392,25 @@ def _make_folder_icon(open_: bool, size: int = 24) -> QIcon:
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
     u = size / 32.0
+    _draw_chevron(p, u, open_)
+    stroke = QPen(QColor(theme.ACCENT))
+    stroke.setWidthF(max(1.0, 1.7 * u))
+    stroke.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    fill = QColor(theme.ACCENT)
+    fill.setAlpha(34 if open_ else 66)
+    p.setPen(stroke)
+    p.setBrush(fill)
+    r = 1.8 * u
+    for dx, dy in ((0, 0), (2.6, 2.6), (5.2, 5.2)):   # dalla più arretrata
+        p.drawRoundedRect(QRectF((11 + dx) * u, (6 + dy) * u, 12 * u, 15 * u), r, r)
+    p.end()
+    icon = QIcon(pm)
+    _folder_icon_cache[key] = icon
+    return icon
 
-    # chevron di apertura, a sinistra: ▸ chiusa, ▾ aperta
+
+def _draw_chevron(p: QPainter, u: float, open_: bool) -> None:
+    """Freccetta di apertura, a sinistra del glifo (▸ chiusa, ▾ aperta)."""
     pen = QPen(QColor(theme.TEXT_MUTED))
     pen.setWidthF(max(1.1, 2.2 * u))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -407,6 +422,25 @@ def _make_folder_icon(open_: bool, size: int = 24) -> QIcon:
     else:
         p.drawLine(QPointF(3.0 * u, 11.0 * u), QPointF(7.0 * u, 15.5 * u))
         p.drawLine(QPointF(7.0 * u, 15.5 * u), QPointF(3.0 * u, 20.0 * u))
+
+
+def _make_folder_icon(open_: bool, size: int = 24) -> QIcon:
+    """Icona cartella (chiusa/aperta) con chevron, disegnata a runtime.
+
+    Sostituisce le emoji 📁/📂: quelle cambiano faccia da un sistema all'altro,
+    non seguono il tema e stonano accanto alle altre icone, tutte a tratto.
+    Qui il glifo usa l'accento del tema ed è nitido a qualsiasi scala.
+    Cache per (aperta, dimensione) come per rarità e bandierine."""
+    key = (open_, size, "folder")
+    cached = _folder_icon_cache.get(key)
+    if cached is not None:
+        return cached
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    u = size / 32.0
+    _draw_chevron(p, u, open_)
 
     # corpo della cartella: linguetta + rettangolo arrotondato
     stroke = QPen(QColor(theme.ACCENT))
@@ -587,6 +621,7 @@ class MarketWatchWidget(QWidget):
         self._current_img_url: str = ""
         self._filters = ListingFilters.from_dict(self._load_filters())
         self._folders_by_id: dict = {}
+        self._adopt_deck_flags()     # basi create prima della colonna is_deck
         self._refresh_folder_cache()
         self._adopt_history_keys()   # storico dei DB vecchi: vedi il metodo
         self._load_rate_interval()   # spaziatura anti-429 imparata in passato
@@ -1752,6 +1787,23 @@ class MarketWatchWidget(QWidget):
                 continue
             self.repo.adopt_history_key(PROVIDER, watch["ref_id"], self._watch_key(watch))
 
+    def _adopt_deck_flags(self) -> None:
+        """Una tantum, per le basi create prima della colonna `is_deck`:
+        una cartella con filtri propri o con carte in più copie è una base,
+        altrimenti non ci sarebbe motivo di quei dati."""
+        copies_by_folder: dict = {}
+        for w in self.repo.list_watches():
+            fid = w["folder_id"] if "folder_id" in w.keys() else None
+            n = w["copies"] if "copies" in w.keys() else 1
+            if fid is not None and n > 1:
+                copies_by_folder[fid] = True
+        for f in self.repo.list_folders(PROVIDER):
+            if "is_deck" not in f.keys() or f["is_deck"]:
+                continue
+            shared = f["filters"] if "filters" in f.keys() else ""
+            if shared or copies_by_folder.get(f["id"]):
+                self.repo.set_folder_deck(f["id"], True)
+
     def _refresh_folder_cache(self) -> None:
         """`_effective_filters` gira per ogni carta a ogni render/controllo:
         le cartelle si leggono una volta sola, non una query per carta."""
@@ -2210,11 +2262,14 @@ class MarketWatchWidget(QWidget):
 
     def _save_deck(self, folder, name: str, filters_json: str, cards: list) -> None:
         if folder is None:
-            fid = self.repo.add_folder(PROVIDER, name, filters_json)
+            fid = self.repo.add_folder(PROVIDER, name, filters_json, is_deck=True)
         else:
             fid = folder["id"]
             self.repo.rename_folder(fid, name)
             self.repo.set_folder_filters(fid, filters_json)
+            # passare dall'editor delle basi la promuove: da qui in poi si
+            # mostra come base, non come cartella
+            self.repo.set_folder_deck(fid, True)
         existing = {w["ref_id"]: w for w in self.repo.list_watches()
                     if w["provider"] == PROVIDER}
         wanted = {ref.id for ref, _c in cards}
@@ -2499,9 +2554,12 @@ class MarketWatchWidget(QWidget):
         for c in range(15):   # fascia continua sotto tutta la riga (Azioni esclusa)
             self.table.setItem(row, c, band_cell())
 
-        # 0 icona cartella (al posto della miniatura: stessa colonna delle carte)
+        # 0 icona (al posto della miniatura: stessa colonna delle carte).
+        # Base = carte impilate, cartella = cartella: si distinguono da lontano.
+        is_deck = bool(folder["is_deck"]) if "is_deck" in folder.keys() else False
         icon_item = band_cell()
-        icon_item.setIcon(_make_folder_icon(expanded, self._rp(24)))
+        icon_item.setIcon((_make_base_icon if is_deck else _make_folder_icon)
+                          (expanded, self._rp(24)))
         self.table.setItem(row, 0, icon_item)
 
         # 1 Nome (+ conteggio come coda discreta: la cartella resta allineata
@@ -2519,6 +2577,13 @@ class MarketWatchWidget(QWidget):
         tip_filters = ("\n" + tr("Filtri propri della base")) if shared else ""
         name_item.setToolTip(f"{folder['name']} · {counted}{tip_filters}\n{tip}")
         self.table.setItem(row, 1, name_item)
+
+        # 2 badge "BASE" (colonna Rarità, vuota sulle righe-cartella): la
+        # parola toglie ogni dubbio dove l'icona da sola potrebbe non bastare
+        if is_deck:
+            self.table.setCellWidget(row, 2, self._pill_cell(
+                _make_set_pill(tr("BASE"), self._rp(20)),
+                tr("Base (mazzo): filtri comuni e copie")))
 
         # 8 Prezzo = valore totale della cartella
         total_item = band_cell(f"{total:.2f} €" if total > 0 else "—")
