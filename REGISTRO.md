@@ -327,11 +327,17 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
       storico dei prezzi resta.
     - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
-53. **Condizioni abbreviate (v1.0.21).** Nella colonna *Condizione* ora c'è la
-    sigla — **NM, LP, SP, MP, PL, EX, M, PO** — invece del nome per esteso, col
-    nome intero nel tooltip. La colonna si stringe da 110 a 70 px e lo spazio
-    guadagnato va ai *Commenti*. Una condizione che non conosciamo resta
-    scritta com'è: meglio un nome lungo che una sigla inventata.
+53. **Condizioni abbreviate (v1.0.21) e a badge colorato (v1.0.22).** Nella
+    colonna *Condizione* c'è la sigla — **M, NM, EX, SP, LP, GD, MP, PL, PO** —
+    invece del nome per esteso, col nome intero nel tooltip: la colonna si
+    stringe da 110 a 70 px e lo spazio va ai *Commenti*.
+    Ora la sigla è anche un **badge colorato**: **verde** per le carte
+    perfette, poi giallo, arancione e **rosso** man mano che la condizione
+    scende. Anche la **lingua** è un badge, ma volutamente **neutro**: lì
+    accanto il colore porta già un giudizio, e due semafori nella stessa riga
+    si darebbero fastidio.
+    Una condizione che non conosciamo resta **grigia e scritta per esteso**:
+    meglio nessun giudizio che un colore sbagliato.
 52. **Pulsante "apri su CardTrader" (v1.0.20).** Sulla riga, insieme ai filtri
     e al cestino, c'è una freccia in uscita che apre la pagina della carta.
     **Sui filtri nel link, la risposta è no** e vale la pena saperlo: ho

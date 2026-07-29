@@ -631,6 +631,96 @@ def _make_set_pill(code: str, height: int) -> QPixmap:
     return pm
 
 
+_cond_pill_cache: dict[tuple[str, int], QPixmap] = {}
+_lang_pill_cache: dict[tuple[str, int], QPixmap] = {}
+
+# Posizione della condizione sulla scala 0 (perfetta) → 1 (rovinata). Sono
+# elencate TUTTE le condizioni note, dell'API e del sito: un dizionario, non
+# un indice calcolato, perché le due scale hanno lunghezze diverse e un
+# indice/len darebbe posizioni incoerenti fra loro (una "Played" verde-ino in
+# una scala e arancione nell'altra).
+_CONDITION_RANK = {
+    "mint": 0.0,
+    "near mint": 0.12,
+    "excellent": 0.30,
+    "slightly played": 0.30,
+    "good": 0.50,
+    "moderately played": 0.55,
+    "light played": 0.45,
+    "played": 0.78,
+    "poor": 1.0,
+}
+
+
+def _condition_color(name: str) -> QColor:
+    """Verde per le carte perfette, rosso per quelle rovinate, passando per il
+    giallo. Sconosciuta → grigio: meglio non dire niente che dire un colore
+    sbagliato su una condizione che non sappiamo collocare."""
+    rank = _CONDITION_RANK.get((name or "").strip().lower())
+    if rank is None:
+        return QColor(theme.TEXT_MUTED)
+    verde, giallo, rosso = QColor(theme.POSITIVE), QColor(theme.WARN), QColor(theme.NEGATIVE)
+    if rank <= 0.5:      # verde → giallo
+        a, b, t = verde, giallo, rank / 0.5
+    else:                # giallo → rosso
+        a, b, t = giallo, rosso, (rank - 0.5) / 0.5
+    return QColor(round(a.red() + (b.red() - a.red()) * t),
+                  round(a.green() + (b.green() - a.green()) * t),
+                  round(a.blue() + (b.blue() - a.blue()) * t))
+
+
+def _pill(text: str, height: int, ink: QColor, bg: QColor) -> QPixmap:
+    """Pill generica: stessa forma e stesso font di quelle già in giro."""
+    font = QFont(theme.FONT_FAMILY)
+    font.setBold(True)
+    font.setPixelSize(max(6, round(height * 0.58)))
+    fm = QFontMetrics(font)
+    w = max(round(height * 1.6), fm.horizontalAdvance(text) + round(height * 0.9))
+    pm = QPixmap(w, height)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setBrush(bg)
+    p.setPen(Qt.PenStyle.NoPen)
+    radius = height / 3.0
+    p.drawRoundedRect(QRectF(0, 0, w, height), radius, radius)
+    p.setFont(font)
+    p.setPen(ink)
+    p.drawText(QRectF(0, 0, w, height), Qt.AlignmentFlag.AlignCenter, text)
+    p.end()
+    return pm
+
+
+def _make_condition_pill(name: str, height: int) -> QPixmap:
+    """Sigla della condizione su pill colorata secondo lo stato della carta.
+
+    Il colore è quello del testo, su un fondo dello stesso colore molto
+    diluito: colorare tutto il fondo darebbe cinque macchie accese per riga,
+    che in una tabella fitta stancano più di quanto informino."""
+    key = (name, height)
+    cached = _cond_pill_cache.get(key)
+    if cached is not None:
+        return cached
+    ink = _condition_color(name)
+    bg = QColor(ink)
+    bg.setAlpha(38)
+    pm = _pill(_condition_short(name) or "—", height, ink, bg)
+    _cond_pill_cache[key] = pm
+    return pm
+
+
+def _make_language_pill(code: str, height: int) -> QPixmap:
+    """Codice lingua su pill neutra: distingue a colpo d'occhio senza rubare
+    attenzione al colore della condizione, che lì accanto porta un giudizio."""
+    key = (code, height)
+    cached = _lang_pill_cache.get(key)
+    if cached is not None:
+        return cached
+    pm = _pill(code.upper(), height, QColor(theme.TEXT), QColor(theme.SURFACE_3))
+    _lang_pill_cache[key] = pm
+    return pm
+
+
 def _make_pro_badge(height: int) -> QPixmap:
     """Badge 'PRO' (venditore professionale): pill teal come l'accento del tema."""
     w = round(height * 2.2)
@@ -1720,14 +1810,8 @@ class MarketWatchWidget(QWidget):
             self.table.setItem(row, 3, cell(setname or "—"))
         # 4 Condizione, 5 Lingua, 6 1ª ed., 7 Zero (annuncio scelto, colonne separate)
         cond_full = (q.condition if q is not None else "") or ""
-        cond_item = cell(_condition_short(cond_full) or "—")
-        cond_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        if cond_full:
-            cond_item.setToolTip(cond_full)
-        self.table.setItem(row, 4, cond_item)
-        lang_item = cell((q.language if q is not None else "") or "—")
-        lang_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table.setItem(row, 5, lang_item)
+        lang_code = (q.language if q is not None else "") or ""
+        self._set_badge_cells(row, cond_full, lang_code)
         for col, flag in ((6, q is not None and q.first_edition),
                           (7, q is not None and q.zero)):
             flag_item = cell("✓" if flag else "—")
@@ -1830,6 +1914,24 @@ class MarketWatchWidget(QWidget):
         arow.addWidget(link_btn)
         arow.addWidget(remove_btn)
         self.table.setCellWidget(row, 15, actions)
+
+    def _set_badge_cells(self, row: int, condition: str, language: str) -> None:
+        """Colonne 4 (Condizione) e 5 (Lingua) come badge.
+
+        Sono cell WIDGET, non testo: vale la nota del modello dati —
+        `ResizeToContents` ignora i cell widget, quindi quelle colonne devono
+        avere una larghezza dichiarata (ce l'hanno, in Panoramica)."""
+        for col, pm, tip in (
+            (4, _make_condition_pill(condition, self._rp(20)) if condition else None, condition),
+            (5, _make_language_pill(language, self._rp(20)) if language else None,
+             language.upper()),
+        ):
+            self.table.setItem(row, col, QTableWidgetItem("" if pm is not None else "—"))
+            if pm is None:
+                self.table.removeCellWidget(row, col)
+                self.table.item(row, col).setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            else:
+                self.table.setCellWidget(row, col, self._pill_cell(pm, tip))
 
     def _pill_cell(self, pixmap: QPixmap, tooltip: str = "") -> QWidget:
         """Cella con un badge/pill centrato (rarità, codice set) e tooltip."""
@@ -2765,15 +2867,7 @@ class MarketWatchWidget(QWidget):
         # 1 Nome: "↳ 2 copie" — l'indentazione la mette _IndentDelegate
         self.table.setItem(row, 1, cell("↳  " + (
             tr("1 copia") if qty == 1 else tr("{n} copie").format(n=qty))))
-        cond_src = src.get("condition") or ""
-        cond_cell = cell(_condition_short(cond_src) or "—")
-        cond_cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        if cond_src:
-            cond_cell.setToolTip(cond_src)
-        self.table.setItem(row, 4, cond_cell)
-        lang = cell((src.get("language") or "").upper() or "—")
-        lang.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table.setItem(row, 5, lang)
+        self._set_badge_cells(row, src.get("condition") or "", src.get("language") or "")
         for col, flag in ((6, src.get("first_edition")), (7, src.get("zero"))):
             it = cell("✓" if flag else "—")
             it.setTextAlignment(Qt.AlignmentFlag.AlignCenter)

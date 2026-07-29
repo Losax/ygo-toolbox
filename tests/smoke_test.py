@@ -157,9 +157,12 @@ def main() -> int:
     q3 = widget3._last_quotes.get("555")
     assert q3 is not None and (q3.seller, q3.condition, q3.zero) == ("mario", "Near Mint", True), q3
     assert "555" not in widget3._no_match_refs
-    # in tabella la condizione è la sigla; il nome intero sta nel tooltip
-    assert widget3.table.item(0, 4).text() == "NM", "condizione non ricaricata al riavvio"
-    assert widget3.table.item(0, 4).toolTip() == "Near Mint"
+    # condizione e lingua sono BADGE (cell widget), col nome intero nel tooltip
+    from PySide6.QtWidgets import QLabel as _QL  # noqa: E402
+    cond_cell = widget3.table.cellWidget(0, 4)
+    assert cond_cell is not None, "condizione non ricaricata al riavvio"
+    assert cond_cell.findChild(_QL).toolTip() == "Near Mint"
+    assert widget3.table.cellWidget(0, 5) is not None, "lingua senza badge"
     assert widget3.table.item(0, 8).text() == "12.00 €", widget3.table.item(0, 8).text()
     widget3.stop()
     print("[OK] Ultimo annuncio persistito: Panoramica piena anche dopo il riavvio.")
@@ -643,7 +646,21 @@ def main() -> int:
     # sconosciuta: si lascia com'è invece di inventare una sigla
     assert _condition_short("Graded 9.5") == "Graded 9.5"
     assert _condition_short("") == ""
-    print("[OK] Condizioni abbreviate: NM/LP/SP/MP/PL, sconosciute intatte.")
+    # badge colorato: verde per le perfette, rosso per le rovinate
+    from modules.market_watch.widget import _condition_color  # noqa: E402
+    verde, rosso = _condition_color("Mint"), _condition_color("Poor")
+    assert verde.green() > verde.red(), "Mint deve tendere al verde"
+    assert rosso.red() > rosso.green(), "Poor deve tendere al rosso"
+    scala = ["Mint", "Near Mint", "Excellent", "Good", "Played", "Poor"]
+    rossi = [_condition_color(c).red() for c in scala]
+    verdi = [_condition_color(c).green() for c in scala]
+    assert rossi == sorted(rossi), f"il rosso deve solo crescere: {rossi}"
+    assert verdi == sorted(verdi, reverse=True), f"il verde deve solo calare: {verdi}"
+    # sconosciuta: grigio neutro, nessun giudizio inventato
+    ignota = _condition_color("Graded 9.5")
+    assert abs(ignota.red() - ignota.green()) < 30 and abs(ignota.green() - ignota.blue()) < 40, ignota
+    print("[OK] Condizioni abbreviate e colorate: NM/LP/SP/MP/PL, scala "
+          "verde→rosso monotona, sconosciute grigie e intatte.")
 
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.
