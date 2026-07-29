@@ -79,7 +79,13 @@ se il token esiste già).
 **REGOLA (richiesta esplicita 2026-07-28): a ogni modifica tutto resta "a
 pari"** — sorgente, commit+push su GitHub **e l'exe in `dist\`** ricompilato.
 Niente exe che resta indietro rispetto al codice.
-**Git/GitHub:** repo PRIVATO su https://github.com/Losax/ygo-toolbox
+**Git/GitHub:** repo **PUBBLICO** su https://github.com/Losax/ygo-toolbox
+(verificato via API il 2026-07-29; la nota "privato" di luglio era superata).
+**I tag NON bastano al controllo aggiornamenti:** `releases/latest` guarda le
+*Release pubblicate*, e ce ne sono 0 a fronte di 25 tag → 404, quindi il
+controllo tace. Serve creare la Release dal tag e allegarci l'installer.
+Attenzione: `latest` **ignora bozze e prerelease**, va pubblicata come release
+normale.
 (branch `main`; .gitignore esclude build/dist/db/token/.claude; screenshot
 del README in `docs/`). Committare e pushare a fine sessione.
 
