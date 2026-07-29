@@ -44,6 +44,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
 | **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
+| **Ordina per** | Riga di pulsantini sopra la tabella: **Manuale** (l'ordine che hai dato trascinando), **Rarità**, **Prezzo**, **Var.**. Il criterio attivo è **teal** con una freccetta; **cliccandolo di nuovo si inverte** il verso. L'ordinamento agisce **dentro ogni cartella/base** e fra le carte sciolte: i gruppi restano gruppi. Le carte senza il dato (prezzo mai visto, variazione non calcolabile) stanno **sempre in fondo**, in entrambi i versi. Il criterio si ricorda alla riapertura. |
 | **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
 | **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
 | **Filtri predefiniti (imbuto)** | Pulsante a **imbuto nell'header**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana). Sono i filtri che una carta si porta dietro se la aggiungi senza impostarne di propri, e valgono per tutte quelle che non ne hanno. |
@@ -327,6 +328,21 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
       storico dei prezzi resta.
     - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
+54. **Ordinamento della watchlist (v1.0.23).** Sopra la tabella una riga di
+    pulsantini: *Manuale · Rarità · Prezzo · Var.*, con il criterio attivo in
+    teal e una freccetta; rifacendo clic sullo stesso si inverte il verso, e la
+    scelta si ricorda alla riapertura.
+    Due decisioni che vale la pena conoscere:
+    - **le cartelle e le basi restano gruppi**: si ordina *dentro* ciascuna e
+      fra le carte sciolte. Un ordinamento globale avrebbe sciolto i gruppi,
+      che è il contrario di quello che servono a fare;
+    - **chi non ha il dato va sempre in fondo**, in entrambi i versi: una carta
+      senza prezzo che galleggia in cima invertendo l'ordine farebbe sembrare
+      la lista ordinata per sbaglio.
+    La scala delle rarità è **convenzionale** (una ufficiale non esiste): segue
+    la scarsità come la intendono i giocatori, da Common a Starlight Rare, e
+    una rarità che non riconosciamo finisce tutta da una parte invece di
+    sparpagliarsi.
 53. **Condizioni abbreviate (v1.0.21) e a badge colorato (v1.0.22).** Nella
     colonna *Condizione* c'è la sigla — **M, NM, EX, SP, LP, GD, MP, PL, PO** —
     invece del nome per esteso, col nome intero nel tooltip: la colonna si

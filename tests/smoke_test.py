@@ -662,6 +662,56 @@ def main() -> int:
     print("[OK] Condizioni abbreviate e colorate: NM/LP/SP/MP/PL, scala "
           "verde→rosso monotona, sconosciute grigie e intatte.")
 
+    # 5a-septies) ordinamento: rarità, prezzo, variazione — dentro i gruppi
+    from modules.market_watch.rarity import rarity_rank  # noqa: E402
+    assert rarity_rank("Common") < rarity_rank("Ultra Rare") < rarity_rank("Starlight Rare")
+    assert rarity_rank("Boh?") == -1, "rarità ignota: fuori scala, non in mezzo"
+
+    # (ref, nome, detail, prezzo prima, prezzo dopo) → variazione
+    ORD = [("901", "Alfa", "Common · X", 5.0, 4.0),              # 5 → 4  = -20%
+           ("902", "Beta", "Starlight Rare · X", 100.0, 120.0),  # 100→120 = +20%
+           ("903", "Gamma", "Super Rare · X", 50.0, 50.0)]       # nessuna variazione
+    widget.repo.replace_catalog("cardtrader", [(r, n, d, "", "X") for r, n, d, _p, _q in ORD])
+    chiave_ord = widget._filters_key(widget._filters)
+    for ref, nome, det, prima, dopo in ORD:
+        widget.repo.add_watch("cardtrader", ref, nome, det, 0.0)
+        widget.repo.record_price("cardtrader", ref, prima, "EUR", chiave_ord)
+        if dopo != prima:
+            widget.repo.record_price("cardtrader", ref, dopo, "EUR", chiave_ord)
+
+    soli = {r for r, _n, _d, _p, _q in ORD}
+
+    def ordine():
+        """Solo le carte di questa prova: in watchlist ce ne sono altre."""
+        widget._reload_table()
+        return [p["ref_id"] for k, p in widget._row_entries
+                if k == "watch" and p["ref_id"] in soli]
+
+    widget._set_sort("price")            # dal più caro
+    assert ordine() == ["902", "903", "901"], ordine()
+    widget._set_sort("price")            # secondo clic: inverte
+    assert not widget._sort_desc and ordine() == ["901", "903", "902"], ordine()
+    widget._set_sort("rarity")           # dalla più ricercata
+    assert ordine() == ["902", "903", "901"], ordine()
+    widget._set_sort("change")           # dal rialzo maggiore al calo maggiore
+    assert ordine() == ["902", "901", "903"], ordine()   # +20%, -20%, senza dato
+    widget._set_sort("change")           # invertito: prima il calo
+    assert ordine() == ["901", "902", "903"], ordine()
+    # chi non ha variazione resta in fondo in ENTRAMBI i versi
+    assert ordine()[-1] == "903", "senza dato si resta in fondo anche invertendo"
+    # il criterio si ricorda fra i riavvii
+    widget._set_sort("rarity")
+    assert widget.repo.get_setting("sort") == "rarity:desc"
+    wsort = MarketWatchWidget(ctx)
+    assert (wsort._sort_mode, wsort._sort_desc) == ("rarity", True)
+    wsort.stop()
+    widget._set_sort("manual")
+    for ref, _n, _d, _p, _q in ORD:
+        wid = [w for w in widget.repo.list_watches() if w["ref_id"] == ref][0]["id"]
+        widget.repo.remove_watch(wid)
+    print("[OK] Ordinamento: rarità/prezzo/variazione, verso invertibile, "
+          "senza-dato sempre in fondo, criterio ricordato.")
+
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.
     from modules.market_watch.providers import cardtrader as ct  # noqa: E402

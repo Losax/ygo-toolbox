@@ -73,7 +73,7 @@ from . import config
 from .deck_dialog import DeckDialog
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
-from .rarity import rarity_pixmap
+from .rarity import rarity_pixmap, rarity_rank
 from .providers import cardtrader
 from .providers.base import CardRef, ListingFilters, PriceQuote
 from .providers.cardtrader import CardTraderClient, CardTraderProvider
@@ -792,6 +792,7 @@ class MarketWatchWidget(QWidget):
         self._adopt_deck_flags()     # basi create prima della colonna is_deck
         self._refresh_folder_cache()
         self._adopt_history_keys()   # storico dei DB vecchi: vedi il metodo
+        self._load_sort()            # criterio di ordinamento ricordato
         self._load_rate_interval()   # spaziatura anti-429 imparata in passato
         # Scorrimento animato della rotellina: UN SOLO oggetto persistente,
         # riavviato a ogni scatto. Ricrearlo ogni volta con DeleteWhenStopped
@@ -1093,6 +1094,7 @@ class MarketWatchWidget(QWidget):
         # definitiva), non a quello del widget (dove i figli sono ancora stantii).
         self.table.viewport().installEventFilter(self)
         self._apply_column_layout(overview=False)
+        root.addLayout(self._build_sort_row())
         root.addWidget(self.table, 1)
 
         # --- footer: controlli ---
@@ -1250,6 +1252,91 @@ class MarketWatchWidget(QWidget):
         self._search_popup.setFont(self._scaled_font(self._popup_base_font, extra=3))
         self._apply_column_layout(big)
         self._render_after_check(self._last_checked, pulse=False)
+
+    # ------------------------------------------------------------ ordinamento
+    # (modo, etichetta, tooltip). "manual" = l'ordine deciso col drag&drop.
+    _SORT_MODES = (
+        ("manual", "Manuale", "Ordine deciso da te trascinando le righe"),
+        ("rarity", "Rarità", "Dalla rarità più ricercata alla più comune"),
+        ("price", "Prezzo", "Dal più caro al più economico"),
+        ("change", "Var.", "Dal rialzo maggiore al calo maggiore"),
+    )
+
+    def _build_sort_row(self):
+        """Pulsantini di ordinamento sopra la tabella.
+
+        Non sono le intestazioni cliccabili perché l'ordinamento qui NON è
+        globale: le cartelle e le basi restano gruppi, si ordina DENTRO ciascuna
+        (e fra le carte sciolte). Cliccare l'intestazione suggerirebbe un
+        riordino di tutta la tabella, che scioglierebbe i gruppi."""
+        row = QHBoxLayout()
+        row.setSpacing(6)
+        label = QLabel(tr("Ordina per"))
+        label.setObjectName("subtitle")
+        row.addWidget(label)
+        self._sort_buttons: dict[str, QPushButton] = {}
+        for mode, testo, tip in self._SORT_MODES:
+            btn = QPushButton(tr(testo))
+            btn.setObjectName("ghost")
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(tr(tip) + "\n" + tr("Clic sul criterio attivo = inverte il verso"))
+            btn.clicked.connect(lambda _=False, m=mode: self._set_sort(m))
+            self._sort_buttons[mode] = btn
+            row.addWidget(btn)
+        row.addStretch(1)
+        self._refresh_sort_buttons()
+        return row
+
+    def _set_sort(self, mode: str) -> None:
+        """Clic su un criterio: se è già attivo inverte il verso, altrimenti
+        passa a quel criterio."""
+        if mode == self._sort_mode and mode != "manual":
+            self._sort_desc = not self._sort_desc
+        else:
+            self._sort_mode, self._sort_desc = mode, True
+        self.repo.set_setting("sort", f"{self._sort_mode}:{'desc' if self._sort_desc else 'asc'}")
+        self._refresh_sort_buttons()
+        self._reload_table()
+
+    def _refresh_sort_buttons(self) -> None:
+        freccia = "▾" if self._sort_desc else "▴"
+        for mode, testo, _tip in self._SORT_MODES:
+            btn = self._sort_buttons[mode]
+            attivo = mode == self._sort_mode
+            btn.setChecked(attivo)
+            btn.setText(tr(testo) + (f"  {freccia}" if attivo and mode != "manual" else ""))
+            # il :checked dei pulsanti "ghost" è troppo timido per dire quale
+            # criterio è in uso: il teal lo rende inequivocabile
+            btn.setStyleSheet(f"color: {theme.ACCENT}; font-weight: 700;" if attivo else "")
+
+    def _load_sort(self) -> None:
+        raw = (self.repo.get_setting("sort", "") or "").split(":")
+        modi = {m for m, _t, _p in self._SORT_MODES}
+        self._sort_mode = raw[0] if raw and raw[0] in modi else "manual"
+        self._sort_desc = len(raw) < 2 or raw[1] != "asc"
+
+    def _sorted_cards(self, cards: list, metrics: dict) -> list:
+        """Le carte di un gruppo nell'ordine scelto. `metrics` ha già prezzo e
+        variazione calcolati una volta sola (evita di riconsultare il DB)."""
+        if self._sort_mode == "manual":
+            return cards
+        # Chi non ha il dato (prezzo mai visto, Var. non calcolabile) va SEMPRE
+        # in fondo, in entrambi i versi: farlo galleggiare in cima invertendo
+        # l'ordine darebbe una lista che sembra ordinata per errore.
+        def chiave(w):
+            ref = str(w["ref_id"])
+            if self._sort_mode == "rarity":
+                detail = w["detail"] or ""
+                rar = detail.split(" · ", 1)[0] if " · " in detail else ""
+                valore = rarity_rank(rar)
+                return (valore < 0, -valore if self._sort_desc else valore)
+            prezzo, variazione = metrics.get(ref, (None, None))
+            valore = prezzo if self._sort_mode == "price" else variazione
+            if valore is None:
+                return (True, 0.0)
+            return (False, -valore if self._sort_desc else valore)
+        return sorted(cards, key=chiave)
 
     def _apply_column_layout(self, overview: bool) -> None:
         """Colonne e ridimensionamento per modalità.
@@ -2751,6 +2838,19 @@ class MarketWatchWidget(QWidget):
         # 200 € pesa quanto vale, coerente col totale mostrato accanto.
         # Le carte senza uno storico precedente entrano identiche in entrambe
         # le somme, quindi non falsano il segno.
+        # Prezzo e variazione di ogni carta, calcolati UNA volta: servono al
+        # riepilogo delle basi, all'ordinamento e alle righe. Prima ogni pezzo
+        # se li ricavava per conto suo, interrogando il DB tre volte per carta.
+        metrics: dict[str, tuple] = {}
+        for w in watches:
+            prices = self.repo.last_price_change(w["provider"], w["ref_id"],
+                                                 self._watch_key(w))
+            last = prices[0] if prices else None
+            prev = prices[1] if len(prices) > 1 else None
+            change = ((last - prev) / prev * 100.0) if (last is not None
+                                                        and prev not in (None, 0)) else None
+            metrics[str(w["ref_id"])] = (last, change, prices)
+
         # Le COPIE moltiplicano: una base con 3× Ash Blossom vale tre Ash
         # Blossom. Vale per il totale e, di conseguenza, per la sua variazione.
         summary: dict = {}
@@ -2772,8 +2872,7 @@ class MarketWatchWidget(QWidget):
                 copies_tot += n
                 if str(w_["ref_id"]) in self._no_match_refs:
                     continue
-                prices = self.repo.last_price_change(w_["provider"], w_["ref_id"],
-                                                     self._watch_key(w_))
+                prices = metrics[str(w_["ref_id"])][2]
                 if not prices:
                     continue
                 q_ = self._last_quotes.get(str(w_["ref_id"]))
@@ -2795,13 +2894,16 @@ class MarketWatchWidget(QWidget):
                 righe.append(("source", (w, src)))
             return righe
 
+        # L'ordinamento agisce DENTRO ogni gruppo (e fra le carte sciolte): le
+        # cartelle e le basi restano cartelle e basi.
+        ordina = {ref: (m[0], m[1]) for ref, m in metrics.items()}
         entries: list[tuple[str, object]] = []
         for f in folders:
             entries.append(("folder", f))
             if f["expanded"]:
-                for w in by_folder.get(f["id"], []):
+                for w in self._sorted_cards(by_folder.get(f["id"], []), ordina):
                     entries.extend(con_provenienze(w))
-        for w in by_folder.get(None, []):
+        for w in self._sorted_cards(by_folder.get(None, []), ordina):
             entries.extend(con_provenienze(w))
         self._row_entries = entries
 
@@ -2830,13 +2932,7 @@ class MarketWatchWidget(QWidget):
             self.table.setRowHeight(row, default_h)  # annulla eventuali altezze da cartella
             watch = payload
             no_match = str(watch["ref_id"]) in self._no_match_refs
-            prices = self.repo.last_price_change(watch["provider"], watch["ref_id"],
-                                                 self._watch_key(watch))
-            last = prices[0] if prices else None
-            prev = prices[1] if len(prices) > 1 else None
-            change = None
-            if last is not None and prev not in (None, 0):
-                change = (last - prev) / prev * 100.0
+            last, change, _prices = metrics[str(watch["ref_id"])]
             self._set_row(row, watch, last_price=last, change=change, checked=checked, no_match=no_match)
             if pulse and change and not no_match:  # cella prezzo "lampeggia" al cambio
                 price_item = self.table.item(row, 8)

@@ -59,6 +59,27 @@ _STYLES = [
 ]
 
 
+# Scala di "pregio" per ORDINARE, dalla più comune alla più ricercata.
+# NB: `_STYLES` sopra è ordinato per specificità del MATCH ("secret" prima di
+# "rare"), che è un'altra cosa — usarlo per ordinare darebbe una classifica
+# senza senso. Qui si va per SIGLA, così la scala non dipende da come è
+# scritto il nome. È una scala CONVENZIONALE (nessuna ufficiale esiste):
+# rispecchia la scarsità com'è intesa dai giocatori, non un prezzo.
+SCARCITY_ORDER = [
+    "C", "SP", "R", "SR", "DTR", "SFR", "MSR", "ShR", "UR", "PaR",
+    "GdR", "PlR", "ScR", "UtR", "GhR", "GdScR", "PlScR", "PGR",
+    "PScR", "CR", "QCR", "QCSR", "StR",
+]
+_RANK_BY_ABBREV = {sigla: i for i, sigla in enumerate(SCARCITY_ORDER)}
+
+
+def rarity_rank(name: str) -> int:
+    """Posizione sulla scala di pregio (0 = più comune). -1 se sconosciuta,
+    così le rarità che non riconosciamo finiscono tutte da una parte invece
+    di sparpagliarsi a caso."""
+    return _RANK_BY_ABBREV.get(rarity_abbrev(name), -1)
+
+
 def _style(name: str) -> tuple[str, list[str]]:
     low = (name or "").strip().lower()
     for needle, abbrev, colors in _STYLES:

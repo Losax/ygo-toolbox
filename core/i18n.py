@@ -105,6 +105,17 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "This card's OWN filters (different from the default ones) — click to change them",
         "Filtri di questa carta (ora usa i predefiniti)":
             "Filters for this card (currently using the default ones)",
+        # ordinamento della watchlist
+        "Ordina per": "Sort by",
+        "Manuale": "Manual", "Rarità": "Rarity", "Prezzo": "Price", "Var.": "Chg.",
+        "Ordine deciso da te trascinando le righe":
+            "The order you set by dragging the rows",
+        "Dalla rarità più ricercata alla più comune":
+            "From the most sought-after rarity to the most common",
+        "Dal più caro al più economico": "From the most expensive to the cheapest",
+        "Dal rialzo maggiore al calo maggiore": "From the biggest rise to the biggest drop",
+        "Clic sul criterio attivo = inverte il verso":
+            "Click the active criterion to reverse the direction",
         "Apri la carta su CardTrader": "Open the card on CardTrader",
         "CardTrader non accetta i filtri nel link: là vanno rimessi a mano ({filtri})":
             "CardTrader doesn't take filters in the link: set them again there ({filtri})",

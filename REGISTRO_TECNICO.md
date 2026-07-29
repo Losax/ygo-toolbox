@@ -433,6 +433,22 @@ confini di parola per non pescare "usato").
   Attenzione: `_folder_at` e `_row_indent` devono riconoscere il nuovo tipo —
   il payload è una TUPLA, non una riga di DB, e `payload["folder_id"]`
   esploderebbe.
+- **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
+  sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
+  **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce
+  DENTRO ogni gruppo (cartella/base) e fra le carte sciolte, mentre cliccare
+  l'header suggerirebbe un riordino globale, che scioglierebbe i gruppi.
+  Le chiavi di ordinamento sono tuple `(senza_dato, valore)`: chi non ha il
+  dato finisce in fondo in ENTRAMBI i versi (invertendo, galleggerebbe in cima
+  e la lista sembrerebbe ordinata per errore). Rarità: `rarity.rarity_rank`
+  (scala CONVENZIONALE per SIGLA — vedi la nota in `rarity.py`: `_STYLES` è
+  ordinato per specificità del match, non per pregio, usarlo per ordinare
+  darebbe una classifica senza senso).
+  **Effetto collaterale utile:** prezzo e variazione di ogni carta si calcolano
+  ora UNA volta per render (dict `metrics`) e li riusano riepilogo delle basi,
+  ordinamento e righe; prima ogni pezzo interrogava il DB per conto suo.
+  Il drag&drop continua a scrivere le posizioni: si rivedono passando a
+  *Manuale*.
 - **Cartelle & drag&drop:** il modello visuale è `self._row_entries`
   (lista di `("folder", riga)` / `("watch", riga)` / `("source", …)`); `_render_after_check`
   costruisce cartelle → carte (se `expanded`) → carte fuori. **Riga-cartella
