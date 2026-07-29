@@ -1,45 +1,70 @@
 =====================================================================
-  YGO TOOLBOX v1.0.23 — prezzi delle carte Yu-Gi-Oh! su CardTrader
+  YGO TOOLBOX v1.0.24 — prezzi delle carte Yu-Gi-Oh! su CardTrader
 =====================================================================
 
 Cosa fa
 -------
 Tiene d'occhio il prezzo PIÙ BASSO delle carte che scegli su
 CardTrader e ti avvisa con una notifica quando cala oltre la soglia
-che hai impostato. Cartelle, filtri (lingua, condizione, CardTrader
-Zero, ...), controllo automatico periodico e all'avvio.
+che hai impostato. Cartelle, BASI (mazzi in più copie), filtri
+(lingua, condizione, CardTrader Zero, ...), controllo automatico
+periodico e all'avvio.
 
 Requisiti
 ---------
-- Windows 10 o 11. Non serve installare nulla: doppio clic sull'exe.
+- Windows 10 o 11 a 64 bit.
 - Un account CardTrader (gratuito) per il token API.
+
+Installazione
+-------------
+Doppio clic su "YGO Toolbox Setup vX.Y.Z.exe" e avanti.
+
+- Si installa SOLO PER TE, in
+  C:\Users\<tuo nome>\AppData\Local\Programs\YGO Toolbox
+  Non chiede la password di amministratore.
+- Mette la voce nel menu Start (e sul desktop, se lasci la spunta).
+- Si rimuove come qualsiasi programma: Impostazioni > App >
+  App installate > YGO Toolbox > Disinstalla.
+
+Windows SmartScreen mostrerà "PC protetto da Windows": è normale per
+i programmi non firmati (un certificato costa e per un'app fra amici
+non ha senso). Clicca "Ulteriori informazioni" e poi "Esegui
+comunque". Succede sull'installer, non sull'app installata.
 
 Primo avvio
 -----------
-1) Windows SmartScreen potrebbe mostrare "PC protetto da Windows":
-   è normale per le app non firmate. Clicca "Ulteriori informazioni"
-   e poi "Esegui comunque". Serve solo la prima volta.
-
-2) Imposta il tuo token CardTrader: pulsante con la CHIAVE in alto a
+1) Imposta il tuo token CardTrader: pulsante con la CHIAVE in alto a
    destra. Il token si crea gratis su cardtrader.com nella sezione
    API del tuo profilo (area sviluppatori). Usa il TUO token: è
    personale e resta solo sul tuo PC.
 
-3) Sincronizza il catalogo: pulsante con le FRECCE circolari.
+2) Sincronizza il catalogo: pulsante con le FRECCE circolari.
    Scarica ~48.000 carte, ci mette 4-5 minuti, SOLO la prima volta.
 
-4) Cerca una carta nella barra di ricerca, imposta la soglia di
+3) Cerca una carta nella barra di ricerca, imposta la soglia di
    avviso ("Avvisa al calo di") e premi "Aggiungi alla watchlist".
+
+Aggiornamenti
+-------------
+All'avvio l'app controlla se ne è uscita una nuova e, se sì, mostra
+un'etichetta "Aggiornamento" in alto: cliccala per aprire la pagina
+di download. Non scarica né installa niente da sola.
+
+Per aggiornare basta lanciare il nuovo installer sopra il vecchio:
+se l'app è aperta la chiude lui, e la tua watchlist NON si perde.
 
 Consigli d'uso
 --------------
+- Pulsante CARTE A VENTAGLIO accanto alla ricerca = crea una BASE
+  (mazzo): filtri comuni una volta sola, poi carte e copie.
 - Tasto destro sulla watchlist per creare CARTELLE; trascina le
-  righe per riordinarle o spostarle nelle cartelle.
-- Pulsante a IMBUTO accanto alla ricerca = filtri sugli annunci
-  (lingua, condizione minima, prima edizione, Zero, PRO, ...).
+  righe per riordinarle o spostarle.
+- Pulsante SLIDERS accanto alla ricerca = filtri della carta che stai
+  aggiungendo; pulsante IMBUTO in alto = filtri PREDEFINITI.
 - Pulsante GRIGLIA in alto = modalità Panoramica (watchlist grande
   con tutti i dettagli dell'annuncio più economico).
-- In OPZIONI (pulsante sliders): badge per le rarità, codici set,
+- Sopra la tabella: "Ordina per" rarità, prezzo o variazione.
+- In OPZIONI (ingranaggio): badge per le rarità, codici set,
   animazioni on/off e lingua dell'app (Italiano/English).
 - Non aprire più copie dell'app insieme e non fare controlli a
   raffica: CardTrader potrebbe bloccarti temporaneamente l'accesso.
@@ -47,7 +72,9 @@ Consigli d'uso
 Dove stanno i dati
 ------------------
 Tutto in C:\Users\<tuo nome>\.ygo_toolbox\  (token, watchlist,
-catalogo). Se qualcosa non va, il file log.txt in quella cartella
-aiuta a capire il problema: allegalo quando lo segnali.
+catalogo). NON vengono toccati né aggiornando né disinstallando: se
+disinstalli e reinstalli, ritrovi la tua watchlist.
+Se qualcosa non va, il file log.txt in quella cartella aiuta a
+capire il problema: allegalo quando lo segnali.
 
 Buona caccia ai prezzi!

@@ -19,6 +19,7 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `storage.py` | Wrapper SQLite (solo thread GUI). |
 | `theme.py` | Tema: Fusion + `QPalette` scura + QSS. Costanti colore (ACCENT, POSITIVE, …) e `FONT_FAMILY` ("Inter", incorporato in `assets/fonts`, caricato con `QFontDatabase` in `apply_theme`; hinting `PreferNoHinting` per testo morbido; fallback Segoe UI). `build_qss(scale)` genera il QSS con le misure in px scalate; `apply_scale(app, scale)` lo ri-applica al volo. |
 | `anim.py` | Effetti: `fade_in`, `drop_shadow`, `hover_glow`/`hover_lift` (event filter), `pulse_item`, `animate_collapse` (fisarmonica pannello). Flag globale `ENABLED` (`set_enabled`/`is_enabled`, da Opzioni → chiave `animations` nel dict display): con False gli helper saltano allo stato finale; le animazioni custom (cartelle, arrivo riga, smooth wheel, ToggleSwitch, AnimatedCombo, CardDialog) controllano `anim.is_enabled()` da sole. |
+| `updates.py` | Controllo aggiornamenti. `LATEST_URL` = API release di GitHub, che risponde **solo se il repo è PUBBLICO**: con repo privato dà 404 e il controllo tace (è la regola: **silenzio su qualunque problema** — un errore per un controllo che l'utente non ha chiesto è solo fastidio). In alternativa basta un JSON pubblico con `tag_name`/`html_url`. `is_newer` confronta per NUMERI, non alfabeticamente: "1.0.9" < "1.0.23", che alfabeticamente sarebbe il contrario. Mai scaricamento automatico: si avvisa e si apre la pagina. `check_async` gira in un thread daemon; il risultato torna alla GUI via **segnale Qt** (`MarketWatchWidget._update_found`), mai chiamando la UI dal thread. |
 | `i18n.py` | Traduzioni leggere: ITALIANO = chiave e fallback (chiavi non mappate restano in italiano), dict `en` completo. `load_language()` all'avvio (PRIMA della UI, da main), scelta in `~/.ygo_toolbox/language.txt`, `tr("…")` ovunque nelle stringhe visibili; template con `.format()`. La lingua si applica al RIAVVIO (la UI si costruisce una volta). |
 
 **modules/market_watch/**
@@ -47,9 +48,32 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 `LEGGIMI.txt` (guida per gli amici, va nello zip di distribuzione).
 **Release:** alzare la versione in **TRE** posti (`core/version.py`,
 `version_info.txt` — sia `filevers/prodvers` sia le stringhe — e l'intestazione
-di `LEGGIMI.txt`) → build exe → test da profilo pulito (rinominare
-`~/.ygo_toolbox`, lanciare, verificare benvenuto, ripristinare) →
-`Compress-Archive` di exe + LEGGIMI in `dist\YGO Toolbox vX.Y.Z.zip`.
+di `LEGGIMI.txt`; nell'installer NO, la legge da fuori) → build exe → test da
+profilo pulito (rinominare `~/.ygo_toolbox`, lanciare, verificare benvenuto,
+ripristinare) → **installer**:
+```
+& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=X.Y.Z installer.iss
+```
+→ `dist\YGO Toolbox Setup vX.Y.Z.exe` (~46 MB), l'artefatto da consegnare.
+**`installer.iss` (Inno Setup 6), scelte deliberate:**
+- `PrivilegesRequired=lowest` → installazione PER UTENTE in
+  `%LocalAppData%\Programs`, **nessun UAC**. Un cartello d'allarme in meno.
+- SmartScreen: compare **una volta sull'installer**, non sull'app installata —
+  i file scritti da un installer non ereditano il marchio "scaricato da
+  internet" che invece si propaga all'exe estratto da uno zip. L'installer
+  quindi RIDUCE gli avvisi, non li aggiunge.
+- `AppId` è un GUID FISSO: cambiarlo farebbe accumulare una voce diversa fra i
+  programmi installati a ogni versione.
+- **App aperta durante l'operazione** (il caso normale: si aggiorna senza
+  chiudere): `CloseApplications=force` basta per l'INSTALLAZIONE, NON per la
+  disinstallazione — verificato dal vivo, i processi restavano vivi e l'exe da
+  44 MB rimaneva orfano. Serve anche `[UninstallRun]` con `taskkill /F /IM`,
+  che gira prima della rimozione dei file. L'eseguibile "onefile" di
+  PyInstaller sopravvive alla chiusura della finestra e tiene il file bloccato.
+- `~/.ygo_toolbox` non si tocca: verificato che watchlist, catalogo e token
+  restano identici dopo aggiornamento E disinstallazione.
+Lo zip portatile non si produce più: un solo artefatto da spiegare. Se servisse,
+`Compress-Archive` di exe + LEGGIMI.
 Benvenuto: `WelcomeDialog`, flag `welcomed` in mw_settings (marcato in silenzio
 se il token esiste già).
 **REGOLA (richiesta esplicita 2026-07-28): a ogni modifica tutto resta "a

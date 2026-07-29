@@ -105,6 +105,10 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "This card's OWN filters (different from the default ones) — click to change them",
         "Filtri di questa carta (ora usa i predefiniti)":
             "Filters for this card (currently using the default ones)",
+        # aggiornamenti
+        "↑ Aggiornamento {v}": "↑ Update {v}",
+        "Hai la {corrente}, è disponibile la {nuova}. Clic per aprire la pagina di download.":
+            "You have {corrente}, {nuova} is available. Click to open the download page.",
         # ordinamento della watchlist
         "Ordina per": "Sort by",
         "Manuale": "Manual", "Rarità": "Rarity", "Prezzo": "Price", "Var.": "Chg.",

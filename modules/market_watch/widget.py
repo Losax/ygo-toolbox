@@ -66,7 +66,8 @@ from PySide6.QtWidgets import (
 )
 
 from core.context import AppContext
-from core import anim, i18n, theme
+from core import anim, i18n, theme, updates
+from core.version import APP_VERSION
 from core.i18n import tr
 
 from . import config
@@ -743,6 +744,10 @@ def _make_pro_badge(height: int) -> QPixmap:
 
 
 class MarketWatchWidget(QWidget):
+    # il controllo aggiornamenti gira in un thread: il risultato torna sul
+    # thread GUI passando da un segnale, non chiamando direttamente la UI
+    _update_found = Signal(str, str)
+
     def __init__(self, context: AppContext) -> None:
         super().__init__()
         self.context = context
@@ -848,6 +853,9 @@ class MarketWatchWidget(QWidget):
         # essere vecchi di ore/giorni, così si vede subito la variazione reale
         # del mercato (oltre al timer periodico impostato dall'utente).
         QTimer.singleShot(2500, self._startup_check)
+        # Aggiornamenti: dopo il controllo prezzi, per non contendere l'avvio.
+        self._update_found.connect(self._on_update_found)
+        QTimer.singleShot(6000, self._start_update_check)
         # Benvenuto al primo avvio (solo utenti non ancora configurati).
         QTimer.singleShot(600, self._maybe_welcome)
 
@@ -899,6 +907,14 @@ class MarketWatchWidget(QWidget):
         self.token_label.setObjectName("chip")
         self.catalog_label = QLabel()
         self.catalog_label.setObjectName("chip")
+        # Chip dell'aggiornamento: nascosto finché non se ne trova uno. Sta
+        # qui, fra gli altri chip di stato, perché è la stessa cosa — una
+        # informazione sullo stato dell'app, non un'azione.
+        self.update_label = QLabel()
+        self.update_label.setObjectName("chip")
+        self.update_label.setVisible(False)
+        self.update_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.update_label.setOpenExternalLinks(True)
         # Azioni "ovvie" come pulsanti-ICONA quadrati (tooltip al posto del
         # testo): header più pulito. Le icone sono disegnate a runtime.
         self.token_btn = QPushButton()
@@ -931,6 +947,7 @@ class MarketWatchWidget(QWidget):
                                 self.defaults_btn, self.options_btn, self.overview_btn)
         header.addWidget(self.token_label)
         header.addWidget(self.catalog_label)
+        header.addWidget(self.update_label)
         header.addWidget(self.token_btn)
         header.addWidget(self.sync_btn)
         header.addWidget(self.defaults_btn)
@@ -1492,6 +1509,27 @@ class MarketWatchWidget(QWidget):
             tr("🔍  Scrivi il nome della carta (in inglese)…") if count
             else tr("Sincronizza prima il catalogo per cercare le carte")
         )
+
+    # --- controllo aggiornamenti ---
+    def _start_update_check(self) -> None:
+        """Un solo controllo per avvio, in un thread, DOPO l'avvio: qualunque
+        cosa vada storta resta silenziosa (vedi `core/updates.py`)."""
+        updates.check_async(self._update_found.emit)
+
+    def _on_update_found(self, version: str, page: str) -> None:
+        """Arriva dal thread via segnale, quindi qui siamo sul thread GUI."""
+        testo = tr("↑ Aggiornamento {v}").format(v=version.lstrip("vV"))
+        if page:
+            self.update_label.setText(f'<a href="{page}" style="color:inherit;'
+                                      f'text-decoration:none;">{testo}</a>')
+        else:
+            self.update_label.setText(testo)
+        self.update_label.setToolTip(tr("Hai la {corrente}, è disponibile la {nuova}. "
+                                        "Clic per aprire la pagina di download.")
+                                     .format(corrente=APP_VERSION,
+                                             nuova=version.lstrip("vV")))
+        self._set_chip(self.update_label, self.update_label.text(), "warn")
+        self.update_label.setVisible(True)
 
     @staticmethod
     def _set_chip(label: QLabel, text: str, state: str) -> None:

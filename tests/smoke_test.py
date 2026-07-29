@@ -800,6 +800,23 @@ def main() -> int:
           f"(1.25s riletta, valori assurdi tagliati a {ct.MAX_INTERVAL}s).")
     ct.LIMITER = ct._RateLimiter()
 
+    # 5c) controllo aggiornamenti: confronto NUMERICO e silenzio sugli errori
+    from core import updates  # noqa: E402
+    assert updates.parse_version("v1.0.23") == (1, 0, 23)
+    assert updates.parse_version("1.1.0-beta") == (1, 1, 0), "il suffisso si ignora"
+    assert updates.parse_version("") == (0,)
+    # il caso che un confronto alfabetico sbaglierebbe: "1.0.9" < "1.0.23"
+    assert updates.is_newer("1.0.23", "1.0.9")
+    assert not updates.is_newer("1.0.9", "1.0.23")
+    assert updates.is_newer("v1.1.0", "1.0.23")
+    assert not updates.is_newer("1.0.23", "1.0.23"), "stessa versione = niente avviso"
+    assert not updates.is_newer("1.0.22", "1.0.23"), "più vecchia = niente avviso"
+    assert updates.is_newer("1.1", "1.0.23"), "lunghezze diverse si confrontano comunque"
+    # indirizzo irraggiungibile: None, nessuna eccezione (regola del silenzio)
+    assert updates.fetch_latest("http://127.0.0.1:9/nulla") is None
+    print("[OK] Aggiornamenti: confronto numerico (1.0.9 < 1.0.23), "
+          "irraggiungibile = silenzio.")
+
     # 6) i18n: traduzioni presenti, fallback sicuro, cambio lingua
     from core import i18n  # noqa: E402
     assert i18n.tr("Nessuna copia") == "Nessuna copia"      # default: italiano

@@ -9,7 +9,15 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 
 ## 1. Come si avvia
 
-- **Eseguibile:** `dist\YGO Toolbox.exe` (doppio clic, non serve Python). Icona:
+- **Da installer (quello che si dà agli amici):**
+  `dist\YGO Toolbox Setup vX.Y.Z.exe`. Si installa **solo per l'utente** in
+  `%LocalAppData%\Programs\YGO Toolbox`, **senza chiedere l'amministratore**,
+  mette la voce nel menu Start e si rimuove dalle App di Windows.
+  Aggiornare = lanciare il nuovo installer sopra il vecchio: se l'app è aperta
+  la chiude lui, e **watchlist, catalogo e token non si toccano**.
+  SmartScreen avvisa **una volta sull'installer** (app non firmata), non
+  sull'app installata.
+- **Eseguibile nudo:** `dist\YGO Toolbox.exe` (doppio clic, non serve Python). Icona:
   testa di *Primite Dragon Ether Beryl*.
 - **Da sorgente (sviluppo):**
   ```
@@ -328,6 +336,22 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
       storico dei prezzi resta.
     - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
+55. **Installer e avviso di aggiornamento (v1.0.24).** Non si consegna più uno
+    zip con l'exe dentro, ma un **installer**: doppio clic e avanti.
+    - Si installa **solo per te**, senza chiedere la password di
+      amministratore; mette la voce nel menu Start e si disinstalla dalle App
+      di Windows come qualsiasi programma.
+    - **SmartScreen dà meno noia, non più**: compare una volta sull'installer,
+      poi l'app installata parte senza avvisi. Con lo zip invece l'avviso
+      tornava a ogni exe nuovo, perché il marchio "scaricato da internet" si
+      propaga ai file estratti.
+    - Per aggiornare basta lanciare il nuovo installer: **se l'app è aperta la
+      chiude lui**, e watchlist, catalogo e token restano al loro posto
+      (verificato anche disinstallando).
+    - All'avvio l'app **controlla se c'è una versione nuova** e mostra
+      un'etichetta cliccabile in alto. Non scarica né installa niente da sola,
+      e se non c'è rete (o il controllo non è raggiungibile) **tace**: un
+      errore per un controllo che non hai chiesto sarebbe solo fastidio.
 54. **Ordinamento della watchlist (v1.0.23).** Sopra la tabella una riga di
     pulsantini: *Manuale · Rarità · Prezzo · Var.*, con il criterio attivo in
     teal e una freccetta; rifacendo clic sullo stesso si inverte il verso, e la
