@@ -1042,10 +1042,17 @@ def main() -> int:
     assert hc.split_runs([{"price": 1.0, "currency": "EUR", "filters_key": "A",
                            "captured_at": "boh"}]) == []
 
-    # asse dei prezzi: valori tondi che CONTENGONO i dati, anche se piatti
-    ticks = hc.nice_ticks(226.0, 247.0)
-    assert ticks[0] <= 226.0 and ticks[-1] >= 247.0, ticks
-    assert len(ticks) >= 3, ticks
+    # asse dei prezzi: valori tondi che CONTENGONO i dati, anche se piatti.
+    # (39.9→51.0 è il caso trovato dal vivo: l'asse si fermava a 50 e la punta
+    # a 51 usciva dal riquadro.)
+    for basso, alto in ((226.0, 247.0), (39.9, 51.0), (0.4, 0.55), (5.0, 1200.0),
+                        (99.99, 100.01), (1.0, 3.0)):
+        ticks = hc.nice_ticks(basso, alto)
+        assert ticks[0] <= basso + 1e-9, (basso, alto, ticks)
+        assert ticks[-1] >= alto - 1e-9, (basso, alto, ticks)
+        assert len(ticks) >= 2, ticks
+        passi = {round(ticks[i] - ticks[i - 1], 9) for i in range(1, len(ticks))}
+        assert len(passi) == 1, f"passo dell'asse non uniforme: {ticks}"
     piatti = hc.nice_ticks(10.0, 10.0)
     assert piatti[0] < 10.0 < piatti[-1], piatti
 

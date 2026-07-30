@@ -593,6 +593,33 @@ confini di parola per non pescare "usato").
   salita 0→1, nessun ritorno indietro, inizio a 786 ms (la finestra atterra a
   ~500). Il test lo blocca dall'altro capo: dopo `set_runs` l'animazione NON
   dev'essere in corsa.
+  **Immagine della carta (v1.0.31).** `_CardArt` a sinistra del grafico
+  (finestra passata a 870×565). **Zero richieste in più verso CardTrader**
+  (GOTCHA 1): `widget._history_art` pesca dalle cache già piene — prima
+  `_img_cache` (l'anteprima grande, che la SELEZIONE della riga ha già
+  scaricato), poi `_row_thumb_cache` (la miniatura, sgranata ma presente
+  perché la riga è a schermo). Se la grande manca davvero si chiama
+  `_show_image`, cioè **la stessa singola richiesta** che parte selezionando
+  la riga, e solo se non ce n'è già una in volo; quando arriva,
+  `_on_image_done` la passa alla finestra aperta (`_history_dlg`) via
+  `image_arrived`. Stessa scala di ripieghi del resto dell'app, timbro
+  "Stock" compreso.
+  `_CardArt` ha politica verticale `Ignored` e riscala l'ORIGINALE a ogni
+  resize: il `sizeHint` di una QLabel è il suo pixmap, lasciarlo decidere
+  darebbe un rimpallo layout→pixmap→layout, e riscalare un pixmap già ridotto
+  lo impasta. Niente `objectName("preview")`: la carta non riempie mai tutta
+  l'altezza e la cornice lascerebbe due bande vuote — meglio l'arte che
+  galleggia con la sua ombra.
+- **GOTCHA 16 — l'asse deve CONTENERE i dati.** `nice_ticks` chiudeva il ciclo
+  con `value < hi + step/2`: con massimo 51,00 € e passo 5 l'ultimo tick era
+  50 e **la punta della serie veniva disegnata fuori dal riquadro** (vista in
+  una schermata di prova: la linea usciva sopra la griglia). Ora si continua
+  finché `value < hi` e si aggiunge comunque il tick successivo, quindi
+  l'ultimo è sempre ≥ del massimo. Il test prova sei intervalli diversi
+  (compreso il caso reale 39,9→51,0) verificando che gli estremi contengano i
+  dati e che il passo resti uniforme. Ennesima conferma della regola: le
+  schermate si guardano, e quello che "non dovrebbe esserci" quasi sempre c'è
+  per un motivo.
 - **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
   sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
   **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce

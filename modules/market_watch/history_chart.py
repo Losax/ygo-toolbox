@@ -62,6 +62,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -70,9 +71,11 @@ from core import anim, theme
 from core.i18n import tr
 
 from .filters_dialog import ToggleSwitch
+from .search_model import _make_empty_frame, stock_pixmap
 
 _DT_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M",
                "%Y-%m-%d")
+CARD_RATIO = 59 / 86        # proporzioni di una carta Yu-Gi-Oh!
 
 
 # --------------------------------------------------------------- logica pura
@@ -173,11 +176,16 @@ def nice_ticks(lo: float, hi: float, target: int = 4) -> list[float]:
         step = mult * mag
         if step >= raw:
             break
+    # L'ultimo valore dev'essere >= hi, SEMPRE: l'asse deve contenere i dati.
+    # Con la condizione precedente (`value < hi + step/2`) una punta appena
+    # sopra l'ultimo valore tondo restava FUORI — visto dal vivo con massimo
+    # 51,00 € e asse fermo a 50,00: la linea usciva dal riquadro.
     ticks, value = [], math.floor(lo / step) * step
-    while value < hi + step * 0.5:
+    while value < hi - 1e-9:
         ticks.append(round(value, 10))
         value += step
-    return ticks or [lo, hi]
+    ticks.append(round(value, 10))
+    return ticks
 
 
 def price_at(points: list, when: datetime) -> float | None:
@@ -617,6 +625,51 @@ class _ZoomGhost(QWidget):
         painter.end()
 
 
+class _CardArt(QLabel):
+    """Riquadro dell'arte della carta.
+
+    Tiene da parte il pixmap ORIGINALE e lo riscala a ogni cambio di
+    dimensione: così può prendersi tutta l'altezza della finestra senza
+    sgranarsi (riscalare un pixmap già ridotto lo impasta) e senza lasciare
+    un vuoto sotto di sé. La politica verticale è `Ignored` di proposito: il
+    `sizeHint` di una QLabel è la dimensione del pixmap, e lasciarlo decidere
+    creerebbe un rimpallo layout → pixmap → layout."""
+
+    def __init__(self, width: int, parent=None) -> None:
+        super().__init__(parent)
+        # NIENTE riquadro attorno (l'objectName "preview" dell'anteprima):
+        # la carta non riempie mai tutta l'altezza disponibile, e una cornice
+        # lascerebbe due bande vuote sopra e sotto. Senza, la carta galleggia
+        # sullo sfondo con la sua ombra e lo spazio libero non si nota.
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setFixedWidth(width)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Ignored)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._source = None
+        anim.drop_shadow(self, blur=26, dy=7, alpha=170)
+
+    def set_source(self, pixmap) -> None:
+        self._source = pixmap
+        self._rescale()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (override Qt)
+        super().resizeEvent(event)
+        self._rescale()
+
+    def _rescale(self) -> None:
+        if self.width() <= 0 or self.height() <= 0:
+            return
+        if self._source is None or self._source.isNull():
+            # mai un buco e mai un segnaposto inventato: cornice vuota, con le
+            # proporzioni di una carta (non quelle della colonna)
+            alta = min(self.height(), round(self.width() / CARD_RATIO))
+            self.setPixmap(_make_empty_frame(QSize(self.width(), max(1, alta))))
+            return
+        self.setPixmap(self._source.scaled(
+            self.size(), Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+
+
 class HistoryDialog(QDialog):
     """Finestra "Storico prezzi" di una carta: riepilogo + grafico.
 
@@ -635,13 +688,15 @@ class HistoryDialog(QDialog):
         self.setWindowTitle(tr("Storico prezzi · {name}").format(name=card_name))
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.resize(round(690 * scale), round(470 * scale))
+        self.resize(round(870 * scale), round(565 * scale))
         self._scale = scale
         self._runs = runs
         self._exiting = False
         self._drag_from = None
         self._ghost = None
         self._anim = None
+        self._want_url = ""
+        self._want_stock = False
 
         outer = QVBoxLayout(self)
         margin = round(18 * scale)              # aria per l'ombra della card
@@ -684,11 +739,22 @@ class HistoryDialog(QDialog):
         self._drag_height = round(60 * scale)
         root.addLayout(head)
 
-        root.addLayout(self._stats_row(runs[-1] if runs else None, scale))
+        # Corpo: la carta a sinistra, i numeri e il grafico a destra. La carta
+        # sta accanto ai suoi prezzi — è di lei che parla tutta la finestra.
+        body = QHBoxLayout()
+        body.setSpacing(round(14 * scale))
+        self.art = _CardArt(round(212 * scale))
+        body.addWidget(self.art)
+        self.set_card_pixmap(None)
 
+        destra = QVBoxLayout()
+        destra.setSpacing(round(10 * scale))
+        destra.addLayout(self._stats_row(runs[-1] if runs else None, scale))
         self.chart = PriceChart(self, scale)
         self.chart.set_runs(runs)
-        root.addWidget(self.chart, 1)
+        destra.addWidget(self.chart, 1)
+        body.addLayout(destra, 1)
+        root.addLayout(body, 1)
 
         foot = QHBoxLayout()
         precedenti = runs[:-1] if len(runs) > 1 else []
@@ -712,6 +778,23 @@ class HistoryDialog(QDialog):
         close.clicked.connect(self.accept)
         foot.addWidget(close)
         root.addLayout(foot)
+
+    # --- immagine della carta ---------------------------------------------
+    def set_card_pixmap(self, pixmap) -> None:
+        """L'arte della carta. `None` = cornice vuota: mai un buco, mai un
+        segnaposto inventato (stessa regola dell'anteprima e delle righe)."""
+        self.art.set_source(pixmap)
+
+    def expect_image(self, url: str, is_stock: bool) -> None:
+        """Quale immagine stiamo aspettando: se arriva mentre la finestra è
+        aperta (l'anteprima la stava già scaricando), la mettiamo al posto
+        della miniatura sgranata."""
+        self._want_url = url or ""
+        self._want_stock = bool(is_stock)
+
+    def image_arrived(self, url: str, pixmap) -> None:
+        if url and url == self._want_url:
+            self.set_card_pixmap(stock_pixmap(url, pixmap) if self._want_stock else pixmap)
 
     # --- apertura e chiusura "dalla carta" --------------------------------
     def open_from(self, origin: QRect | None = None) -> int:

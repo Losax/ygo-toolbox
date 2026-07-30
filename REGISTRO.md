@@ -533,6 +533,20 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     quindi invisibile — e all'atterraggio ne vedevi la coda; poi ripartiva da
     zero quella "vera". Ora la comparsa non parte più da sola: la lancia solo
     chi mostra il grafico, una volta, a finestra ferma.
+62. **La carta dentro la finestra dello storico (v1.0.31).** A sinistra del
+    grafico ora c'è **l'immagine della carta**, grande, con la sua ombra — la
+    finestra parla di lei, ed era l'unica a non esserci. La finestra è anche
+    **un po' più larga** (da 690 a 870 px) per fare posto senza togliere spazio
+    al grafico.
+    Vale la stessa scala di ripieghi di sempre: stampa esatta → arte di
+    un'altra stampa col timbro **"Stock"** → cornice vuota. E soprattutto
+    **nessuna richiesta in più a CardTrader**: l'immagine è quella già
+    scaricata per l'anteprima; se non c'è ancora, si mostra intanto la
+    miniatura della riga e la grande prende il suo posto appena arriva.
+    **Bug del grafico trovato guardando una schermata:** su una carta con
+    massimo 51,00 € l'asse dei prezzi si fermava a 50,00 e **la punta usciva
+    dal riquadro**. L'ultimo valore dell'asse ora è sempre ≥ del massimo dei
+    dati.
 
 ## 4. Note operative importanti
 

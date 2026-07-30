@@ -794,6 +794,9 @@ class MarketWatchWidget(QWidget):
         self._price_worker: PriceFetchWorker | None = None
         self._sync_worker: CatalogSyncWorker | None = None
         self._img_worker: ImageFetchWorker | None = None
+        # finestra dello storico aperta: le si passa l'immagine grande quando
+        # arriva, senza chiederne una seconda copia
+        self._history_dlg = None
         self._img_cache: dict[str, QPixmap] = {}
         self._current_img_url: str = ""
         self._filters = ListingFilters.from_dict(self._load_filters())
@@ -1851,6 +1854,8 @@ class MarketWatchWidget(QWidget):
             return
         pixmap = QPixmap.fromImage(image)  # già decodificata nel thread: solo incarto
         self._img_cache[url] = pixmap
+        if self._history_dlg is not None:  # storico aperto: prende la stessa
+            self._history_dlg.image_arrived(url, pixmap)
         if url == self._current_img_url:  # ignora risposte ormai sorpassate
             self._set_preview_pixmap(
                 stock_pixmap(url, pixmap) if self._current_img_is_stock else pixmap)
@@ -2711,10 +2716,39 @@ class MarketWatchWidget(QWidget):
             return None
         return QRect(self.table.viewport().mapToGlobal(rect.topLeft()), rect.size())
 
+    def _history_art(self, ref_id: str, name: str):
+        """La migliore immagine GIÀ DISPONIBILE per la finestra dello storico,
+        senza scaricare niente: prima l'anteprima grande in cache, poi la
+        miniatura della riga (sgranata, ma c'è mentre la grande arriva).
+
+        Ritorna anche l'URL che varrebbe la pena avere, così chi apre la
+        finestra sa se serve una richiesta — UNA, la stessa che farebbe
+        selezionando la riga, non una raffica (vedi GOTCHA 1)."""
+        exact, stock = self._image_urls_for(ref_id, name)
+        voluto, voluto_stock = "", False
+        for url, is_stock in ((exact, False), (stock, True)):
+            if url and url not in self._failed_images:
+                voluto, voluto_stock = url, is_stock
+                break
+        if voluto:
+            pixmap = self._img_cache.get(voluto)
+            if pixmap is not None:
+                return (stock_pixmap(voluto, pixmap) if voluto_stock else pixmap,
+                        voluto, voluto_stock)
+        for url, is_stock in ((exact, False), (stock, True)):
+            turl = _thumb_url(url)
+            if turl and turl not in self._failed_thumbs:
+                pixmap = self._row_thumb_cache.get(turl)
+                if pixmap is not None:
+                    return (stock_pixmap(turl, pixmap) if is_stock else pixmap,
+                            voluto, voluto_stock)
+        return None, voluto, voluto_stock
+
     def _open_history(self, watch, row: int | None = None) -> None:
         """Apre il grafico dello storico. I dati sono già nel DB: nessuna
         richiesta di rete, quindi il gesto è gratuito e sempre disponibile."""
-        rows = self.repo.history_points(PROVIDER, watch["ref_id"])
+        ref_id = str(watch["ref_id"])
+        rows = self.repo.history_points(PROVIDER, ref_id)
         runs = split_runs(rows)
         chiave = self._watch_key(watch)
         # Se l'ultima corsa NON è quella dei filtri di adesso (filtri appena
@@ -2728,7 +2762,22 @@ class MarketWatchWidget(QWidget):
             watch["detail"] if "detail" in watch.keys() else "",
             self._filters_summary(self._effective_filters(watch)),
             runs, self, self._scale)
-        dlg.open_from(self._thumb_rect_on_screen(row) if row is not None else None)
+        art, voluto, voluto_stock = self._history_art(ref_id, watch["card_name"])
+        dlg.set_card_pixmap(art)
+        dlg.expect_image(voluto, voluto_stock)
+        # Se l'immagine grande non c'è ancora, la si chiede UNA volta — la
+        # stessa richiesta che parte selezionando la riga. Se un download è
+        # già in corso non se ne accoda un altro: basta aspettare, ci pensa
+        # `_on_image_done` a passarla alla finestra.
+        in_corso = self._img_worker is not None and self._img_worker.isRunning()
+        if voluto and self._img_cache.get(voluto) is None and not in_corso:
+            esatta, _ = self._image_urls_for(ref_id, watch["card_name"])
+            self._show_image(esatta, watch["card_name"])
+        self._history_dlg = dlg
+        try:
+            dlg.open_from(self._thumb_rect_on_screen(row) if row is not None else None)
+        finally:
+            self._history_dlg = None
 
     # --- apertura della pagina su CardTrader ---
     CARD_PAGE = "https://www.cardtrader.com/cards/{ref_id}"
