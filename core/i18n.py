@@ -357,7 +357,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "tutti": "all", "tutte": "all",
         "In lista (qualsiasi)": "On a list (any)",
         "Effetto": "Card text",
+        "Effetto (italiano)": "Card text (Italian)",
         "Effetto (inglese)": "Card text (English)",
+        "Mostra il testo in italiano": "Show the Italian text",
         "Effetto (in inglese: l'italiano non esiste per questa carta)":
             "Card text (English: no Italian version for this card)",
         "Mostra il testo originale in inglese": "Show the original English text",

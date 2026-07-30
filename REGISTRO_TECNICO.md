@@ -704,6 +704,16 @@ confini di parola per non pescare "usato").
   schermata catturata subito dopo il cambio pagina esce **vuota** — non è un
   difetto del layout (ci sono cascato: sembrava una pagina che non si
   disegnava, era la dissolvenza a metà).
+- **Lingua del testo carta** (v1.1.3): il predefinito è `i18n.current()`, non
+  l'italiano fisso — con l'app in inglese le carte in italiano erano una
+  sorpresa. `_desc_lang` vive nel widget e la scelta manuale RESTA mentre si
+  sfogliano le carte (azzerarla a ogni scheda costringerebbe a ri-premere il
+  pulsante ogni volta). L'interruttore mostra la lingua di DESTINAZIONE e
+  compare solo dove `desc_it` esiste: dove manca (2.878 carte) si mostra
+  l'inglese e l'etichetta lo dichiara, invece di far sembrare una scelta
+  quello che è un buco nei dati.
+  Il doppio nome nell'elenco resta invece in entrambe le lingue: lì non è una
+  preferenza di lettura ma un aiuto a RITROVARE la carta che si ha in mano.
 - **Ponte fra moduli** (`AppContext.open_module`, v1.1.0): i moduli **non si
   importano fra loro**, si chiamano per `id` attraverso il contesto. La
   `MainWindow` porta in primo piano il modulo e gli passa il messaggio se

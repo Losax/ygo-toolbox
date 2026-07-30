@@ -599,6 +599,17 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     scorrerlo, la carta tutta la larghezza quando serve leggerla, invece di
     stare stretti in due metà per sempre. L'immagine della carta è passata da
     230 a 320 px di larghezza e si adatta all'altezza della pagina.
+66. **La lingua del testo segue l'app (v1.1.3).** Il testo delle carte partiva
+    sempre in italiano: con l'app impostata in inglese era una sorpresa. Ora
+    la lingua predefinita è **quella dell'interfaccia** — app in inglese,
+    carte in inglese; app in italiano, carte in italiano.
+    L'interruttore accanto a *Effetto* ora mostra **la lingua verso cui
+    passi** (IT o EN), non quella che stai leggendo, e la scelta resta mentre
+    sfogli le altre carte. Dove la traduzione italiana non esiste (2.878 carte
+    su 14.477) il pulsante sparisce del tutto e l'etichetta lo dice, invece di
+    lasciar credere che l'inglese sia una scelta tua.
+    Nell'elenco il nome italiano resta sempre sotto quello inglese: lì serve a
+    ritrovare una carta che hai in mano, in qualunque lingua sia stampata.
 
 ## 4. Note operative importanti
 

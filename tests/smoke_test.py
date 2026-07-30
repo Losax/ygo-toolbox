@@ -1296,10 +1296,39 @@ def main() -> int:
     cdb.back_btn.click()
     assert cdb.pages.currentIndex() == 0
     cdb.stop()
+
+    # 7a-bis) la lingua del TESTO segue quella dell'interfaccia: con l'app in
+    # inglese le carte in italiano sarebbero una sorpresa, e viceversa.
+    from core import i18n as _i18n  # noqa: E402
+    lingua_prima = _i18n.current()
+    for lingua, inizio, altra in (("en", "When a card", "IT"),
+                                  ("it", "Quando una carta", "EN")):
+        _i18n._current = lingua
+        cdb_l = CardDbWidget(ctx_ui)
+        assert cdb_l._desc_lang == lingua
+        cdb_l._open_row(0)
+        assert cdb_l.d_desc.text().startswith(inizio), \
+            f"con l'app in {lingua} il testo dev'essere in {lingua}: {cdb_l.d_desc.text()[:40]}"
+        # il pulsante mostra la lingua verso cui si passa, non quella attuale
+        assert cdb_l.lang_btn.text() == altra
+        cdb_l.lang_btn.click()
+        assert not cdb_l.d_desc.text().startswith(inizio), "l'interruttore non commuta"
+        cdb_l.stop()
+    # carta senza testo italiano: inglese, e il pulsante sparisce (non c'è
+    # nulla verso cui commutare)
+    _i18n._current = "it"
+    cdb_l = CardDbWidget(ctx_ui)
+    cdb_l.show_card(2)                      # "Pot of Greed", solo inglese
+    assert cdb_l.d_desc.text() == "Draw 2 cards."
+    assert not cdb_l.lang_btn.isVisible()
+    cdb_l.stop()
+    _i18n._current = lingua_prima
     st_ui.close()
     cdb_api.fetch_db_version = vera_versione
     print("[OK] Database: la carta scelta si prende la pagina, e si torna "
           "indietro col pulsante o con Esc.")
+    print("[OK] Database: il testo della carta segue la lingua dell'app, "
+          "con interruttore IT/EN dove la traduzione esiste.")
 
     # 7b) ponte fra moduli: passa dal CONTESTO, i moduli non si conoscono
     ricevuti = []

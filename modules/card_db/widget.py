@@ -41,7 +41,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core import anim, theme
+from core import anim, i18n, theme
 from core.context import AppContext
 from core.i18n import tr
 
@@ -180,6 +180,9 @@ class CardDbWidget(QWidget):
         self._version_worker: VersionWorker | None = None
         self._remote_version = ""
         self._current_id: int | None = None
+        # Lingua del testo delle carte: segue l'INTERFACCIA. Con l'app in
+        # inglese le carte in italiano sarebbero una sorpresa, e viceversa.
+        self._desc_lang = i18n.current()
         self._thumb_pool = QThreadPool(self)
         # Poche corsie: le immagini arrivano da un host che minaccia la
         # blacklist a chi tira di volume. Meglio lente che bloccati un'ora.
@@ -396,14 +399,14 @@ class CardDbWidget(QWidget):
         self.d_desc_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         riga_testo.addWidget(self.d_desc_label)
         riga_testo.addStretch(1)
-        # Il testo italiano c'è per 11.599 carte su 14.477: dove manca il
-        # pulsante sparisce, invece di restare lì a non fare niente.
-        self.lang_btn = QPushButton("EN")
+        # Interruttore di lingua del testo. Mostra la lingua verso cui si
+        # passa (non quella attuale), e compare solo dove l'italiano esiste
+        # davvero: c'è per 11.599 carte su 14.477, e un pulsante che non
+        # commuta niente è peggio di un pulsante assente.
+        self.lang_btn = QPushButton("IT")
         self.lang_btn.setObjectName("ghost")
-        self.lang_btn.setCheckable(True)
         self.lang_btn.setFixedWidth(44)
-        self.lang_btn.setToolTip(tr("Mostra il testo originale in inglese"))
-        self.lang_btn.toggled.connect(self._refresh_desc)
+        self.lang_btn.clicked.connect(self._toggle_desc_lang)
         self.lang_btn.setVisible(False)
         riga_testo.addWidget(self.lang_btn)
         v.addLayout(riga_testo)
@@ -736,21 +739,39 @@ class CardDbWidget(QWidget):
         elif carta["image_url"] and not images.failed(carta["image_url"]):
             self._request_image(card_id, carta["image_url"], small=False)
 
+    def _toggle_desc_lang(self) -> None:
+        """La scelta resta finché non la si cambia: sfogliando le carte non
+        si torna alla lingua di partenza a ogni scheda."""
+        self._desc_lang = "en" if self._desc_lang == "it" else "it"
+        self._refresh_desc()
+
     def _refresh_desc(self) -> None:
-        """Testo dell'effetto: italiano se c'è, inglese col pulsante EN."""
+        """Testo dell'effetto nella lingua scelta.
+
+        Il predefinito è la **lingua dell'interfaccia** (`i18n.current()`), non
+        l'italiano fisso: chi tiene l'app in inglese si aspetta le carte in
+        inglese, e viceversa. Se per quella carta l'italiano non esiste
+        (2.878 su 14.477) si mostra l'inglese e lo si DICE, invece di lasciar
+        credere che sia una scelta."""
         if self._current_id is None:
             return
         carta = self.repo.card(self._current_id)
         if carta is None:
             return
         italiano = (carta["desc_it"] if "desc_it" in carta.keys() else "") or ""
+        mostra_it = self._desc_lang == "it" and bool(italiano)
+        self.d_desc.setText(italiano if mostra_it else (carta["desc"] or ""))
         self.lang_btn.setVisible(bool(italiano))
-        usa_inglese = self.lang_btn.isChecked() or not italiano
-        self.d_desc.setText((carta["desc"] or "") if usa_inglese else italiano)
-        self.d_desc_label.setText(
-            tr("Effetto (inglese)") if usa_inglese and italiano
-            else tr("Effetto (in inglese: l'italiano non esiste per questa carta)")
-            if usa_inglese else tr("Effetto"))
+        self.lang_btn.setText("EN" if mostra_it else "IT")
+        self.lang_btn.setToolTip(tr("Mostra il testo originale in inglese")
+                                 if mostra_it else tr("Mostra il testo in italiano"))
+        if mostra_it:
+            etichetta = tr("Effetto (italiano)")
+        elif italiano:
+            etichetta = tr("Effetto (inglese)")
+        else:
+            etichetta = tr("Effetto (in inglese: l'italiano non esiste per questa carta)")
+        self.d_desc_label.setText(etichetta)
 
     def _set_art(self, percorso: str) -> None:
         pixmap = QPixmap(percorso)
