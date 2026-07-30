@@ -3,6 +3,50 @@
 Cassetta degli attrezzi **modulare** per Yu-Gi-Oh!, interfaccia desktop
 PySide6/Qt. Si parla italiano in questo progetto.
 
+## Come si lavora qui (leggere prima di toccare qualsiasi cosa)
+
+**1. Ogni modifica è una VERSIONE RILASCIATA, non un commit.** È una richiesta
+esplicita dell'utente ("deve essere tutto a pari, exe compreso"). Nessun passo
+è opzionale, e va fatto SUBITO, non "alla fine della sessione":
+
+1. alzare la versione in `core/version.py`, `version_info.txt` (sia
+   `filevers/prodvers` sia le stringhe) e nell'intestazione di `LEGGIMI.txt`;
+2. aggiornare **i due registri** (vedi punto 3);
+3. `git commit` **e `git push`** — in locale non basta: l'utente guarda GitHub;
+4. ricompilare l'**exe** e l'**installer**;
+5. creare la **Release su GitHub** con l'installer allegato.
+
+Il punto 5 non è cosmetico: è la Release, non il tag, che accende l'avviso di
+aggiornamento dentro l'app (25 tag e 0 release facevano rispondere 404 all'API).
+E l'utente **usa l'app installata**, non `python main.py`: un exe vecchio
+significa che sta usando qualcosa di diverso da ciò che dicono i registri.
+
+**2. Verificare, non supporre.** In questa sessione ogni volta che ho dato per
+buono qualcosa senza guardare, era sbagliato. Quindi:
+- smoke test dopo OGNI modifica al market_watch;
+- lanciare l'exe e leggere `~/.ygo_toolbox/log.txt` (nell'exe windowed gli
+  errori non compaiono a schermo: finiscono solo lì);
+- per le modifiche all'interfaccia, **una schermata coi font veri** (finestra
+  con `WA_DontShowOnScreen`, NON offscreen: vedi GOTCHA 12) e guardarla;
+- per i dati, **misurare sul DB reale** invece di stimare (copiarlo prima).
+Se in una schermata compare qualcosa che "non dovrebbe esserci", NON liquidarlo
+come artefatto: due volte era un difetto vero (GOTCHA 14).
+
+**3. I due registri vanno tenuti aggiornati a ogni versione.**
+- `REGISTRO.md` = per l'utente. Tabella delle funzioni + **cronologia
+  numerata**: i punti nuovi si aggiungono **IN FONDO, in ordine crescente**
+  (inserendoli in cima la cronologia si legge al rovescio: è già capitato e ho
+  dovuto riordinarla).
+- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 14
+  **GOTCHAS** e le decisioni col loro *perché*. Quando scopri una trappola,
+  scrivila lì con il sintomo, la causa e la cura — è la parte più utile del
+  documento.
+
+**4. Non inventare numeri.** Il filo conduttore di questa sessione: variazioni
+percentuali calcolate su prezzi non confrontabili, totali che moltiplicavano
+prezzi non ottenibili, colori assegnati a condizioni sconosciute. Quando un
+dato non c'è, mostrare "—" o un grigio neutro; mai un valore plausibile.
+
 ## Comandi
 
 ```bash
@@ -85,7 +129,15 @@ come **installer** (`dist\YGO-Toolbox-Setup-vX.Y.Z.exe`, per-utente, senza UAC)
 allegato a una **Release**. Lo zip portatile non si produce più.
 
 ## Idee future già impostate
-- Storico prezzi già salvato a ogni controllo → prossimo passo naturale: grafico.
+- **Grafico dello storico prezzi** — il candidato più pronto: i dati sono già
+  in `mw_price_history` e ora portano la `filters_key`, quindi il grafico può
+  mostrare serie confrontabili invece di mescolarle.
 - Controllo in background anche ad app chiusa (oggi gira solo con app aperta).
 - Companion mobile: da ridecidere (i primi tentativi via Telegram sono stati
   rimossi, vedi REGISTRO_TECNICO).
+- **macOS: ACCANTONATO** dall'utente il 2026-07-30 — nessun Mac disponibile, e
+  **niente lavoro preparatorio** finché non ce n'è uno. Analisi completa già
+  nei TODO del registro tecnico: non rifarla.
+- **Pixmap sfocate su schermi densi**: 21 pixmap disegnate a runtime senza
+  `devicePixelRatio`. Difetto latente già su Windows con monitor 4K e scaling,
+  non solo un problema Mac. Dettagli nei TODO del registro tecnico.

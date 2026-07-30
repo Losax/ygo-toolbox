@@ -10,15 +10,18 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 ## 1. Come si avvia
 
 - **Da installer (quello che si dà agli amici):**
-  `dist\YGO Toolbox Setup vX.Y.Z.exe`. Si installa **solo per l'utente** in
+  `dist\YGO-Toolbox-Setup-vX.Y.Z.exe`, pubblicato anche fra le
+  [Release su GitHub](https://github.com/Losax/ygo-toolbox/releases).
+  Si installa **solo per l'utente** in
   `%LocalAppData%\Programs\YGO Toolbox`, **senza chiedere l'amministratore**,
   mette la voce nel menu Start e si rimuove dalle App di Windows.
   Aggiornare = lanciare il nuovo installer sopra il vecchio: se l'app è aperta
   la chiude lui, e **watchlist, catalogo e token non si toccano**.
   SmartScreen avvisa **una volta sull'installer** (app non firmata), non
   sull'app installata.
-- **Eseguibile nudo:** `dist\YGO Toolbox.exe` (doppio clic, non serve Python). Icona:
-  testa di *Primite Dragon Ether Beryl*.
+- **Eseguibile nudo:** `dist\YGO Toolbox.exe` — è l'ingrediente da cui si
+  costruisce l'installer, non l'artefatto da distribuire. Funziona col doppio
+  clic (non serve Python). Icona: testa di *Primite Dragon Ether Beryl*.
 - **Da sorgente (sviluppo):**
   ```
   .venv\Scripts\activate
@@ -337,6 +340,87 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
       storico dei prezzi resta.
     - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
+50. **Pulsanti fantasma spariti.** Su alcune righe restavano appiccicate a
+    sinistra, davanti al nome, due iconcine che non ci dovevano stare: erano
+    pulsanti di render precedenti che Qt non aveva buttato. Ora a ogni
+    ridisegno si fa pulizia.
+    In più, un'immagine che non si scarica **non viene più richiesta a ogni
+    ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
+    risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.
+    **La causa vera:** controllando il catalogo scaricato è saltato fuori che
+    le immagini mancanti non esistono — tutte le 47.980 stampe hanno il loro
+    indirizzo. A fallire era lo **scaricamento**, perché le miniature
+    partivano tutte insieme. Ora vengono richieste **una ogni 80 millesimi di
+    secondo**: alla vista non cambia niente, ma CardTrader smette di
+    scambiarci per un robot.
+
+---
+
+51. **Le copie multiple ora dicono da dove arrivano (v1.0.19).** Segnalato su
+    *Blitzclique Surge*: 3 copie richieste, ma il venditore più economico ne
+    aveva una — e l'app moltiplicava il suo prezzo per tre, cioè un totale non
+    ottenibile. Ora:
+    - il costo è quello delle **3 copie più economiche davvero disponibili**,
+      anche da venditori diversi (nessuna richiesta in più: gli annunci erano
+      già tutti scaricati);
+    - in Panoramica la cella *Q.tà* mostra `3 ▸`: **clic** e sotto la carta
+      compaiono le righe dei venditori che contribuiscono, con quante copie,
+      a che prezzo, condizione e paese;
+    - se sul mercato non ce ne sono abbastanza, il prezzo si colora di giallo
+      e il tooltip dice quante se ne trovano davvero.
+    Il **totale della base** usa questo costo reale. La **Var.%** invece
+    continua a misurare il movimento dei prezzi: dice come si è mosso il
+    mercato, non come è cambiata la disponibilità.
+52. **Pulsante "apri su CardTrader" (v1.0.20).** Sulla riga, insieme ai filtri
+    e al cestino, c'è una freccia in uscita che apre la pagina della carta.
+    **Sui filtri nel link, la risposta è no** e vale la pena saperlo: ho
+    verificato sul sito, CardTrader applica i filtri con una chiamata interna
+    e non li scrive mai nell'indirizzo — un link "con i filtri già attivi"
+    semplicemente non esiste. Passarli comunque avrebbe prodotto un indirizzo
+    che *sembra* filtrato e non lo è. Al loro posto il tooltip elenca i filtri
+    in vigore per quella carta, così si rimettono a mano in due secondi.
+53. **Condizioni abbreviate (v1.0.21) e a badge colorato (v1.0.22).** Nella
+    colonna *Condizione* c'è la sigla — **M, NM, EX, SP, LP, GD, MP, PL, PO** —
+    invece del nome per esteso, col nome intero nel tooltip: la colonna si
+    stringe da 110 a 70 px e lo spazio va ai *Commenti*.
+    Ora la sigla è anche un **badge colorato**: **verde** per le carte
+    perfette, poi giallo, arancione e **rosso** man mano che la condizione
+    scende. Anche la **lingua** è un badge, ma volutamente **neutro**: lì
+    accanto il colore porta già un giudizio, e due semafori nella stessa riga
+    si darebbero fastidio.
+    Una condizione che non conosciamo resta **grigia e scritta per esteso**:
+    meglio nessun giudizio che un colore sbagliato.
+54. **Ordinamento della watchlist (v1.0.23).** Sopra la tabella una riga di
+    pulsantini: *Manuale · Rarità · Prezzo · Var.*, con il criterio attivo in
+    teal e una freccetta; rifacendo clic sullo stesso si inverte il verso, e la
+    scelta si ricorda alla riapertura.
+    Due decisioni che vale la pena conoscere:
+    - **le cartelle e le basi restano gruppi**: si ordina *dentro* ciascuna e
+      fra le carte sciolte. Un ordinamento globale avrebbe sciolto i gruppi,
+      che è il contrario di quello che servono a fare;
+    - **chi non ha il dato va sempre in fondo**, in entrambi i versi: una carta
+      senza prezzo che galleggia in cima invertendo l'ordine farebbe sembrare
+      la lista ordinata per sbaglio.
+    La scala delle rarità è **convenzionale** (una ufficiale non esiste): segue
+    la scarsità come la intendono i giocatori, da Common a Starlight Rare, e
+    una rarità che non riconosciamo finisce tutta da una parte invece di
+    sparpagliarsi.
+55. **Installer e avviso di aggiornamento (v1.0.24).** Non si consegna più uno
+    zip con l'exe dentro, ma un **installer**: doppio clic e avanti.
+    - Si installa **solo per te**, senza chiedere la password di
+      amministratore; mette la voce nel menu Start e si disinstalla dalle App
+      di Windows come qualsiasi programma.
+    - **SmartScreen dà meno noia, non più**: compare una volta sull'installer,
+      poi l'app installata parte senza avvisi. Con lo zip invece l'avviso
+      tornava a ogni exe nuovo, perché il marchio "scaricato da internet" si
+      propaga ai file estratti.
+    - Per aggiornare basta lanciare il nuovo installer: **se l'app è aperta la
+      chiude lui**, e watchlist, catalogo e token restano al loro posto
+      (verificato anche disinstallando).
+    - All'avvio l'app **controlla se c'è una versione nuova** e mostra
+      un'etichetta cliccabile in alto. Non scarica né installa niente da sola,
+      e se non c'è rete (o il controllo non è raggiungibile) **tace**: un
+      errore per un controllo che non hai chiesto sarebbe solo fastidio.
 56. **Esporta e importa la watchlist (v1.0.25).** Finora i tuoi dati si
     potevano spostare solo copiando il file `.db`: binario, con uno schema
     dentro, illeggibile senza strumenti. Ora c'è un **file JSON** che fa da
@@ -358,87 +442,6 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     contengono carte, e sia le basi sia le carte portano un oggetto di filtri):
     in CSV servirebbero più file collegati da id, e per un amico sarebbe *meno*
     comprensibile, non più.
-55. **Installer e avviso di aggiornamento (v1.0.24).** Non si consegna più uno
-    zip con l'exe dentro, ma un **installer**: doppio clic e avanti.
-    - Si installa **solo per te**, senza chiedere la password di
-      amministratore; mette la voce nel menu Start e si disinstalla dalle App
-      di Windows come qualsiasi programma.
-    - **SmartScreen dà meno noia, non più**: compare una volta sull'installer,
-      poi l'app installata parte senza avvisi. Con lo zip invece l'avviso
-      tornava a ogni exe nuovo, perché il marchio "scaricato da internet" si
-      propaga ai file estratti.
-    - Per aggiornare basta lanciare il nuovo installer: **se l'app è aperta la
-      chiude lui**, e watchlist, catalogo e token restano al loro posto
-      (verificato anche disinstallando).
-    - All'avvio l'app **controlla se c'è una versione nuova** e mostra
-      un'etichetta cliccabile in alto. Non scarica né installa niente da sola,
-      e se non c'è rete (o il controllo non è raggiungibile) **tace**: un
-      errore per un controllo che non hai chiesto sarebbe solo fastidio.
-54. **Ordinamento della watchlist (v1.0.23).** Sopra la tabella una riga di
-    pulsantini: *Manuale · Rarità · Prezzo · Var.*, con il criterio attivo in
-    teal e una freccetta; rifacendo clic sullo stesso si inverte il verso, e la
-    scelta si ricorda alla riapertura.
-    Due decisioni che vale la pena conoscere:
-    - **le cartelle e le basi restano gruppi**: si ordina *dentro* ciascuna e
-      fra le carte sciolte. Un ordinamento globale avrebbe sciolto i gruppi,
-      che è il contrario di quello che servono a fare;
-    - **chi non ha il dato va sempre in fondo**, in entrambi i versi: una carta
-      senza prezzo che galleggia in cima invertendo l'ordine farebbe sembrare
-      la lista ordinata per sbaglio.
-    La scala delle rarità è **convenzionale** (una ufficiale non esiste): segue
-    la scarsità come la intendono i giocatori, da Common a Starlight Rare, e
-    una rarità che non riconosciamo finisce tutta da una parte invece di
-    sparpagliarsi.
-53. **Condizioni abbreviate (v1.0.21) e a badge colorato (v1.0.22).** Nella
-    colonna *Condizione* c'è la sigla — **M, NM, EX, SP, LP, GD, MP, PL, PO** —
-    invece del nome per esteso, col nome intero nel tooltip: la colonna si
-    stringe da 110 a 70 px e lo spazio va ai *Commenti*.
-    Ora la sigla è anche un **badge colorato**: **verde** per le carte
-    perfette, poi giallo, arancione e **rosso** man mano che la condizione
-    scende. Anche la **lingua** è un badge, ma volutamente **neutro**: lì
-    accanto il colore porta già un giudizio, e due semafori nella stessa riga
-    si darebbero fastidio.
-    Una condizione che non conosciamo resta **grigia e scritta per esteso**:
-    meglio nessun giudizio che un colore sbagliato.
-52. **Pulsante "apri su CardTrader" (v1.0.20).** Sulla riga, insieme ai filtri
-    e al cestino, c'è una freccia in uscita che apre la pagina della carta.
-    **Sui filtri nel link, la risposta è no** e vale la pena saperlo: ho
-    verificato sul sito, CardTrader applica i filtri con una chiamata interna
-    e non li scrive mai nell'indirizzo — un link "con i filtri già attivi"
-    semplicemente non esiste. Passarli comunque avrebbe prodotto un indirizzo
-    che *sembra* filtrato e non lo è. Al loro posto il tooltip elenca i filtri
-    in vigore per quella carta, così si rimettono a mano in due secondi.
-51. **Le copie multiple ora dicono da dove arrivano (v1.0.19).** Segnalato su
-    *Blitzclique Surge*: 3 copie richieste, ma il venditore più economico ne
-    aveva una — e l'app moltiplicava il suo prezzo per tre, cioè un totale non
-    ottenibile. Ora:
-    - il costo è quello delle **3 copie più economiche davvero disponibili**,
-      anche da venditori diversi (nessuna richiesta in più: gli annunci erano
-      già tutti scaricati);
-    - in Panoramica la cella *Q.tà* mostra `3 ▸`: **clic** e sotto la carta
-      compaiono le righe dei venditori che contribuiscono, con quante copie,
-      a che prezzo, condizione e paese;
-    - se sul mercato non ce ne sono abbastanza, il prezzo si colora di giallo
-      e il tooltip dice quante se ne trovano davvero.
-    Il **totale della base** usa questo costo reale. La **Var.%** invece
-    continua a misurare il movimento dei prezzi: dice come si è mosso il
-    mercato, non come è cambiata la disponibilità.
-50. **Pulsanti fantasma spariti.** Su alcune righe restavano appiccicate a
-    sinistra, davanti al nome, due iconcine che non ci dovevano stare: erano
-    pulsanti di render precedenti che Qt non aveva buttato. Ora a ogni
-    ridisegno si fa pulizia.
-    In più, un'immagine che non si scarica **non viene più richiesta a ogni
-    ridisegno** (era una raffica verso CardTrader, che sta dietro Cloudflare e
-    risponde 403): viene ricordata e riprovata al successivo *Controlla ora*.
-    **La causa vera:** controllando il catalogo scaricato è saltato fuori che
-    le immagini mancanti non esistono — tutte le 47.980 stampe hanno il loro
-    indirizzo. A fallire era lo **scaricamento**, perché le miniature
-    partivano tutte insieme. Ora vengono richieste **una ogni 80 millesimi di
-    secondo**: alla vista non cambia niente, ma CardTrader smette di
-    scambiarci per un robot.
-
----
-
 ## 4. Note operative importanti
 
 - **Non fare raffiche di richieste** verso CardTrader: è dietro Cloudflare e può
