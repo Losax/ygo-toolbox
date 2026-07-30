@@ -584,6 +584,33 @@ Verifica offscreen della GUI (utile in sviluppo): istanziare `MainWindow` con
 
 ## 7. Idee future / TODO
 
+- **Compatibilità macOS: ACCANTONATA il 2026-07-30** (decisione dell'utente:
+  nessun Mac disponibile, riprendere quando ce n'è uno — e *niente lavoro
+  preparatorio* nel frattempo). Analisi già fatta, non rifarla:
+  - **il codice è quasi pronto**: cercando `winreg|os.startfile|windll|C:\|
+    sys.platform|AppData` in `core/` e `modules/` c'è UN solo riferimento a
+    Windows, l'icona `.ico` in `main.py`. I dati stanno in `Path.home()`, che
+    su macOS va bene.
+  - **serve fisicamente un Mac**: PyInstaller non compila per un sistema
+    diverso da quello su cui gira. Non ci sono scorciatoie.
+  - **Gatekeeper è più duro di SmartScreen**: app non firmata = quarantena e
+    *Impostazioni → Privacy e sicurezza → Apri comunque*, e sui chip Apple può
+    dare "app danneggiata". Per farlo bene: Apple Developer Program 99 $/anno
+    con firma + notarizzazione (su Windows il certificato l'avevamo scartato).
+  - da fare quando si riprende: `.icns`, ramo Mac nello spec con `BUNDLE`
+    (saltando `version=version_info.txt`, risorsa Windows), `.dmg` o zip al
+    posto di Inno, e **verificare le notifiche** (su Mac la tray è nella barra
+    dei menu: `supportsMessages()` potrebbe dire False e gli avvisi di calo
+    finirebbero solo nel log).
+  - via a costo zero per uno-due amici smanettoni: far girare l'app dai
+    sorgenti (`pip install -r requirements.txt`, `python main.py`).
+- **Schermi ad alta densità: pixmap sfocate.** Disegniamo 21 pixmap a runtime
+  (bandierine, badge, icone header, segnaposto, timbro "Stock") **senza gestire
+  `devicePixelRatio`**: su Retina — ma anche su un 4K Windows con scaling al
+  150% — vengono ingrandite dal sistema e si vedono morbide. Difetto LATENTE
+  già oggi, non solo un problema Mac; l'utente non l'ha notato perché il suo
+  schermo è al 100%. Si risolve in un punto solo se si passa da un helper
+  comune invece di toccare i 21 siti.
 - Grafico dello storico prezzi (dati già in `mw_price_history`).
 - Controllo in background anche ad app chiusa.
 - **Companion mobile: DA RIDECIDERE (in pausa dal 2026-07-28).** La prima
