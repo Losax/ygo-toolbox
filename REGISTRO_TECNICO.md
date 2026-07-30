@@ -38,6 +38,7 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `rarity.py` | Badge rarità (pill con sigla community: UR, ScR, QCSR, … e colore/gradiente "foil"). Match per SOTTOSTRINGA dal più specifico al più generico ("rare" per ultimo!); sconosciute → iniziali su pill neutra. Cache per (nome, altezza). |
 | `deck_dialog.py` | `DeckDialog`: compone/modifica una **base** (mazzo) — nome, filtri comuni, carte e copie. **NON è una `CardDialog`**: quelle sono `Qt.Popup` e si chiudono al primo clic fuori, il che va bene per due interruttori ma è pessimo per un modulo dove si compongono venti carte. Qui serve una finestra modale normale. La ricerca non è riscritta né imitata: stesso indice "a token" (`_deck_search`) e soprattutto **lo stesso `ThumbDelegate`** su un `QCompleter` proprio — miniature, hover animato e pill del set arrivano da lì. Il widget passa `thumb_items` (le stesse voci di `set_cards`) e `resolve=_label_to_ref.get`. NB: il popup del completer è una finestra a parte, quindi non compare in un `grab()` del dialogo — per verificarlo va catturato `completer.popup()`. Copie e pulsante "togli" stanno nella STESSA cella (con una colonna a parte, la barra di scorrimento verticale la spingeva fuori dal bordo). **Numero delle copie illeggibile:** il QSS del tema dà ai campi 8px di padding sopra e sotto; in una cella bassa al testo restavano ~8px e del "3" si vedeva la fascia centrale — sembrava un carattere minuscolo, non un numero tagliato. Cura: righe da 52px imposte **riga per riga** (`setDefaultSectionSize` NON ridimensiona le righe già create), spinbox con altezza minima 34 e un QSS locale che riduce il padding. Diagnosi: lo stesso spinbox reso da solo, in un QHBoxLayout e in una cella — solo nella cella era alto 26px. |
 | `filters_dialog.py` | Dialoghi "in-app": `CardDialog` (base SENZA cornice di Windows: **Qt.Popup** + FramelessWindowHint + WA_TranslucentBackground → il clic fuori chiude da solo; `reject()` reindirizza ad `accept()` = **chiudere applica**, solo il pulsante Annulla scarta via `_cancel`; le QComboBox interne NON chiudono il popup). Card `QFrame#popover` con ombra; `open_near(anchor)` posiziona accanto al pulsante ed entra con **fade + scivolamento** — NB: `setWindowOpacity` è inaffidabile sulle finestre translucide di Windows → si usa `anim.fade_in` (effetto opacità annidato sopra l'ombra della card: widget diversi = lecito). `FiltersDialog` = solo filtri annunci, con tre chiamanti (predefiniti dall'imbuto in header, carta-in-arrivo e per-riga entrambi con `allow_global`; lingua ≠ en spegne l'americana via `_on_language_changed`, MAI bloccare la combo). `DisplayDialog` = solo visualizzazione (pulsante Opzioni). `ToggleSwitch` = QCheckBox ridipinto a interruttore (pallino animato, traccia teal); freccette combo = PNG chevron generato da `theme._chevron_url` (cache in ~/.ygo_toolbox/cache — il QSS accetta solo url() per ::down-arrow). `AnimatedCombo` = tendina animata (fade sulla view + scivolamento) con menu ARROTONDATO: contenitore QComboBoxPrivateContainer reso translucido (flags Popup+Frameless+NoDropShadow, WA_TranslucentBackground) e trasparente con stylesheet a dichiarazione NUDA (il selettore di classe privata NON fa presa nei fogli di widget!) + stylesheet esplicito sulla view per ripristinarne il look; `setMaxVisibleItems(30)` per non far comparire i QComboBoxPrivateScroller (strisce-freccia squadrate sopra/sotto). Uscita card animata in `CardDialog.done()` (closeEvent con event.ignore() + reject, chiusura vera al finished; guardia `_exiting`). |
+| `history_chart.py` | Grafico dello storico prezzi: logica pura (`split_runs`, `collapse`, `nice_ticks`, `price_at`, dataclass `Run`) + `PriceChart` (QWidget dipinto con QPainter) + `HistoryDialog`. La logica sta fuori da Qt apposta: lo smoke test la prova senza aprire finestre. **Non è una `CardDialog`** (Qt.Popup = si chiude al primo clic fuori): è una finestra che si guarda e si sorvola col mouse. Si disegna in un QWidget, NON in un pixmap → la densità dello schermo la gestisce Qt e il grafico resta nitido (non aumenta il debito dei 21 pixmap disegnati a mano). |
 | `transfer.py` | Esporta/importa la watchlist in **JSON leggibile** (`formato: ygo-toolbox/watchlist`, `versione`). Niente Qt dentro: logica pura, testabile. **JSON e non CSV** perché i dati sono gerarchici (cartelle→carte, e entrambe portano un *oggetto* filtri): in CSV servirebbero più file collegati da id, meno comprensibili per un amico, non più. Chiavi in italiano: il file lo legge una persona. **NON si esportano MAI il token** (è una credenziale, e il file nasce per essere passato) **né il catalogo** (47.980 righe riscaricabili). Storico e preferenze entrano nel backup e restano fuori dall'export di una singola base: la regola la applica `export_data` da sé (`include_history=None` = "decidi tu"), non la memoria del chiamante. Import: `replace=False` aggiorna le carte già presenti con quanto dice il file (ignorarne pezzi in silenzio sarebbe peggio) e non duplica lo storico; `replace=True` svuota prima ed è l'unico caso in cui applica le preferenze. Lo storico si reinserisce con `add_history_row`, che conserva la data ORIGINALE — `record_price` timbrerebbe `now` e appiattirebbe la storia sul giorno dell'import. |
 | `net.py` | `requests.Session` condivisa (keep-alive). |
 | `config.py` | Token (file / env). |
@@ -475,6 +476,39 @@ confini di parola per non pescare "usato").
   Attenzione: `_folder_at` e `_row_indent` devono riconoscere il nuovo tipo —
   il payload è una TUPLA, non una riga di DB, e `payload["folder_id"]`
   esploderebbe.
+- **Grafico dello storico** (`history_chart.py`; ingressi: doppio clic sulla
+  riga → `_on_cell_double_clicked`, e tasto destro → *Storico prezzi…*, entrambi
+  in `_open_history`). Nessuna richiesta di rete: i dati sono già in
+  `mw_price_history`, `repo.history_points` li restituisce TUTTI (chiave
+  compresa) e `split_runs` li spezza in **corse**, cioè blocchi consecutivi con
+  la stessa `filters_key` — la stessa definizione che `_run_start` calcola con
+  `MAX(id)` fra i punti di chiave diversa. L'ultima corsa è quella attuale.
+  Decisioni, tutte figlie di "non inventare numeri":
+  - **linea a GRADINI, non interpolata**: lo storico registra i *cambi* di
+    prezzo, quindi fra due punti il prezzo è rimasto quello; una diagonale
+    disegnerebbe una discesa graduale mai avvenuta (dal vivo su *The Bystial
+    Lubellion*: fermo a 200,54 € per 18 giorni, poi -18% il 24/07);
+  - **la linea arriva a `now`**: l'ultimo prezzo è ancora quello in vigore;
+  - **solo la corsa attuale in pieno colore**; le precedenti sono un altro
+    prodotto e stanno dietro un `ToggleSwitch` che compare SOLO se esistono
+    (un comando spento che non fa niente è peggio di un comando assente), rese
+    smorzate e separate da una tratteggiata. I riquadri di riepilogo parlano
+    solo della corsa attuale, e il tooltip lo dice: con le serie vecchie a
+    schermo, "Minimo" si leggerebbe come il minimo del grafico;
+  - **punti consecutivi con lo stesso prezzo fusi** (`collapse`): i DB nati
+    prima di `record_price` ne hanno a raffica (visti 4 identici in 15 secondi);
+  - **asse dei prezzi non zero-based** (226→246 € sarebbe piatto), ma i valori
+    sono sempre etichettati.
+  Se i filtri sono appena cambiati e non c'è ancora stato un controllo,
+  `_open_history` aggiunge una `Run` VUOTA con la chiave corrente: la finestra
+  dice "nessun prezzo con questi filtri" invece di spacciare la serie
+  precedente per quella attuale.
+  I **pallini si disegnano anche sulle corse smorzate**: una serie di pochi
+  punti ravvicinati, su un asse di settimane, si schiaccia in un tratto
+  verticale che senza pallini sembra un difetto di disegno (visto su *Dominus
+  Purge*) invece che "qui ci sono state alcune rilevazioni".
+  L'animazione di comparsa è **UNA** `QVariantAnimation` creata nel costruttore
+  e riavviata, senza `DeleteWhenStopped` (GOTCHA 11).
 - **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
   sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
   **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce
@@ -611,7 +645,12 @@ Verifica offscreen della GUI (utile in sviluppo): istanziare `MainWindow` con
   già oggi, non solo un problema Mac; l'utente non l'ha notato perché il suo
   schermo è al 100%. Si risolve in un punto solo se si passa da un helper
   comune invece di toccare i 21 siti.
-- Grafico dello storico prezzi (dati già in `mw_price_history`).
+- ~~Grafico dello storico prezzi~~ — **fatto il 2026-07-30 (v1.0.26)**, vedi
+  `history_chart.py` e il flusso qui sopra. Restano possibili: grafico del
+  totale di una BASE (oggi NON si può senza inventare numeri — il DB conserva
+  il minimo per carta, non il costo reale delle copie a ogni controllo, che
+  dipende dagli annunci di quel momento), zoom/selezione di un intervallo,
+  esportazione del grafico come immagine.
 - Controllo in background anche ad app chiusa.
 - **Companion mobile: DA RIDECIDERE (in pausa dal 2026-07-28).** La prima
   versione (bot Telegram: `core/telegram.py` + aggancio in `Notifier.notify` +

@@ -77,6 +77,7 @@ from . import transfer
 from .deck_dialog import DeckDialog
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
+from .history_chart import HistoryDialog, Run, split_runs
 from .rarity import rarity_pixmap, rarity_rank
 from .providers import cardtrader
 from .providers.base import CardRef, ListingFilters, PriceQuote
@@ -1106,6 +1107,10 @@ class MarketWatchWidget(QWidget):
         # cartelle: clic per aprire/chiudere, drag&drop per spostare/riordinare,
         # tasto destro per creare/rinominare/eliminare
         self.table.cellClicked.connect(self._on_cell_clicked)
+        # doppio clic su una carta = storico prezzi (la tabella non è
+        # editabile, quindi il gesto era libero e non ruba niente al clic
+        # singolo, che apre/chiude cartelle e provenienze)
+        self.table.cellDoubleClicked.connect(self._on_cell_double_clicked)
         self.table.row_moved.connect(self._on_row_moved)
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._table_menu)
@@ -2544,6 +2549,8 @@ class MarketWatchWidget(QWidget):
         menu = QMenu(self.table)
         if entry is not None and entry[0] == "watch":
             w = entry[1]
+            menu.addAction(tr("Storico prezzi…"), lambda watch=w: self._open_history(watch))
+            menu.addSeparator()
             cur_fid = w["folder_id"] if "folder_id" in w.keys() else None
             sub = menu.addMenu(tr("Sposta nella cartella"))
             if cur_fid is not None:
@@ -2683,6 +2690,31 @@ class MarketWatchWidget(QWidget):
         self._set_busy(False, tr("Base «{name}»: {n} carte, {c} copie. Controllo i prezzi…")
                        .format(name=name, n=len(cards), c=copies_tot))
         self.check_now()
+
+    # --- storico prezzi (grafico) ---
+    def _on_cell_double_clicked(self, row: int, _col: int) -> None:
+        entry = self._row_entries[row] if 0 <= row < len(self._row_entries) else None
+        if entry is not None and entry[0] == "watch":
+            self._open_history(entry[1])
+
+    def _open_history(self, watch) -> None:
+        """Apre il grafico dello storico. I dati sono già nel DB: nessuna
+        richiesta di rete, quindi il gesto è gratuito e sempre disponibile."""
+        rows = self.repo.history_points(PROVIDER, watch["ref_id"])
+        runs = split_runs(rows)
+        chiave = self._watch_key(watch)
+        # Se l'ultima corsa NON è quella dei filtri di adesso (filtri appena
+        # cambiati e nessun controllo ancora fatto), la corsa attuale è vuota:
+        # meglio dirlo che mostrare i prezzi di un'altra versione come se
+        # fossero questi.
+        if runs and runs[-1].key != chiave:
+            runs = runs + [Run(chiave, [], runs[-1].currency)]
+        dlg = HistoryDialog(
+            watch["card_name"],
+            watch["detail"] if "detail" in watch.keys() else "",
+            self._filters_summary(self._effective_filters(watch)),
+            runs, self, self._scale)
+        dlg.exec()
 
     # --- apertura della pagina su CardTrader ---
     CARD_PAGE = "https://www.cardtrader.com/cards/{ref_id}"

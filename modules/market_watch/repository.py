@@ -377,6 +377,22 @@ class MarketWatchRepository:
             (provider,),
         )
 
+    def history_points(self, provider, ref_id) -> list:
+        """Tutti i punti storici di una carta, in ordine cronologico e CON la
+        chiave dei filtri: è la materia prima del grafico.
+
+        Qui NON si filtra per chiave, di proposito: la separazione in "corse"
+        la fa `history_chart.split_runs`, che deve poter mostrare anche le
+        serie precedenti — smorzate e separate, mai attaccate a quella
+        attuale. L'ordinamento per `captured_at, id` dà lo stesso taglio di
+        `_run_start` (l'ultimo blocco di punti con la stessa chiave)."""
+        return self.storage.query(
+            "SELECT price, currency, filters_key, captured_at "
+            "FROM mw_price_history WHERE provider = ? AND ref_id = ? "
+            "ORDER BY captured_at, id",
+            (provider, str(ref_id)),
+        )
+
     def add_history_row(self, provider, ref_id, price, currency,
                         filters_key: str, captured_at) -> None:
         """Inserisce un punto storico CON la sua data originale.

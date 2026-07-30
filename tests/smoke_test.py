@@ -1002,6 +1002,96 @@ def main() -> int:
     print("[OK] Immagini: ripiego sull'arte senza rarità col timbro 'Stock', "
           "cornice vuota come ultima spiaggia, richieste spaziate.")
 
+    # 6) grafico dello storico prezzi
+    from datetime import datetime as _dt, timedelta as _td  # noqa: E402
+    from modules.market_watch import history_chart as hc  # noqa: E402
+
+    t0 = _dt(2026, 7, 1, 10, 0, 0)
+
+    def punto(minuti, prezzo, chiave="A"):
+        return {"price": prezzo, "currency": "EUR", "filters_key": chiave,
+                "captured_at": (t0 + _td(minutes=minuti)).strftime("%Y-%m-%d %H:%M:%S")}
+
+    # i punti consecutivi con lo STESSO prezzo si fondono: sono un prezzo solo,
+    # non quattro eventi (i DB vecchi registravano ogni controllo)
+    runs = hc.split_runs([punto(0, 10.0), punto(1, 10.0), punto(2, 10.0),
+                          punto(30, 12.0), punto(60, 11.0)])
+    assert len(runs) == 1, runs
+    assert [p.price for p in runs[0].points] == [10.0, 12.0, 11.0]
+
+    # cambio di filtri = corsa nuova; tornando alla chiave di prima NON si
+    # ricuce la vecchia serie (è il caso "tolgo e rimetto e mi esce +30%")
+    runs = hc.split_runs([punto(0, 10.0), punto(10, 12.0),
+                          punto(20, 3.0, "B"),
+                          punto(30, 11.0, "A"), punto(40, 13.0, "A")])
+    assert [r.key for r in runs] == ["A", "B", "A"], [r.key for r in runs]
+    assert len(runs[-1].points) == 2, "la corsa attuale sono solo i punti dopo l'ultimo cambio"
+    assert abs(runs[-1].change_pct() - (13.0 - 11.0) / 11.0 * 100) < 1e-6
+    assert runs[1].change_pct() is None, "con un punto solo non c'è variazione da mostrare"
+    assert (runs[-1].low, runs[-1].high) == (11.0, 13.0)
+
+    # lettura a GRADINI: fra due punti vale l'ultimo prezzo, non un'interpolazione
+    pts = hc.split_runs([punto(0, 10.0), punto(60, 20.0)])[0].points
+    assert hc.price_at(pts, t0 + _td(minutes=59)) == 10.0, "prima del cambio vale il vecchio prezzo"
+    assert hc.price_at(pts, t0 + _td(minutes=60)) == 20.0
+    assert hc.price_at(pts, t0 + _td(minutes=999)) == 20.0, "l'ultimo prezzo resta in vigore"
+    assert hc.price_at(pts, t0 - _td(minutes=1)) is None, "prima del primo punto non si inventa"
+
+    # date illeggibili: si saltano, non fanno esplodere il grafico
+    assert hc.parse_dt("non-una-data") is None
+    assert hc.split_runs([{"price": 1.0, "currency": "EUR", "filters_key": "A",
+                           "captured_at": "boh"}]) == []
+
+    # asse dei prezzi: valori tondi che CONTENGONO i dati, anche se piatti
+    ticks = hc.nice_ticks(226.0, 247.0)
+    assert ticks[0] <= 226.0 and ticks[-1] >= 247.0, ticks
+    assert len(ticks) >= 3, ticks
+    piatti = hc.nice_ticks(10.0, 10.0)
+    assert piatti[0] < 10.0 < piatti[-1], piatti
+
+    # il giro completo dal DB: i punti escono in ordine e col loro filters_key
+    widget.repo.add_watch("cardtrader", "555", "Blue-Eyes White Dragon", "UR · LOB", 5.0)
+    k1 = widget._filters_key(widget._filters)
+    for prezzo in (20.0, 22.0, 21.0):
+        widget.repo.record_price("cardtrader", "555", prezzo, "EUR", k1)
+    righe = widget.repo.history_points("cardtrader", "555")
+    assert [r["price"] for r in righe] == [20.0, 22.0, 21.0], [r["price"] for r in righe]
+    assert all(r["filters_key"] == k1 for r in righe)
+
+    dlg = hc.HistoryDialog("Blue-Eyes White Dragon", "UR · LOB", "IT · Near Mint",
+                           hc.split_runs(righe))
+    assert dlg.chart.current_run() is not None
+    assert len(dlg.chart.current_run().points) == 3
+    assert not dlg.chart.previous_runs()
+    # senza serie precedenti l'interruttore non esiste: un comando spento che
+    # non fa niente è peggio di un comando assente
+    assert not hasattr(dlg, "prev_switch")
+    dlg.deleteLater()
+
+    # filtri appena cambiati e nessun controllo ancora fatto: la corsa attuale
+    # è VUOTA — meglio dirlo che mostrare i prezzi di un'altra versione
+    w555 = [w for w in widget.repo.list_watches() if w["ref_id"] == "555"][0]
+    widget.repo.set_watch_filters(w555["id"], _json.dumps(
+        ListingFilters(language="fr", pro_only=True).to_dict()))
+    w555 = [w for w in widget.repo.list_watches() if w["ref_id"] == "555"][0]
+    k2 = widget._watch_key(w555)
+    assert k2 != k1
+    runs2 = hc.split_runs(widget.repo.history_points("cardtrader", "555"))
+    assert runs2[-1].key == k1, "l'ultima corsa in archivio è ancora quella vecchia"
+    dlg2 = hc.HistoryDialog("Blue-Eyes", "UR · LOB", "FR · PRO",
+                            runs2 + [hc.Run(k2, [], "EUR")])
+    assert dlg2.chart.current_run().points == [], "la corsa nuova parte vuota"
+    assert len(dlg2.chart.previous_runs()) == 1
+    assert hasattr(dlg2, "prev_switch") and not dlg2.prev_switch.isChecked(), \
+        "le serie precedenti partono NASCOSTE: non sono confrontabili"
+    dlg2.chart.set_show_previous(True)
+    assert len(dlg2.chart._visible_runs()) == 2
+    dlg2.deleteLater()
+    widget.repo.remove_watch(w555["id"])
+    print("[OK] Grafico storico: gradini (niente interpolazione), punti "
+          "duplicati fusi, corse separate dai filtri e serie precedenti "
+          "nascoste per scelta.")
+
     widget.stop()
     storage.close()
     print("\nTutti i controlli superati.")

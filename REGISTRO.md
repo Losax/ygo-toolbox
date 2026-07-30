@@ -56,6 +56,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
 | **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
 | **Ordina per** | Riga di pulsantini sopra la tabella: **Manuale** (l'ordine che hai dato trascinando), **Rarità**, **Prezzo**, **Var.**. Il criterio attivo è **teal** con una freccetta; **cliccandolo di nuovo si inverte** il verso. L'ordinamento agisce **dentro ogni cartella/base** e fra le carte sciolte: i gruppi restano gruppi. Le carte senza il dato (prezzo mai visto, variazione non calcolabile) stanno **sempre in fondo**, in entrambi i versi. Il criterio si ricorda alla riapertura. |
+| **Grafico dello storico** | **Doppio clic** su una carta in watchlist (o tasto destro → *Storico prezzi…*): si apre una finestra col grafico dei prezzi rilevati, il prezzo attuale, il minimo, il massimo, la variazione dal primo prezzo e da quanti giorni si segue la carta. Passando il mouse si legge il prezzo in vigore a quella data. Mostra solo i prezzi presi **con i filtri di adesso**; se ce ne sono di più vecchi, presi con altri filtri, un interruttore in basso li aggiunge smorzati e separati da una linea tratteggiata. |
 | **Esporta / importa** | **Tasto destro** sulla watchlist → *Esporta tutto…* (backup: carte, cartelle, basi, preferenze e storico prezzi) oppure, sulla riga di una base, *Esporta questa base…* (il file da passare a un amico: solo le carte con copie e filtri). Il file è un **JSON leggibile**, apribile con Notepad, e pesa una quarantina di KB contro i 13 MB del database. Con *Importa da file…* l'app dice **cosa contiene** e poi chiede: **Aggiungi** (unisce; le carte già presenti vengono aggiornate) o **Sostituisci** (svuota e rimpiazza, con una conferma in più). Il **token non viene mai esportato**, e il catalogo nemmeno (si riscarica). |
 | **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
 | **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
@@ -442,6 +443,38 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     contengono carte, e sia le basi sia le carte portano un oggetto di filtri):
     in CSV servirebbero più file collegati da id, e per un amico sarebbe *meno*
     comprensibile, non più.
+57. **Grafico dello storico prezzi (v1.0.26).** I prezzi si raccoglievano da
+    un mese e si potevano solo leggere uno per volta, nella colonna *Var.*.
+    Ora **doppio clic su una carta** (o tasto destro → *Storico prezzi…*) apre
+    una finestra con l'andamento, il prezzo attuale, minimo, massimo, la
+    variazione dal primo prezzo e da quanti giorni la segui. Il mouse sul
+    grafico dice quanto costava a quella data.
+    Tre scelte che cambiano cosa si legge:
+    - **La linea va a gradini, non in diagonale.** L'app registra i *cambi* di
+      prezzo, non i controlli: fra due punti il prezzo è rimasto quello. Una
+      diagonale disegnerebbe una discesa graduale mai avvenuta — sulla tua
+      *The Bystial Lubellion* si vede la differenza: il prezzo è stato fermo a
+      200,54 € per diciotto giorni ed è **crollato il 24 luglio** a 164 €,
+      mentre una linea "morbida" avrebbe raccontato un calo lento da inizio
+      mese.
+    - **La linea arriva a oggi**, perché l'ultimo prezzo rilevato è ancora
+      quello in vigore: fermarla all'ultimo punto farebbe sembrare la carta
+      abbandonata.
+    - **Si vedono solo i prezzi presi con i filtri di adesso.** Quelli
+      precedenti sono un altro prodotto (altra lingua, condizione, stampa) e
+      restano nascosti dietro un interruttore, dove compaiono **smorzati e
+      separati da una linea tratteggiata**: è la stessa regola che dalla
+      v1.0.11 tiene fuori i crolli inventati, applicata al disegno. Le
+      statistiche in alto parlano sempre e solo della serie attuale.
+    Due dettagli venuti fuori guardando i tuoi dati veri: i controlli
+    ravvicinati che registravano lo stesso prezzo (nei dati vecchi ce n'erano
+    quattro in quindici secondi) si **fondono in un punto solo**, e i picchi
+    veri restano — sulla *Fydraulis Harmonia* si vede l'annuncio a 170,64 €
+    comparso il 6 luglio alle 17:53 e sparito **quarantaquattro secondi dopo**.
+    L'asse dei prezzi **non parte da zero** (un movimento da 226 a 246 € su un
+    asse zero-based sarebbe una riga piatta), ma i valori sono sempre scritti:
+    la scala si legge, non si indovina.
+
 ## 4. Note operative importanti
 
 - **Non fare raffiche di richieste** verso CardTrader: è dietro Cloudflare e può

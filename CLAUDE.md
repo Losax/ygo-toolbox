@@ -129,9 +129,11 @@ come **installer** (`dist\YGO-Toolbox-Setup-vX.Y.Z.exe`, per-utente, senza UAC)
 allegato a una **Release**. Lo zip portatile non si produce più.
 
 ## Idee future già impostate
-- **Grafico dello storico prezzi** — il candidato più pronto: i dati sono già
-  in `mw_price_history` e ora portano la `filters_key`, quindi il grafico può
-  mostrare serie confrontabili invece di mescolarle.
+- ~~Grafico dello storico prezzi~~ — **fatto (v1.0.26)**: `history_chart.py`,
+  doppio clic sulla riga. Linea a gradini, solo la corsa attuale dei filtri.
+  Il grafico del totale di una **base** invece NON si può fare senza inventare
+  numeri: il DB conserva il minimo per carta, non il costo reale delle copie a
+  ogni controllo.
 - Controllo in background anche ad app chiusa (oggi gira solo con app aperta).
 - Companion mobile: da ridecidere (i primi tentativi via Telegram sono stati
   rimossi, vedi REGISTRO_TECNICO).

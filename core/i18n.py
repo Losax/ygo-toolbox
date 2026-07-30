@@ -302,5 +302,36 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "first time only).\n\n"
             "Then search a card, pick an alert threshold and add it to the "
             "watchlist: the app takes care of the prices.",
+        # grafico dello storico prezzi
+        "Storico prezzi…": "Price history…",
+        "Storico prezzi · {name}": "Price history · {name}",
+        "filtri predefiniti": "default filters",
+        "Nessun prezzo ancora registrato con questi filtri.\n"
+        "Il grafico compare dal primo controllo.":
+            "No price recorded with these filters yet.\n"
+            "The chart appears after the first check.",
+        "Mostra la serie precedente (filtri diversi)":
+            "Show the previous series (different filters)",
+        "Mostra le {n} serie precedenti (filtri diversi)":
+            "Show the {n} previous series (different filters)",
+        "Prezzi rilevati con altri filtri: un'altra lingua, condizione o "
+        "stampa, cioè un altro prodotto. Si disegnano smorzati e separati "
+        "da una linea tratteggiata — non sono confrontabili con la serie "
+        "attuale.":
+            "Prices recorded with other filters: another language, condition "
+            "or printing, that is another product. They are drawn dimmed and "
+            "separated by a dashed line — they are not comparable with the "
+            "current series.",
+        "Riferito alla serie attuale (i filtri di adesso), "
+        "non alle serie precedenti.":
+            "About the current series (today's filters), not the previous ones.",
+        "Attuale": "Current",
+        "Minimo": "Low",
+        "Massimo": "High",
+        "Dal primo prezzo": "Since first price",
+        "Punti · periodo": "Points · span",
+        "{n} gg": "{n} d",
+        "oggi": "today",
+        "Chiudi": "Close",
     },
 }
