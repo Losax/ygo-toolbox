@@ -50,6 +50,7 @@ from PySide6.QtGui import (
     QFontMetrics,
     QLinearGradient,
     QPainter,
+    QPixmap,
     QPainterPath,
     QPen,
     QPolygonF,
@@ -221,11 +222,11 @@ class PriceChart(QWidget):
         self._anim = QVariantAnimation(self)
         self._anim.setStartValue(0.0)
         self._anim.setEndValue(1.0)
-        # 600 ms e non 430: la linea si disegna DOPO che la finestra si è
-        # posata, e un tratto lento si legge come un gesto, uno veloce come
-        # una frustata di seguito a quella della finestra.
-        self._anim.setDuration(600)
-        self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        # 820 ms e animazione LINEARE: la forma la dà `draw_on` (vedi lì
+        # perché non è più una OutCubic). La linea si disegna dopo che la
+        # finestra si è posata, e un tratto lento si legge come un gesto.
+        self._anim.setDuration(820)
+        self._anim.setEasingCurve(QEasingCurve(QEasingCurve.Type.Linear))
         self._anim.valueChanged.connect(self._on_reveal)
 
     # --- dati -------------------------------------------------------------
@@ -272,7 +273,7 @@ class PriceChart(QWidget):
         return (self.previous_runs() + [cur]) if self._show_previous else [cur]
 
     def _on_reveal(self, value) -> None:
-        self._reveal = float(value)
+        self._reveal = draw_on(float(value))
         self.update()
 
     # --- interazione ------------------------------------------------------
@@ -329,21 +330,58 @@ class PriceChart(QWidget):
         self._paint_grid(painter, ticks, small, sym)
         self._paint_time_axis(painter, small, t0, t1)
 
-        painter.save()
-        painter.setClipRect(QRectF(self._plot.left(), 0,
-                                   self._plot.width() * self._reveal, self.height()))
-        if self._show_previous:
-            for run in self.previous_runs():
-                self._paint_run(painter, run, muted=True)
-            self._paint_breaks(painter, small)
-        cur = self.current_run()
-        if cur is not None:
-            self._paint_run(painter, cur, muted=False)
-        painter.restore()
+        if self._reveal >= 1.0:
+            self._paint_series(painter)
+        else:
+            self._paint_series_appearing(painter)
 
         if self._hover_x is not None and self._reveal >= 1.0:
             self._paint_hover(painter, small)
         painter.end()
+
+    def _paint_series(self, painter: QPainter) -> None:
+        """Le corse: prima le smorzate, poi quella attuale sopra."""
+        if self._show_previous:
+            for run in self.previous_runs():
+                self._paint_run(painter, run, muted=True)
+            self._paint_breaks(painter)
+        cur = self.current_run()
+        if cur is not None:
+            self._paint_run(painter, cur, muted=False)
+
+    def _paint_series_appearing(self, painter: QPainter) -> None:
+        """La comparsa: la linea si disegna da sinistra con un bordo SFUMATO.
+
+        Prima era un `setClipRect`, cioè un taglio netto che correva sul
+        grafico: un bordo verticale duro in movimento si legge come una
+        sciabolata, ed è il motivo per cui la comparsa sembrava aggressiva.
+        Qui si disegna tutto su un livello a parte e lo si smerigliata con una
+        maschera orizzontale (`DestinationIn`): la linea si materializza
+        invece di essere scoperta da una tendina. Costa un pixmap per
+        fotogramma, ma solo durante la comparsa — a regime si disegna diretto.
+
+        Il pixmap porta il `devicePixelRatio` del monitor: su schermi densi
+        resta nitido (è il debito noto degli altri 21 pixmap, qui non si
+        aggiunge)."""
+        dpr = self.devicePixelRatioF()
+        layer = QPixmap(max(1, round(self.width() * dpr)),
+                        max(1, round(self.height() * dpr)))
+        layer.setDevicePixelRatio(dpr)
+        layer.fill(Qt.GlobalColor.transparent)
+        lp = QPainter(layer)
+        lp.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self._paint_series(lp)
+        edge = self._plot.left() + self._plot.width() * self._reveal
+        soft = min(120.0 * self._scale, max(24.0, self._plot.width() * 0.28))
+        lp.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        grad = QLinearGradient(edge - soft, 0.0, edge, 0.0)
+        grad.setColorAt(0.0, QColor(0, 0, 0, 255))
+        grad.setColorAt(1.0, QColor(0, 0, 0, 0))
+        lp.fillRect(QRectF(0, 0, edge, self.height()), QBrush(grad))
+        lp.fillRect(QRectF(edge, 0, max(0.0, self.width() - edge), self.height()),
+                    QColor(0, 0, 0, 0))
+        lp.end()
+        painter.drawPixmap(0, 0, layer)
 
     def _fmt(self, value: float, sym: str) -> str:
         return f"{value:,.2f} {sym}".replace(",", " ")
@@ -444,7 +482,7 @@ class PriceChart(QWidget):
         for p in run.points:
             painter.drawEllipse(QPointF(self._x(p.when), self._y(p.price)), r, r)
 
-    def _paint_breaks(self, painter: QPainter, font) -> None:
+    def _paint_breaks(self, painter: QPainter) -> None:
         """Dove i filtri sono cambiati: linea tratteggiata. Di là c'è un altro
         prodotto, e deve VEDERSI che le due serie non si parlano."""
         pen = QPen(QColor(theme.WARN), 1.0 * self._scale, Qt.PenStyle.DashLine)
@@ -514,6 +552,18 @@ def pop_in(t: float) -> float:
     raw = 1.0 - math.exp(-5.5 * warped) * math.cos(4.6 * warped)
     end = 1.0 - math.exp(-5.5) * math.cos(4.6)
     return raw + warped * (1.0 - end)
+
+
+def draw_on(t: float) -> float:
+    """Curva della comparsa della linea: **smootherstep**, ferma ai due
+    estremi (derivata nulla in 0 e in 1).
+
+    Prima era una `OutCubic`, che parte alla VELOCITÀ MASSIMA: il tratto
+    scattava via nel primo fotogramma e poi rallentava — segnalato come
+    "appare in maniera aggressiva". Qui il tratto accelera, corre e si posa.
+    Misurato sui 630 px del grafico: primo fotogramma **1 px** invece di 50,
+    punta ~25 px, ultimo fotogramma di nuovo 1 px."""
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
 
 
 def pop_out(t: float) -> float:

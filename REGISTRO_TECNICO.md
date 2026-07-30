@@ -564,7 +564,20 @@ confini di parola per non pescare "usato").
     già sotto quando il fantasma se ne va. Stessa cosa al contrario in `done`;
   - **collisione di animazioni**: `chart.replay()` partiva nell'istante in cui
     la finestra si assestava, sommando due movimenti. Ora è ritardato di
-    140 ms e la comparsa della linea dura 600 ms invece di 430.
+    140 ms e la comparsa della linea dura 820 ms.
+  **Corollario (v1.0.29), stessa lezione applicata alla COMPARSA DELLA
+  LINEA.** Anche lì "aggressiva, veloce", e anche lì due difetti di forma:
+  - `OutCubic` parte alla velocità massima → il primo fotogramma scopriva
+    **48 px** dei 630 e poi rallentava fino a 4 fotogrammi fermi in coda. Ora
+    la forma è `draw_on` (smootherstep, derivata nulla ai DUE estremi) su
+    animazione lineare: primo fotogramma 1 px, punta 23, ultimo 1;
+  - il `setClipRect` era una **tendina dal bordo NETTO**: un bordo verticale
+    duro che corre si legge come una sciabolata, indipendentemente dalla
+    velocità. Ora `_paint_series_appearing` disegna le corse su un `QPixmap`
+    (col `devicePixelRatio` del monitor) e lo smeriglia con una maschera
+    orizzontale in `CompositionMode_DestinationIn`: linea, area e pallini
+    sfumano insieme. Costa un pixmap per fotogramma, ma SOLO durante la
+    comparsa — a `_reveal >= 1` si disegna diretto sul widget.
 - **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
   sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
   **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce

@@ -1118,6 +1118,18 @@ def main() -> int:
     assert hc.pop_out(0.0) == 1.0 and hc.pop_out(1.0) == 0.0
     assert all(hc.pop_out(i / 20) >= hc.pop_out((i + 1) / 20) for i in range(20))
 
+    # La COMPARSA della linea: era una OutCubic, che parte alla velocità
+    # massima — "appare in maniera aggressiva". Ora parte e finisce da ferma.
+    assert hc.draw_on(0.0) == 0.0 and hc.draw_on(1.0) == 1.0
+    fotogrammi = 51                      # ~820 ms a 60 al secondo
+    largh = 630.0                        # larghezza tipica del grafico
+    scoperti = [(hc.draw_on((i + 1) / fotogrammi) - hc.draw_on(i / fotogrammi)) * largh
+                for i in range(fotogrammi)]
+    assert scoperti[0] < 4, f"la linea parte di scatto ({scoperti[0]:.0f}px)"
+    assert scoperti[-1] < 4, f"la linea si ferma di scatto ({scoperti[-1]:.0f}px)"
+    assert max(scoperti) < 30, f"tratto troppo veloce ({max(scoperti):.0f}px/fotogramma)"
+    assert all(scoperti[i] >= -1e-9 for i in range(fotogrammi)), "non deve tornare indietro"
+
     # il rettangolo di partenza ha le PROPORZIONI della finestra (altrimenti
     # l'immagine si deforma lungo tutta la corsa: effetto gommato)
     dlg_p = hc.HistoryDialog("X", "", "", hc.split_runs(righe))

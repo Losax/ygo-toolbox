@@ -514,6 +514,18 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       aspetta un decimo di secondo e si disegna più lenta.
     I fotogrammi erano già a 62 al secondo anche prima: il problema non era la
     velocità del computer, era la forma del movimento.
+60. **La linea non "sciabola" più (v1.0.29).** Sistemata la finestra, restava
+    la comparsa del tratto: partiva **di scatto, aggressiva**. Due cause,
+    misurate come prima:
+    - la curva era una *OutCubic*, che parte alla **velocità massima**: il
+      primo fotogramma scopriva **48 px** di grafico e poi rallentava fino a
+      fermarsi. Ora accelera, corre e si posa: **primo fotogramma 1 px**,
+      punta a 23 px (metà di prima), ultimo di nuovo 1 px, il tutto in 0,8
+      secondi invece di 0,6;
+    - il tratto veniva scoperto da una **tendina dal bordo netto** che correva
+      sul grafico, e un bordo verticale duro in movimento si legge come una
+      sciabolata. Ora il bordo è **sfumato**: la linea si materializza invece
+      di essere svelata da un taglio.
 
 ## 4. Note operative importanti
 
