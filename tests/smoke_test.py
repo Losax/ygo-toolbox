@@ -1087,10 +1087,43 @@ def main() -> int:
     dlg2.chart.set_show_previous(True)
     assert len(dlg2.chart._visible_runs()) == 2
     dlg2.deleteLater()
+
+    # 6b) il pop-up nasce dalla MINIATURA della carta
+    from PySide6.QtCore import QRect as _QRect  # noqa: E402
+    from core import anim as _anim  # noqa: E402
+
+    a, b = _QRect(0, 0, 10, 10), _QRect(100, 100, 200, 120)
+    assert hc.lerp_rect(a, b, 0.0) == a and hc.lerp_rect(a, b, 1.0) == b
+    # con t > 1 il rettangolo SFONDA quello finale: è il rimbalzo del pop-up
+    assert hc.lerp_rect(a, b, 1.1).width() > b.width()
+
+    dlg3 = hc.HistoryDialog("Carta", "UR · LOB", "", hc.split_runs(righe))
+    finale = _QRect(0, 0, 690, 470)
+    origine = _QRect(383, 769, 60, 64)
+    assert dlg3._start_rect(origine, finale) == origine, "deve partire dalla miniatura"
+    # riga non visibile (nessuna origine): si parte da un rettangolino al
+    # centro, non da un punto a caso
+    centro = dlg3._start_rect(None, finale)
+    assert centro.width() < 100 and finale.contains(centro.center()), centro
+    # l'istantanea per il fantasma si prende SENZA mostrare la finestra
+    ghost = dlg3._snapshot_ghost()
+    assert ghost is not None and not dlg3.isVisible(), "la finestra non deve apparire"
+    ghost.deleteLater()
+    # animazioni spente (Opzioni): nessun fantasma, apertura immediata
+    _anim.set_enabled(False)
+    dlg3._ghost = None
+    dlg3.exec = lambda: 0
+    assert dlg3.open_from(origine) == 0
+    assert dlg3._ghost is None, "con le animazioni spente niente fantasma"
+    _anim.set_enabled(True)
+    dlg3.deleteLater()
+
     widget.repo.remove_watch(w555["id"])
     print("[OK] Grafico storico: gradini (niente interpolazione), punti "
           "duplicati fusi, corse separate dai filtri e serie precedenti "
           "nascoste per scelta.")
+    print("[OK] Pop-up: nasce dalla miniatura della carta, sfonda e rientra, "
+          "e con le animazioni spente si apre e basta.")
 
     widget.stop()
     storage.close()

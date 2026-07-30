@@ -2549,7 +2549,8 @@ class MarketWatchWidget(QWidget):
         menu = QMenu(self.table)
         if entry is not None and entry[0] == "watch":
             w = entry[1]
-            menu.addAction(tr("Storico prezzi…"), lambda watch=w: self._open_history(watch))
+            menu.addAction(tr("Storico prezzi…"),
+                           lambda watch=w, r=row: self._open_history(watch, r))
             menu.addSeparator()
             cur_fid = w["folder_id"] if "folder_id" in w.keys() else None
             sub = menu.addMenu(tr("Sposta nella cartella"))
@@ -2695,9 +2696,22 @@ class MarketWatchWidget(QWidget):
     def _on_cell_double_clicked(self, row: int, _col: int) -> None:
         entry = self._row_entries[row] if 0 <= row < len(self._row_entries) else None
         if entry is not None and entry[0] == "watch":
-            self._open_history(entry[1])
+            self._open_history(entry[1], row)
 
-    def _open_history(self, watch) -> None:
+    def _thumb_rect_on_screen(self, row: int):
+        """Rettangolo della MINIATURA di quella riga in coordinate schermo: è
+        il punto da cui far nascere il grafico. None se la riga non è a
+        schermo (tabella scrollata): in quel caso il pop-up parte dal centro,
+        che è meglio di farlo sbucare da un punto sbagliato."""
+        item = self.table.item(row, 0)
+        if item is None:
+            return None
+        rect = self.table.visualItemRect(item)
+        if rect.isEmpty() or not self.table.viewport().rect().intersects(rect):
+            return None
+        return QRect(self.table.viewport().mapToGlobal(rect.topLeft()), rect.size())
+
+    def _open_history(self, watch, row: int | None = None) -> None:
         """Apre il grafico dello storico. I dati sono già nel DB: nessuna
         richiesta di rete, quindi il gesto è gratuito e sempre disponibile."""
         rows = self.repo.history_points(PROVIDER, watch["ref_id"])
@@ -2714,7 +2728,7 @@ class MarketWatchWidget(QWidget):
             watch["detail"] if "detail" in watch.keys() else "",
             self._filters_summary(self._effective_filters(watch)),
             runs, self, self._scale)
-        dlg.exec()
+        dlg.open_from(self._thumb_rect_on_screen(row) if row is not None else None)
 
     # --- apertura della pagina su CardTrader ---
     CARD_PAGE = "https://www.cardtrader.com/cards/{ref_id}"

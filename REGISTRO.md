@@ -474,6 +474,21 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     L'asse dei prezzi **non parte da zero** (un movimento da 226 a 246 € su un
     asse zero-based sarebbe una riga piatta), ma i valori sono sempre scritti:
     la scala si legge, non si indovina.
+58. **Il grafico nasce dalla carta (v1.0.27).** La finestra dello storico non
+    compare più al centro dello schermo come una finestra qualsiasi: **si
+    gonfia a partire dalla miniatura della carta** su cui hai fatto doppio
+    clic, sfonda un po' la sua dimensione finale e rientra — il "pop" che dice
+    da dove è arrivata. Chiudendola si **ritira nella stessa miniatura**.
+    Per farlo bene la finestra ha perso la **cornice di Windows** ed è
+    diventata una card del tema, con ombra e angoli tondi come le altre
+    schermate delle impostazioni: una barra del titolo grigia che si ingrandiva
+    avrebbe rovinato l'effetto. Al suo posto c'è una **✕ in alto a destra**, e
+    la finestra si **trascina dall'intestazione**. Si chiude anche con Esc o
+    col pulsante *Chiudi*; il clic fuori invece non fa niente — è una finestra
+    che si guarda, non un menu.
+    La **linea del grafico si disegna quando la finestra è atterrata**, non
+    durante il volo: prima si disegnava mentre nessuno poteva vederla.
+    Se in *Opzioni* le animazioni sono spente, la finestra si apre e basta.
 
 ## 4. Note operative importanti
 

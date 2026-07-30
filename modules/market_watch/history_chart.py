@@ -34,7 +34,9 @@ from datetime import datetime, timedelta
 
 from PySide6.QtCore import (
     QEasingCurve,
+    QEventLoop,
     QPointF,
+    QRect,
     QRectF,
     QSize,
     Qt,
@@ -233,6 +235,19 @@ class PriceChart(QWidget):
             self._anim.start()
         else:
             self._reveal = 1.0
+        self.update()
+
+    def replay(self) -> None:
+        """Rifà la comparsa della linea. Serve al pop-up: durante la
+        transizione la finestra è ancora un'istantanea, quindi la linea si
+        disegnerebbe dove nessuno la vede — e si atterrerebbe su un grafico
+        già finito."""
+        cur = self.current_run()
+        if not (anim.is_enabled() and cur is not None and cur.points):
+            return
+        self._reveal = 0.0
+        self._anim.stop()
+        self._anim.start()
         self.update()
 
     def set_show_previous(self, on: bool) -> None:
@@ -469,37 +484,114 @@ class PriceChart(QWidget):
         painter.drawText(box, int(Qt.AlignmentFlag.AlignCenter), text)
 
 
+def lerp_rect(a: QRect, b: QRect, t: float) -> QRect:
+    """Rettangolo interpolato. `t` può superare 1: con un'easing che "sfonda"
+    (OutBack) è proprio così che si ottiene il rimbalzo del pop-up."""
+    return QRect(round(a.x() + (b.x() - a.x()) * t),
+                 round(a.y() + (b.y() - a.y()) * t),
+                 max(1, round(a.width() + (b.width() - a.width()) * t)),
+                 max(1, round(a.height() + (b.height() - a.height()) * t)))
+
+
+class _ZoomGhost(QWidget):
+    """Il "fantasma" che fa la transizione: un'ISTANTANEA della finestra,
+    ridisegnata dentro un rettangolo che cresce dalla miniatura della carta.
+
+    Perché un'istantanea invece di animare la geometria della finestra vera:
+    a 44 px il layout non ci sta e Qt lo accartoccia (e comunque si rifiuta di
+    scendere sotto il minimo dei figli). Scalando un'immagine già disegnata la
+    finestra si "gonfia" intera e uniforme, come deve fare un pop-up."""
+
+    def __init__(self, pixmap) -> None:
+        super().__init__(None, Qt.WindowType.FramelessWindowHint
+                         | Qt.WindowType.Tool
+                         | Qt.WindowType.WindowStaysOnTopHint
+                         | Qt.WindowType.WindowTransparentForInput)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._pixmap = pixmap
+        self._opacity = 1.0
+
+    def set_frame(self, rect: QRect, opacity: float) -> None:
+        self._opacity = max(0.0, min(1.0, opacity))
+        self.setGeometry(rect)
+        self.update()
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (override Qt)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setOpacity(self._opacity)
+        painter.drawPixmap(self.rect(), self._pixmap)
+        painter.end()
+
+
 class HistoryDialog(QDialog):
     """Finestra "Storico prezzi" di una carta: riepilogo + grafico.
 
-    È un dialogo NORMALE, non una `CardDialog`: quelle sono `Qt.Popup` e si
-    chiudono al primo clic fuori — comodo per due interruttori, pessimo per
-    una finestra che si guarda, si sorvola col mouse e si tiene aperta."""
+    Senza cornice di Windows (card del tema con ombra, come le impostazioni),
+    ma **non** una `CardDialog`: quelle sono `Qt.Popup` e si chiudono al primo
+    clic fuori — comodo per due interruttori, pessimo per una finestra che si
+    guarda, si sorvola col mouse e si tiene aperta. Qui il clic fuori non fa
+    niente: si chiude con la ✕, con Esc o col pulsante.
+
+    Senza cornice nativa servono due cose che di solito dà Windows: un pulsante
+    di chiusura (in alto a destra) e il **trascinamento dall'intestazione**."""
 
     def __init__(self, card_name: str, detail: str, filters_text: str,
                  runs: list, parent=None, scale: float = 1.0) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("Storico prezzi · {name}").format(name=card_name))
-        self.resize(round(660 * scale), round(430 * scale))
+        self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.FramelessWindowHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.resize(round(690 * scale), round(470 * scale))
         self._scale = scale
         self._runs = runs
+        self._exiting = False
+        self._drag_from = None
+        self._ghost = None
+        self._anim = None
 
-        root = QVBoxLayout(self)
-        root.setContentsMargins(*[round(16 * scale)] * 4)
+        outer = QVBoxLayout(self)
+        margin = round(18 * scale)              # aria per l'ombra della card
+        outer.setContentsMargins(margin, margin, margin, margin)
+        card = QFrame()
+        card.setObjectName("popover")
+        anim.drop_shadow(card, blur=38, dy=10, alpha=190)
+        outer.addWidget(card)
+
+        root = QVBoxLayout(card)
+        root.setContentsMargins(*[round(18 * scale)] * 4)
         root.setSpacing(round(10 * scale))
 
+        head = QHBoxLayout()
+        head.setSpacing(round(8 * scale))
+        titles = QVBoxLayout()
+        titles.setSpacing(round(2 * scale))
         title = QLabel(card_name)
         tf = QFont(theme.FONT_FAMILY)
         tf.setPointSizeF(13 * scale)
         tf.setBold(True)
         title.setFont(tf)
-        root.addWidget(title)
+        titles.addWidget(title)
 
         sub_bits = [b for b in (detail, filters_text) if b]
         subtitle = QLabel(" · ".join(sub_bits) if sub_bits
                           else tr("filtri predefiniti"))
         subtitle.setStyleSheet(f"color: {theme.TEXT_MUTED};")
-        root.addWidget(subtitle)
+        titles.addWidget(subtitle)
+        head.addLayout(titles, 1)
+
+        shut = QPushButton("✕")
+        shut.setObjectName("ghost")
+        shut.setFixedSize(round(28 * scale), round(28 * scale))
+        shut.setCursor(Qt.CursorShape.PointingHandCursor)
+        shut.setToolTip(tr("Chiudi"))
+        shut.clicked.connect(self.accept)
+        head.addWidget(shut, 0, Qt.AlignmentFlag.AlignTop)
+        # l'intestazione fa da barra del titolo: ci si trascina la finestra
+        self._drag_height = round(60 * scale)
+        root.addLayout(head)
 
         root.addLayout(self._stats_row(runs[-1] if runs else None, scale))
 
@@ -529,6 +621,145 @@ class HistoryDialog(QDialog):
         close.clicked.connect(self.accept)
         foot.addWidget(close)
         root.addLayout(foot)
+
+    # --- apertura e chiusura "dalla carta" --------------------------------
+    def open_from(self, origin: QRect | None = None) -> int:
+        """Apre la finestra facendola CRESCERE dalla miniatura della carta.
+
+        `origin` è il rettangolo (in coordinate schermo) dell'immagine nella
+        riga della watchlist: è da lì che il gesto è partito, ed è da lì che
+        deve partire anche la finestra. Senza (riga non visibile, o chiamata
+        da altrove) si parte da un rettangolino al centro: il pop-up resta,
+        cambia solo da dove nasce."""
+        self._place()
+        target = self.geometry()
+        if not anim.is_enabled():
+            return self.exec()
+        start = self._start_rect(origin, target)
+        ghost = self._snapshot_ghost()
+        if ghost is None:
+            return self.exec()
+        # L'entrata "sfonda" il rettangolo finale e rientra (OutBack): è quello
+        # che rende il pop-up pronunciato invece che una comparsa educata.
+        curve = QEasingCurve(QEasingCurve.Type.OutBack)
+        curve.setOvershoot(2.2)
+        self._run_ghost(ghost, start, target, curve, 400, fade_in=True)
+        ghost.hide()
+        ghost.deleteLater()
+        self._ghost = None
+        # la linea si disegna ORA, sulla finestra vera appena atterrata
+        self.chart.replay()
+        return self.exec()
+
+    def done(self, result: int) -> None:  # noqa: N802 (override Qt)
+        """Uscita simmetrica: la finestra si RITIRA nella miniatura da cui era
+        uscita. La chiusura vera avviene a fine animazione (guardia
+        `_exiting` contro il doppio clic sulla ✕)."""
+        if self._exiting or not self.isVisible() or not anim.is_enabled():
+            super().done(result)
+            return
+        self._exiting = True
+        target = self.geometry()
+        start = self._start_rect(self._origin, target)
+        ghost = self._snapshot_ghost()
+        if ghost is not None:
+            self.hide()
+            self._run_ghost(ghost, start, target, QEasingCurve(QEasingCurve.Type.InCubic),
+                            230, fade_in=False)
+            ghost.hide()
+            ghost.deleteLater()
+        super().done(result)
+
+    _origin: QRect | None = None
+
+    def _place(self) -> None:
+        """Centrata sulla finestra dell'app, ma sempre dentro lo schermo."""
+        parent = self.parent().window() if self.parent() is not None else None
+        if parent is None:
+            return
+        area = parent.screen().availableGeometry()
+        x = parent.geometry().center().x() - self.width() // 2
+        y = parent.geometry().center().y() - self.height() // 2
+        x = max(area.left() + 8, min(x, area.right() - self.width() - 8))
+        y = max(area.top() + 8, min(y, area.bottom() - self.height() - 8))
+        self.move(x, y)
+
+    def _start_rect(self, origin: QRect | None, target: QRect) -> QRect:
+        """Da dove nasce (e dove torna) la finestra."""
+        self._origin = origin
+        if origin is not None and origin.isValid() and not origin.isEmpty():
+            return QRect(origin)
+        return QRect(target.center().x() - 30, target.center().y() - 42, 60, 84)
+
+    def _snapshot_ghost(self):
+        """Istantanea della finestra, presa SENZA mostrarla a schermo
+        (WA_DontShowOnScreen: layout vero, nessun lampo)."""
+        try:
+            if self.isVisible():
+                pixmap = self.grab()
+            else:
+                self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, True)
+                self.show()
+                pixmap = self.grab()
+                self.hide()
+                self.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
+        except RuntimeError:
+            return None
+        if pixmap.isNull():
+            return None
+        ghost = _ZoomGhost(pixmap)
+        self._ghost = ghost
+        return ghost
+
+    def _run_ghost(self, ghost, start: QRect, target: QRect,
+                   curve: QEasingCurve, duration: int, fade_in: bool) -> None:
+        """Fa correre il fantasma e ASPETTA che finisca, dentro un event loop
+        annidato: `exec()` del dialogo bloccherebbe comunque il chiamante, e
+        così l'animazione resta un dettaglio di `open_from`/`done` invece di
+        spargersi in callback."""
+        ghost.set_frame(start if fade_in else target, 1.0 if not fade_in else 0.0)
+        ghost.show()
+        loop = QEventLoop()
+        motion = QVariantAnimation(self)
+        motion.setStartValue(0.0)
+        motion.setEndValue(1.0)
+        motion.setDuration(duration)
+        motion.setEasingCurve(curve)
+
+        def frame(value):
+            t = float(value)
+            if not fade_in:
+                t = 1.0 - t
+            try:
+                # in entrata la dissolvenza finisce a metà corsa, così il
+                # rimbalzo si vede tutto invece di arrivare mentre è ancora
+                # semitrasparente
+                ghost.set_frame(lerp_rect(start, target, t),
+                                min(1.0, t * 2.0) if fade_in else min(1.0, t * 1.6))
+            except RuntimeError:
+                pass
+
+        motion.valueChanged.connect(frame)
+        motion.finished.connect(loop.quit)
+        self._anim = motion
+        motion.start()
+        loop.exec()
+
+    # --- trascinamento dall'intestazione (non c'è la barra di Windows) ----
+    def mousePressEvent(self, event) -> None:  # noqa: N802 (override Qt)
+        if (event.button() == Qt.MouseButton.LeftButton
+                and event.position().y() <= self._drag_height):
+            self._drag_from = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 (override Qt)
+        if self._drag_from is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_from)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802 (override Qt)
+        self._drag_from = None
+        super().mouseReleaseEvent(event)
 
     def _stats_row(self, run, scale: float) -> QHBoxLayout:
         row = QHBoxLayout()

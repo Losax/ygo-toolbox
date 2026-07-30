@@ -509,6 +509,31 @@ confini di parola per non pescare "usato").
   Purge*) invece che "qui ci sono state alcune rilevazioni".
   L'animazione di comparsa è **UNA** `QVariantAnimation` creata nel costruttore
   e riavviata, senza `DeleteWhenStopped` (GOTCHA 11).
+  **Pop-up dalla miniatura (`open_from`/`done`, v1.0.27).** La finestra cresce
+  dal rettangolo della miniatura nella riga (`widget._thumb_rect_on_screen`:
+  `visualItemRect` della colonna 0 → coordinate schermo; None se la riga è
+  fuori dal viewport → si parte da un rettangolino al centro, meglio che
+  sbucare da un punto sbagliato). Entrata con `OutBack` (overshoot 2.2):
+  misurato, sfonda di **97px su 690** e rientra — il "pop" chiesto
+  esplicitamente. Uscita simmetrica con `InCubic`, la finestra si ritira nella
+  stessa miniatura.
+  **NON si anima la geometria della finestra vera**: a 60px il layout non ci
+  sta (e Qt comunque non scende sotto il minimo dei figli). Si anima
+  `_ZoomGhost`, una finestra `Tool` translucida e trasparente agli eventi che
+  disegna un'**istantanea** presa con `WA_DontShowOnScreen` (stessa tecnica del
+  GOTCHA 12: layout vero, nessun lampo a schermo) scalata dentro un rettangolo
+  interpolato da `lerp_rect` — che accetta `t > 1` proprio per lasciar passare
+  lo sfondamento dell'easing. L'attesa è un `QEventLoop` annidato dentro
+  `open_from`: `exec()` bloccherebbe comunque il chiamante, e così
+  l'animazione resta un dettaglio delle due funzioni invece di spargersi in
+  callback.
+  L'istantanea si prende col grafico ANCORA VUOTO e `chart.replay()` fa
+  ripartire la comparsa della linea quando la finestra è atterrata: altrimenti
+  si disegnava durante il volo, cioè dove nessuno la vede.
+  Senza cornice nativa servono due cose che dava Windows: la **✕** e il
+  **trascinamento dall'intestazione** (`mousePressEvent` sopra
+  `_drag_height`). Il clic fuori NON chiude: è un `Qt.Dialog`, non un
+  `Qt.Popup` come le `CardDialog`.
 - **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
   sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
   **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce
