@@ -547,6 +547,37 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     massimo 51,00 € l'asse dei prezzi si fermava a 50,00 e **la punta usciva
     dal riquadro**. L'ultimo valore dell'asse ora è sempre ≥ del massimo dei
     dati.
+63. **Modulo DATABASE (v1.1.0).** Il secondo modulo del toolbox: **tutte le
+    carte Yu-Gi-Oh!**, cercabili e consultabili, dalla fonte YGOPRODeck.
+    Nel menu laterale compare da solo, accanto a Market Watch.
+    - **14.477 carte scaricate una volta e tenute sul tuo computer.** Non è
+      una scelta nostra: la loro guida chiede espressamente di conservare i
+      dati in locale e di non interrogare l'API a ogni ricerca. In cambio la
+      ricerca è **istantanea e funziona anche senza rete**. Il primo
+      scaricamento sono ~24 MB in pochi secondi; poi l'app controlla da sola
+      se è uscita una versione nuova e te lo dice, senza scaricare niente.
+    - **Ricerca in italiano.** Cercando *distruggi* si trovano 1.889 carte:
+      oltre all'inglese scarichiamo anche i **testi italiani** (ci sono per
+      11.599 carte su 14.477; per le altre, in genere le più recenti, la
+      versione italiana non esiste e si vede l'inglese, detto chiaramente).
+      Nell'elenco il nome italiano sta sotto quello inglese, e nella scheda
+      un pulsantino **EN** mostra il testo originale.
+    - **Filtri** per tipo, razza, attributo, archetipo (651!), livello e ban
+      list. Le tendine si riempiono con quello che c'è davvero nei dati, non
+      con elenchi scritti a mano che invecchierebbero.
+    - **Ban list** con badge colorato per TCG, OCG e Goat, e un filtro per
+      vedere solo le 315 carte in lista.
+    - **Scheda** con immagine grande, tipo, statistiche, testo dell'effetto e
+      i set in cui la carta è stata stampata.
+    - **Ponte con Market Watch**: il pulsante *Segui i prezzi* porta la carta
+      nella ricerca dell'altro modulo. Passa il NOME e non sceglie al posto
+      tuo: YGOPRODeck ragiona per carta, CardTrader per singola stampa
+      (rarità + espansione, prezzi diversissimi), e indovinare quale volevi
+      sarebbe inventare.
+    Nota sulle immagini: si scaricano **una alla volta e solo quelle che
+    servono a schermo**, e restano salvate sul disco per sempre. YGOPRODeck
+    mette in blacklist chi tira immagini a volume, e scaricarle tutte
+    significherebbe ~400 MB.
 
 ## 4. Note operative importanti
 

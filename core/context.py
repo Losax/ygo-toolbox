@@ -7,8 +7,9 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from core.storage import Storage
 
@@ -30,8 +31,21 @@ class Notifier:
             print(f"[NOTIFY] {title}: {message}")
 
 
+def _no_navigation(_module_id: str, _payload=None) -> bool:
+    """Predefinito: nessuna navigazione. Un modulo che chiede di passare a un
+    altro riceve False e si arrangia (dice all'utente di farlo a mano) invece
+    di esplodere — succede nei test headless e in qualunque contesto senza
+    finestra principale."""
+    return False
+
+
 @dataclass
 class AppContext:
     storage: Storage
     notifier: Notifier
     data_dir: Path
+    #: Passa a un altro modulo (per `id`) e gli consegna un messaggio.
+    #: La imposta la `MainWindow`; i moduli NON si conoscono fra loro, si
+    #: parlano solo attraverso il contesto. Torna True se il modulo esiste ed
+    #: ha accettato il messaggio.
+    open_module: Callable[[str, object], bool] = field(default=_no_navigation)

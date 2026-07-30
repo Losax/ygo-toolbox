@@ -37,7 +37,7 @@ come artefatto: due volte era un difetto vero (GOTCHA 14).
   numerata**: i punti nuovi si aggiungono **IN FONDO, in ordine crescente**
   (inserendoli in cima la cronologia si legge al rovescio: è già capitato e ho
   dovuto riordinarla).
-- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 16
+- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 18
   **GOTCHAS** e le decisioni col loro *perché*. Quando scopri una trappola,
   scrivila lì con il sintomo, la causa e la cura — è la parte più utile del
   documento.
@@ -84,7 +84,7 @@ le tabelle esistenti).
   storage + notifier), SQLite (`storage.py`), tema (`theme.py`), animazioni
   (`anim.py`), traduzioni (`i18n.py`), controllo aggiornamenti (`updates.py`).
 - Dettagli, decisioni e trappole stanno in **`REGISTRO_TECNICO.md`**: leggerlo
-  prima di mettere le mani su market_watch, ha 16 GOTCHAS che spiegano *perché*
+  prima di mettere le mani su market_watch, ha 18 GOTCHAS che spiegano *perché*
   il codice è com'è.
 - `modules/<nome>/module.py` = punto di aggancio: una sottoclasse di
   `ToolModule` con `id`, `title`, `create_widget()`. Viene scoperta da sola al
@@ -109,6 +109,23 @@ le tabelle esistenti).
   sorgente + commit e push + **exe ricompilato** + **installer** + **Release su
   GitHub** (è la Release, non il tag, ad accendere l'avviso di aggiornamento).
   L'utente usa l'app installata, non `python main.py`.
+
+## Modulo card_db — "Database" (fonte: API YGOPRODeck)
+
+- **Le loro regole decidono l'architettura**, e sono citate in cima a
+  `api.py`: copia locale OBBLIGATORIA (*"download and store all data pulled
+  from this API locally"*), immagini da scaricare **una volta sola** e
+  ri-ospitare (altrimenti IP in blacklist), 20 richieste/s con **un'ora di
+  blocco** a chi sfora. Quindi: la ricerca interroga SQLite, mai la rete; le
+  immagini vanno su DISCO in `~/.ygo_toolbox/card_images/`, una alla volta e
+  solo quelle visibili a schermo (tutte insieme sarebbero ~400 MB).
+- Sincronizzazione = **due** richieste: inglese (base, 14.477 carte) +
+  italiano (`language=it`, 11.599) sovrapposto per id. Mai il contrario: in
+  italiano mancano 2.878 carte.
+- Ricerca con **FTS5** (GOTCHA 17): 1 ms invece di 190. La query dell'utente
+  va sempre passata da `fts_query`, che neutralizza gli operatori di FTS5.
+- I moduli **non si importano fra loro**: il ponte verso il market_watch passa
+  da `AppContext.open_module(id, payload)` + `handle_request` sul widget.
 
 ## Modulo market_watch (fonte: API ufficiale CardTrader)
 

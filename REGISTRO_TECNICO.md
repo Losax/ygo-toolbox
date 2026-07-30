@@ -43,6 +43,23 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `net.py` | `requests.Session` condivisa (keep-alive). |
 | `config.py` | Token (file / env). |
 
+**modules/card_db/** (modulo **Database**, fonte YGOPRODeck — v1.1.0)
+| File | Ruolo |
+|---|---|
+| `module.py` | Punto di aggancio (`CardDbModule`, id `card_db`, titolo "Database"). |
+| `api.py` | Client HTTP + parser difensivo + `search_blob`. In cima ci sono le **regole di YGOPRODeck citate testualmente**: sono loro a dettare l'architettura (copia locale obbligatoria, immagini da ri-ospitare, 20 richieste/s con un'ora di blocco a chi sfora). |
+| `repository.py` | Tabelle `cdb_*` + ricerca + **indice full-text FTS5**. |
+| `images.py` | Cache immagini **su DISCO** (`~/.ygo_toolbox/card_images/`), download spaziati, URL falliti ricordati. |
+| `workers.py` | `VersionWorker` (controllo versione, silenzioso se fallisce) e `SyncWorker` (scarica inglese + italiano, analizza, consegna righe pronte alla GUI). |
+| `widget.py` | UI: ricerca + filtri, elenco con miniature, scheda a lato, ponte verso il market_watch. |
+
+**Numeri misurati sul vivo (2026-07-31), da non ri-stimare:**
+14.477 carte / 23,6 MB in inglese; 11.599 / 17,2 MB in italiano (le 2.878 che
+mancano non sono mai uscite in italiano); 44.190 stampe; 651 archetipi, 86
+razze, 29 tipi, 315 carte in ban list; sincronizzazione ~4 s di rete+analisi e
+~2 s di scrittura; file SQLite **38,5 MB** con l'indice full-text; immagini
+14.642 (~27 KB la piccola, ~400 MB tutte insieme → non si scaricano in blocco).
+
 **Altro:** `main.py` (entrypoint + icona app), `tests/smoke_test.py` (headless),
 `ygo_toolbox.spec` (build; `datas` include `assets/fonts`, `version=` punta a
 `version_info.txt`), `assets/icon.ico`, `assets/fonts/` (Inter + licenza OFL),
@@ -340,6 +357,31 @@ confini di parola per non pescare "usato").
 
 ---
 
+17. **`LIKE '%…%'` non è una ricerca: FTS5 sì.** Nel modulo Database la
+    ricerca copre nome e testo dell'effetto in DUE lingue, cioè ~20 MB di
+    testo. Col `LIKE` costava **~90 ms in inglese e ~190 ms con le due
+    lingue** — nessun indice può aiutare un jolly iniziale, si scorre tutto.
+    Con **FTS5** (dentro SQLite, zero dipendenze nuove): **1 ms**, novanta
+    volte tanto, al prezzo di 0,5 s di costruzione e ~6 MB nel file.
+    Cambia anche la SEMANTICA, in meglio: si cercano parole con prefisso, non
+    sottostringhe — "ash" dà le 39 carte che cominciano per ash invece di 215
+    che contengono quelle lettere ovunque ("Flash Assailant" non è un
+    risultato sensato). Due cautele: la query dell'utente va **neutralizzata**
+    (`fts_query` mette ogni parola fra virgolette e aggiunge `*`, così AND/OR/
+    NEAR/`:` restano testo e non sintassi), e se FTS5 mancasse si **ripiega
+    sul LIKE** invece di lasciare la ricerca rotta.
+    Corollario misurato: i filtri senza testo (es. solo attributo, 2.648
+    carte) erano a 128 ms per scansione completa → indici sulle colonne
+    filtrate, ~27 ms.
+18. **Un'animazione, un'API e una ricerca si misurano; un numero scritto a
+    memoria è un numero inventato.** Nel commento di `search_blob` avevo
+    scritto "la ricerca scende a ~35 ms" PRIMA di misurare: la misura vera
+    diceva l'opposto (da 120 a 190 ms, perché il testo raddoppia). Il numero
+    plausibile in un commento è una trappola per chi legge dopo, esattamente
+    come un prezzo plausibile in tabella.
+
+---
+
 ## 5. Flussi principali
 
 - **Ricerca:** `search_input.textEdited` → `_on_search_text` (reset selezione +
@@ -620,6 +662,25 @@ confini di parola per non pescare "usato").
   dati e che il passo resti uniforme. Ennesima conferma della regola: le
   schermate si guardano, e quello che "non dovrebbe esserci" quasi sempre c'è
   per un motivo.
+- **Modulo Database — sincronizzazione:** `SyncWorker` fa **due** richieste
+  (inglese con `misc=yes`, poi italiano con `language=it`) e sovrappone i
+  testi tradotti a quelli inglesi *per id*. L'inglese resta la base: partire
+  dall'italiano perderebbe 2.878 carte che in italiano non esistono. Se la
+  seconda richiesta fallisce non si butta via la prima — si resta in inglese.
+  Il worker consegna **dizionari** (non tuple): la seconda passata li
+  completa per chiave, e per indice numerico sarebbe una trappola alla prima
+  colonna aggiunta. La scrittura su DB avviene nella GUI, in **una
+  transazione** (`replace_all`): una sincronizzazione interrotta a metà
+  lascerebbe un archivio mezzo vecchio e mezzo nuovo, peggio di uno vecchio.
+- **Ponte fra moduli** (`AppContext.open_module`, v1.1.0): i moduli **non si
+  importano fra loro**, si chiamano per `id` attraverso il contesto. La
+  `MainWindow` porta in primo piano il modulo e gli passa il messaggio se
+  espone `handle_request`. Il predefinito torna `False` (test headless o
+  contesti senza finestra): chi chiama lo dice all'utente invece di
+  esplodere. Oggi lo usa il Database per mandare una carta al Market Watch:
+  passa il **nome**, non un id — YGOPRODeck ragiona per carta, CardTrader per
+  STAMPA (rarità + espansione, prezzi diversissimi), e scegliere la stampa al
+  posto dell'utente sarebbe inventare.
 - **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
   sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
   **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce

@@ -2697,6 +2697,33 @@ class MarketWatchWidget(QWidget):
                        .format(name=name, n=len(cards), c=copies_tot))
         self.check_now()
 
+    # --- messaggi da altri moduli (ponte via AppContext.open_module) ---
+    def handle_request(self, payload) -> bool:
+        """Riceve una carta da un altro modulo (oggi: il Database).
+
+        Si riceve un NOME, non un id: i cataloghi sono diversi — YGOPRODeck
+        ragiona per carta, CardTrader per STAMPA (rarità + espansione), e la
+        stessa carta ha decine di stampe a prezzi diversissimi. Sceglierne una
+        al posto dell'utente sarebbe inventare: qui si compila la ricerca e si
+        apre l'elenco, la stampa la decide lui.
+        """
+        nome = ""
+        if isinstance(payload, dict):
+            nome = str(payload.get("card_name") or "")
+        elif isinstance(payload, str):
+            nome = payload
+        if not nome:
+            return False
+        if self._overview:
+            self.overview_btn.setChecked(False)   # la ricerca è nascosta lì
+        self.search_input.setText(nome)
+        self.search_input.setFocus()
+        self._on_search_text(nome)          # azzera la selezione precedente
+        self._apply_search_filter(nome)     # e apre subito l'elenco delle stampe
+        self._set_busy(False, tr("Cerca «{nome}»: scegli la stampa da seguire.")
+                       .format(nome=nome))
+        return True
+
     # --- storico prezzi (grafico) ---
     def _on_cell_double_clicked(self, row: int, _col: int) -> None:
         entry = self._row_entries[row] if 0 <= row < len(self._row_entries) else None

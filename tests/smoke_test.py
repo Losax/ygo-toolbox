@@ -1198,6 +1198,84 @@ def main() -> int:
     print("[OK] Pop-up: nasce dalla miniatura della carta, sfonda e rientra, "
           "e con le animazioni spente si apre e basta.")
 
+    # 7) modulo Database (YGOPRODeck): copia locale, ricerca, ponte
+    from modules.card_db import api as cdb_api  # noqa: E402
+    from modules.card_db.repository import CardDbRepository  # noqa: E402
+
+    # parser difensivo: campi mancanti non devono far saltare la copia
+    grezza = {
+        "id": 14558127, "name": "Ash Blossom & Joyous Spring",
+        "type": "Effect Monster", "frameType": "effect", "desc": "When a card…",
+        "race": "Zombie", "attribute": "FIRE", "atk": 0, "def": 1800, "level": 3,
+        "typeline": ["Zombie", "Tuner", "Effect"],
+        "humanReadableCardType": "Tuner Effect Monster",
+        "archetype": "Ash", "banlist_info": {"ban_tcg": "Limited"},
+        "card_images": [{"image_url": "http://x/1.jpg",
+                         "image_url_small": "http://x/1s.jpg"},
+                        {"image_url": "http://x/2.jpg"}],
+        "card_sets": [{"set_name": "Tin", "set_code": "MP22-EN257",
+                       "set_rarity": "Secret Rare"}],
+        "misc_info": [{"staple": "Yes", "tcg_date": "2017-05-04",
+                       "formats": ["TCG", "OCG"]}],
+    }
+    carta, stampe = cdb_api.parse_card(grezza)
+    assert carta["id"] == 14558127 and carta["ban_tcg"] == "Limited"
+    assert carta["art_count"] == 2 and carta["typeline"] == "Zombie / Tuner / Effect"
+    assert carta["staple"] == 1 and stampe[0][2] == "MP22-EN257"
+    # una carta ridotta all'osso non deve sollevare nulla
+    minima, _ = cdb_api.parse_card({"id": 1, "name": "X"})
+    assert minima["ban_tcg"] == "" and minima["atk"] is None
+
+    st_db = _St(tmp / "carddb.db")
+    repo_db = CardDbRepository(st_db)
+    assert repo_db.count_cards() == 0
+    carta["name_it"] = "Fiore di Cenere & Gioiosa Primavera"
+    carta["desc_it"] = "Quando una carta viene attivata: distruggi quel bersaglio."
+    altra, _ = cdb_api.parse_card(
+        {"id": 2, "name": "Pot of Greed", "type": "Spell Card",
+         "desc": "Draw 2 cards.", "race": "Normal"})
+    repo_db.replace_all([carta, altra], stampe)
+    assert repo_db.count_cards() == 2
+
+    # la ricerca copre nome e testo, in ITALIANO e in inglese: in un'app
+    # italiana cercare "distruggi" non può dare zero risultati
+    assert [r["name"] for r in repo_db.search("distruggi")] == [carta["name"]]
+    assert [r["name"] for r in repo_db.search("draw")] == ["Pot of Greed"]
+    assert [r["name"] for r in repo_db.search("cenere")] == [carta["name"]]
+    # si cerca mentre si digita: il prefisso basta
+    assert repo_db.search("blos"), "il prefisso deve bastare"
+    # la punteggiatura da sola non deve far esplodere l'indice full-text
+    assert repo_db.fts_query("-") == "" and repo_db.search("-") is not None
+    assert repo_db.search('pot" OR 1=1') is not None, "gli operatori FTS vanno neutralizzati"
+
+    # filtri
+    assert len(repo_db.search("", {"type": "Effect Monster"})) == 1
+    assert len(repo_db.search("", {"attribute": "FIRE"})) == 1
+    assert len(repo_db.search("", {"banlist": "tcg"})) == 1
+    assert len(repo_db.search("", {"banlist": "ocg"})) == 0
+    assert repo_db.distinct("attribute") == ["FIRE"]
+    # totale e pagina: chi chiama deve sapere quante ne sono state tagliate
+    righe, totale = repo_db.search_page("", {}, 1)
+    assert len(righe) == 1 and totale == 2, (len(righe), totale)
+    assert len(repo_db.sets_of(carta["id"])) == 1
+    scheda = repo_db.card(carta["id"])
+    assert scheda["desc_it"].startswith("Quando")
+    st_db.close()
+    print("[OK] Database: parser difensivo, copia locale, ricerca IT+EN con "
+          "indice full-text, filtri e ban list.")
+
+    # 7b) ponte fra moduli: passa dal CONTESTO, i moduli non si conoscono
+    ricevuti = []
+    ctx.open_module = lambda mid, payload=None: (ricevuti.append((mid, payload)), True)[1]
+    assert widget.handle_request({"card_name": "Dark Magician"})
+    assert widget.search_input.text() == "Dark Magician"
+    assert not widget.handle_request({}), "senza nome non si fa finta di niente"
+    from core.context import AppContext as _AC  # noqa: E402
+    vuoto = _AC(storage=storage, notifier=notifier, data_dir=tmp)
+    assert vuoto.open_module("chiunque", {"x": 1}) is False, \
+        "senza finestra principale la navigazione dice di no, non esplode"
+    print("[OK] Ponte fra moduli: la carta arriva alla ricerca del Market Watch.")
+
     widget.stop()
     storage.close()
     print("\nTutti i controlli superati.")

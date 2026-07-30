@@ -333,5 +333,57 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "{n} gg": "{n} d",
         "oggi": "today",
         "Chiudi": "Close",
+        # modulo Database (YGOPRODeck)
+        "Database": "Database",
+        "Tutte le carte Yu-Gi-Oh! (fonte: YGOPRODeck)":
+            "Every Yu-Gi-Oh! card (source: YGOPRODeck)",
+        "Scarica il database": "Download the database",
+        "Aggiorna": "Update",
+        "Database vuoto": "Database empty",
+        "Copia locale del database YGOPRODeck.\nVersione {v}, del {d}.":
+            "Local copy of the YGOPRODeck database.\nVersion {v}, from {d}.",
+        "Scarica il database per cominciare.": "Download the database to get started.",
+        "↻ aggiornamento disponibile": "↻ update available",
+        "YGOPRODeck è alla versione {remota} (del {d}); la tua copia è la "
+        "{locale}. Premi Aggiorna quando vuoi.":
+            "YGOPRODeck is at version {remota} (from {d}); your copy is "
+            "{locale}. Press Update whenever you like.",
+        "Cerca per nome o nel testo dell'effetto…":
+            "Search by name or in the card text…",
+        "Azzera filtri": "Clear filters",
+        "Tipo": "Type", "Razza": "Race", "Attributo": "Attribute",
+        "Archetipo": "Archetype", "Livello": "Level", "Rango": "Rank",
+        "Scala": "Scale", "Ban list": "Banlist", "Ban": "Ban",
+        "tutti": "all", "tutte": "all",
+        "In lista (qualsiasi)": "On a list (any)",
+        "Effetto": "Card text",
+        "Effetto (inglese)": "Card text (English)",
+        "Effetto (in inglese: l'italiano non esiste per questa carta)":
+            "Card text (English: no Italian version for this card)",
+        "Mostra il testo originale in inglese": "Show the original English text",
+        "Scegli una carta dall'elenco": "Pick a card from the list",
+        "Stampata in {n} set:": "Printed in {n} sets:",
+        "Nessuna stampa registrata.": "No printing on record.",
+        "Segui i prezzi in Market Watch": "Track prices in Market Watch",
+        "Il modulo Market Watch non è disponibile.":
+            "The Market Watch module is not available.",
+        "Vietata": "Forbidden", "Limitata": "Limited",
+        "Semi-limitata": "Semi-Limited",
+        "{n} carte trovate.": "{n} cards found.",
+        "{mostrate} carte mostrate su {totale} trovate — restringi la ricerca.":
+            "showing {mostrate} of {totale} cards found — narrow your search.",
+        "Il database è vuoto: premi «Scarica il database» (una richiesta, ~24 MB).":
+            "The database is empty: press “Download the database” "
+            "(one request, ~24 MB).",
+        "Una sola richiesta, poi tutto resta sul tuo computer.":
+            "A single request, then everything stays on your computer.",
+        "Scarico… %.1f MB": "Downloading… %.1f MB",
+        "Scarico i testi italiani… %.1f MB": "Downloading Italian text… %.1f MB",
+        "Preparo le carte… %v/%m": "Preparing cards… %v/%m",
+        "Database aggiornato: {n} carte e {s} stampe.":
+            "Database updated: {n} cards and {s} printings.",
+        "Sincronizzazione non riuscita: {err}": "Sync failed: {err}",
+        "Cerca «{nome}»: scegli la stampa da seguire.":
+            "Searching “{nome}”: pick the printing to track.",
     },
 }

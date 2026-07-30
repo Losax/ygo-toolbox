@@ -89,7 +89,24 @@ class MainWindow(QMainWindow):
         self.stack.currentChanged.connect(self._fade_current_page)
 
         self.modules = []
+        self.context.open_module = self._open_module
         self._load_modules()
+
+    def _open_module(self, module_id: str, payload=None) -> bool:
+        """Porta in primo piano il modulo `module_id` e gli consegna un
+        messaggio (se sa riceverlo, cioè se espone `handle_request`).
+
+        È l'unico ponte fra moduli: si conoscono per `id`, non per import, così
+        restano scoperti dinamicamente e nessuno dipende dall'altro."""
+        for index, mod in enumerate(self.modules):
+            if mod.id != module_id:
+                continue
+            self.sidebar.setCurrentRow(index)
+            widget = self._module_widgets[index]
+            if payload is not None and hasattr(widget, "handle_request"):
+                return bool(widget.handle_request(payload))
+            return True
+        return False
 
     def _load_modules(self) -> None:
         modules = sorted(discover_modules(self.context), key=lambda m: m.title)
