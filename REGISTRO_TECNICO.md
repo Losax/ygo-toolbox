@@ -1,6 +1,6 @@
 # Registro tecnico — YGO Toolbox (handoff sviluppo)
 
-_Aggiornato: 2026-07-28_
+_Aggiornato: 2026-07-30_
 
 Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 `CLAUDE.md` (regole) e `REGISTRO.md` (lato utente).
@@ -19,7 +19,7 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `storage.py` | Wrapper SQLite (solo thread GUI). |
 | `theme.py` | Tema: Fusion + `QPalette` scura + QSS. Costanti colore (ACCENT, POSITIVE, …) e `FONT_FAMILY` ("Inter", incorporato in `assets/fonts`, caricato con `QFontDatabase` in `apply_theme`; hinting `PreferNoHinting` per testo morbido; fallback Segoe UI). `build_qss(scale)` genera il QSS con le misure in px scalate; `apply_scale(app, scale)` lo ri-applica al volo. |
 | `anim.py` | Effetti: `fade_in`, `drop_shadow`, `hover_glow`/`hover_lift` (event filter), `pulse_item`, `animate_collapse` (fisarmonica pannello). Flag globale `ENABLED` (`set_enabled`/`is_enabled`, da Opzioni → chiave `animations` nel dict display): con False gli helper saltano allo stato finale; le animazioni custom (cartelle, arrivo riga, smooth wheel, ToggleSwitch, AnimatedCombo, CardDialog) controllano `anim.is_enabled()` da sole. |
-| `updates.py` | Controllo aggiornamenti. `LATEST_URL` = API release di GitHub, che risponde **solo se il repo è PUBBLICO**: con repo privato dà 404 e il controllo tace (è la regola: **silenzio su qualunque problema** — un errore per un controllo che l'utente non ha chiesto è solo fastidio). In alternativa basta un JSON pubblico con `tag_name`/`html_url`. `is_newer` confronta per NUMERI, non alfabeticamente: "1.0.9" < "1.0.23", che alfabeticamente sarebbe il contrario. Mai scaricamento automatico: si avvisa e si apre la pagina. `check_async` gira in un thread daemon; il risultato torna alla GUI via **segnale Qt** (`MarketWatchWidget._update_found`), mai chiamando la UI dal thread. |
+| `updates.py` | Controllo aggiornamenti. `LATEST_URL` = API release di GitHub: risponde solo se il repo è pubblico **e c'è almeno una Release pubblicata** (i tag non contano); altrimenti 404 e il controllo tace (è la regola: **silenzio su qualunque problema** — un errore per un controllo che l'utente non ha chiesto è solo fastidio). In alternativa basta un JSON pubblico con `tag_name`/`html_url`. `is_newer` confronta per NUMERI, non alfabeticamente: "1.0.9" < "1.0.23", che alfabeticamente sarebbe il contrario. Mai scaricamento automatico: si avvisa e si apre la pagina. `check_async` gira in un thread daemon; il risultato torna alla GUI via **segnale Qt** (`MarketWatchWidget._update_found`), mai chiamando la UI dal thread. |
 | `i18n.py` | Traduzioni leggere: ITALIANO = chiave e fallback (chiavi non mappate restano in italiano), dict `en` completo. `load_language()` all'avvio (PRIMA della UI, da main), scelta in `~/.ygo_toolbox/language.txt`, `tr("…")` ovunque nelle stringhe visibili; template con `.format()`. La lingua si applica al RIAVVIO (la UI si costruisce una volta). |
 
 **modules/market_watch/**
@@ -91,10 +91,12 @@ Niente exe che resta indietro rispetto al codice.
 **Git/GitHub:** repo **PUBBLICO** su https://github.com/Losax/ygo-toolbox
 (verificato via API il 2026-07-29; la nota "privato" di luglio era superata).
 **I tag NON bastano al controllo aggiornamenti:** `releases/latest` guarda le
-*Release pubblicate*, e ce ne sono 0 a fronte di 25 tag → 404, quindi il
-controllo tace. Serve creare la Release dal tag e allegarci l'installer.
-Attenzione: `latest` **ignora bozze e prerelease**, va pubblicata come release
-normale.
+*Release pubblicate*, non i tag — con 0 release e 25 tag rispondeva 404 e il
+controllo taceva. Dalla **v1.0.24 la Release esiste** e il controllo funziona
+(verificato: `fetch_latest()` → `('v1.0.24', url)`). Ogni versione nuova vuole
+la sua Release, altrimenti l'avviso resta muto.
+Attenzione: `latest` **ignora bozze e prerelease** — va pubblicata come release
+normale, o si torna al 404.
 (branch `main`; .gitignore esclude build/dist/db/token/.claude; screenshot
 del README in `docs/`). Committare e pushare a fine sessione.
 

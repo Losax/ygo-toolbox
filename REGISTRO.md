@@ -1,6 +1,6 @@
 # Registro — YGO Toolbox (per l'utente)
 
-_Aggiornato: 2026-07-28_
+_Aggiornato: 2026-07-30_
 
 App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 **CardTrader**. Tema scuro con accento teal.
