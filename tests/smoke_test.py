@@ -817,6 +817,91 @@ def main() -> int:
     print("[OK] Aggiornamenti: confronto numerico (1.0.9 < 1.0.23), "
           "irraggiungibile = silenzio.")
 
+    # 5d) esporta/importa in JSON: il giro completo su un DB vergine
+    from modules.market_watch import transfer  # noqa: E402
+    from modules.market_watch.repository import MarketWatchRepository  # noqa: E402
+    from core.storage import Storage as _St  # noqa: E402
+
+    def repo_vuoto(nome):
+        st = _St(tmp / nome)
+        return MarketWatchRepository(st), st
+
+    src, st_src = repo_vuoto("exp_src.db")
+    fid = src.add_folder("cardtrader", "Snake-Eye",
+                         _json.dumps(ListingFilters(language="it").to_dict()), True)
+    src.add_watch("cardtrader", "701", "Ash Blossom", "Ultra Rare · RA01", 5.0,
+                  _json.dumps(ListingFilters(language="en").to_dict()), 3)
+    src.add_watch("cardtrader", "702", "Effect Veiler", "Super Rare · SDSE", 0.0)
+    w701 = [w for w in src.list_watches() if w["ref_id"] == "701"][0]
+    src.set_watch_folder(w701["id"], fid)
+    src.record_price("cardtrader", "701", 40.0, "EUR", "chiave-x")
+    src.set_setting("filters", _json.dumps(ListingFilters(min_condition="Near Mint").to_dict()))
+    src.set_setting("sort", "price:asc")
+
+    dati = transfer.export_data(src, "cardtrader", app_version="test")
+    percorso = tmp / "scambio.json"
+    transfer.write_file(percorso, dati)
+    testo = percorso.read_text(encoding="utf-8")
+    # il TOKEN e il CATALOGO non devono uscire, mai
+    assert "cardtrader_token" not in testo and "mw_catalog" not in testo
+    assert '"formato": "ygo-toolbox/watchlist"' in testo and '"versione": 1' in testo
+    assert "3 carte" not in transfer.describe(dati)   # sono 2
+    assert transfer.describe(dati).startswith("2 carte · 1 cartelle")
+
+    # rileggendolo si ottiene la stessa cosa
+    riletto = transfer.read_file(percorso)
+    assert riletto["cartelle"][0]["nome"] == "Snake-Eye"
+    assert riletto["cartelle"][0]["base"] is True
+    assert riletto["cartelle"][0]["filtri"]["language"] == "it"
+    assert riletto["cartelle"][0]["carte"][0]["copie"] == 3
+    assert riletto["carte_sciolte"][0]["ref_id"] == "702"
+
+    # IMPORT su DB vergine (sostituisci): tutto ricostruito
+    dst, st_dst = repo_vuoto("exp_dst.db")
+    esito = transfer.import_data(dst, "cardtrader", riletto, replace=True)
+    assert esito == {"aggiunte": 2, "aggiornate": 0, "cartelle": 1, "storico": 1}, esito
+    imp = {w["ref_id"]: w for w in dst.list_watches()}
+    assert imp["701"]["copies"] == 3 and imp["701"]["threshold_pct"] == 5.0
+    assert _json.loads(imp["701"]["filters"])["language"] == "en", "filtri della carta persi"
+    assert imp["702"]["folder_id"] is None, "la carta sciolta non va in cartella"
+    cart = dst.list_folders("cardtrader")[0]
+    assert cart["name"] == "Snake-Eye" and cart["is_deck"]
+    assert imp["701"]["folder_id"] == cart["id"]
+    # lo storico conserva la data ORIGINALE e la chiave dei filtri
+    st_row = dst.all_history("cardtrader")[0]
+    assert st_row["filters_key"] == "chiave-x" and st_row["price"] == 40.0
+    orig = src.all_history("cardtrader")[0]
+    assert st_row["captured_at"] == orig["captured_at"], "la data non deve appiattirsi"
+    # sostituendo si portano anche le preferenze
+    assert dst.get_setting("sort") == "price:asc"
+
+    # reimportare lo STESSO file non deve duplicare niente
+    esito2 = transfer.import_data(dst, "cardtrader", riletto, replace=False)
+    assert esito2["aggiunte"] == 0 and esito2["storico"] == 0, esito2
+    assert len(dst.list_watches()) == 2 and len(dst.all_history("cardtrader")) == 1
+
+    # export di UNA SOLA base: niente storico, niente preferenze
+    solo = transfer.export_data(src, "cardtrader", only_folder_id=fid)
+    assert "storico" not in solo and "preferenze" not in solo
+    assert len(solo["cartelle"]) == 1 and not solo["carte_sciolte"]
+
+    # file non nostro, o troppo nuovo: errore parlante, non un crash
+    brutto = tmp / "brutto.json"
+    brutto.write_text('{"formato": "altro"}', encoding="utf-8")
+    try:
+        transfer.read_file(brutto); raise AssertionError("doveva rifiutarlo")
+    except transfer.TransferError as e:
+        assert "watchlist" in str(e).lower(), e
+    futuro = tmp / "futuro.json"
+    futuro.write_text('{"formato": "ygo-toolbox/watchlist", "versione": 99}', encoding="utf-8")
+    try:
+        transfer.read_file(futuro); raise AssertionError("doveva rifiutarlo")
+    except transfer.TransferError as e:
+        assert "99" in str(e), e
+    st_src.close(); st_dst.close()
+    print("[OK] Esporta/importa JSON: giro completo, niente token né catalogo, "
+          "date dello storico conservate, reimport senza duplicati.")
+
     # 6) i18n: traduzioni presenti, fallback sicuro, cambio lingua
     from core import i18n  # noqa: E402
     assert i18n.tr("Nessuna copia") == "Nessuna copia"      # default: italiano

@@ -1,5 +1,5 @@
 =====================================================================
-  YGO TOOLBOX v1.0.24 — prezzi delle carte Yu-Gi-Oh! su CardTrader
+  YGO TOOLBOX v1.0.25 — prezzi delle carte Yu-Gi-Oh! su CardTrader
 =====================================================================
 
 Cosa fa
@@ -64,6 +64,11 @@ Consigli d'uso
 - Pulsante GRIGLIA in alto = modalità Panoramica (watchlist grande
   con tutti i dettagli dell'annuncio più economico).
 - Sopra la tabella: "Ordina per" rarità, prezzo o variazione.
+- Tasto destro sulla watchlist: "Esporta tutto..." salva un file JSON
+  con la tua lista (backup, o trasloco su un altro PC); "Esporta
+  questa base..." su una base crea il file da passare a un amico.
+  "Importa da file..." lo rilegge e ti chiede se aggiungere o
+  sostituire. Il tuo token non finisce mai nel file.
 - In OPZIONI (ingranaggio): badge per le rarità, codici set,
   animazioni on/off e lingua dell'app (Italiano/English).
 - Non aprire più copie dell'app insieme e non fare controlli a

@@ -53,6 +53,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
 | **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
 | **Ordina per** | Riga di pulsantini sopra la tabella: **Manuale** (l'ordine che hai dato trascinando), **Rarità**, **Prezzo**, **Var.**. Il criterio attivo è **teal** con una freccetta; **cliccandolo di nuovo si inverte** il verso. L'ordinamento agisce **dentro ogni cartella/base** e fra le carte sciolte: i gruppi restano gruppi. Le carte senza il dato (prezzo mai visto, variazione non calcolabile) stanno **sempre in fondo**, in entrambi i versi. Il criterio si ricorda alla riapertura. |
+| **Esporta / importa** | **Tasto destro** sulla watchlist → *Esporta tutto…* (backup: carte, cartelle, basi, preferenze e storico prezzi) oppure, sulla riga di una base, *Esporta questa base…* (il file da passare a un amico: solo le carte con copie e filtri). Il file è un **JSON leggibile**, apribile con Notepad, e pesa una quarantina di KB contro i 13 MB del database. Con *Importa da file…* l'app dice **cosa contiene** e poi chiede: **Aggiungi** (unisce; le carte già presenti vengono aggiornate) o **Sostituisci** (svuota e rimpiazza, con una conferma in più). Il **token non viene mai esportato**, e il catalogo nemmeno (si riscarica). |
 | **Cartelle & ordinamento** | **Trascina le righe** per riordinare le carte o metterle in una **cartella espandibile** (trascinala sulla riga della cartella). La riga della cartella è **incolonnata come una carta**: nome (+ n° carte) sotto *Nome*, **valore totale** sotto *Prezzo*, **variazione %** sotto *Var.*, con pulsanti **rinomina** (matita) ed **elimina** (cestino). Clic per aprire/chiudere (stato ricordato). **Tasto destro**: nuova cartella, "Sposta nella cartella". |
 | **Dove finisce una cartella** | Una **barra verticale teal** corre lungo tutta la cartella (intestazione + carte che contiene) e una **riga di chiusura** la sigilla in fondo: si vede a colpo d'occhio dove il gruppo finisce e dove ricominciano le carte fuori dalle cartelle. |
 | **Filtri predefiniti (imbuto)** | Pulsante a **imbuto nell'header**: decide **quali annunci contano** nel calcolo del prezzo più basso (lingua, condizione, 1ª ed., Zero, graded, PRO, americana). Sono i filtri che una carta si porta dietro se la aggiungi senza impostarne di propri, e valgono per tutte quelle che non ne hanno. |
@@ -336,6 +337,27 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       dalla base non la elimina dalla watchlist: esce solo dalla base, e lo
       storico dei prezzi resta.
     - Le copie si cambiano anche al volo, tasto destro → *Numero di copie…*.
+56. **Esporta e importa la watchlist (v1.0.25).** Finora i tuoi dati si
+    potevano spostare solo copiando il file `.db`: binario, con uno schema
+    dentro, illeggibile senza strumenti. Ora c'è un **file JSON** che fa da
+    tramite e che l'app sa ritrasformare in database.
+    - **Esporta tutto** = backup: carte, cartelle, basi, preferenze e storico
+      prezzi. Sui tuoi dati veri sono ~40 KB, contro i 13 MB del database.
+    - **Esporta questa base** (tasto destro su una base) = il file da passare a
+      un amico: solo le carte con copie e filtri, senza storico né preferenze —
+      per lui sarebbero ingombro privo di senso, i suoi filtri sono altri.
+    - **Importa** dice prima cosa c'è nel file, poi chiede **Aggiungi** o
+      **Sostituisci** (con una conferma in più, perché cancella).
+    - Il **token non viene mai esportato**: è una credenziale e il file nasce
+      per essere passato a qualcuno. Il catalogo nemmeno: 47.980 righe che si
+      riscaricano in quattro minuti.
+    - Reimportare lo stesso file due volte **non duplica niente**, e le date
+      dello storico restano quelle originali invece di appiattirsi sul giorno
+      dell'importazione.
+    Ho scelto JSON e non CSV perché i dati sono **gerarchici** (le basi
+    contengono carte, e sia le basi sia le carte portano un oggetto di filtri):
+    in CSV servirebbero più file collegati da id, e per un amico sarebbe *meno*
+    comprensibile, non più.
 55. **Installer e avviso di aggiornamento (v1.0.24).** Non si consegna più uno
     zip con l'exe dentro, ma un **installer**: doppio clic e avanti.
     - Si installa **solo per te**, senza chiedere la password di

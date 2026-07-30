@@ -163,6 +163,20 @@ class MarketWatchRepository:
         )
         return cur.lastrowid if cur.rowcount else None
 
+    def set_watch_threshold(self, watch_id, threshold_pct: float) -> None:
+        self.storage.execute(
+            "UPDATE mw_watchlist SET threshold_pct = ? WHERE id = ?",
+            (float(threshold_pct), watch_id),
+        )
+
+    def set_watch_folder(self, watch_id, folder_id) -> None:
+        """Sposta la carta in una cartella (None = fuori). Per il drag&drop c'è
+        `set_watch_layout`, che riscrive anche l'ordine; qui serve la versione
+        secca, usata dall'importazione."""
+        self.storage.execute(
+            "UPDATE mw_watchlist SET folder_id = ? WHERE id = ?", (folder_id, watch_id)
+        )
+
     def set_watch_copies(self, watch_id, copies: int) -> None:
         """Quante copie della carta si possiedono/servono (le basi ne vogliono
         più di una). Il valore moltiplica il prezzo nei totali."""
@@ -354,6 +368,29 @@ class MarketWatchRepository:
             (provider, str(ref_id)) + extra + (cut, last),
         )
         return [last, prev[0]["price"]] if prev else [last]
+
+    def all_history(self, provider) -> list:
+        """Tutto lo storico di un provider, per l'esportazione."""
+        return self.storage.query(
+            "SELECT ref_id, price, currency, filters_key, captured_at "
+            "FROM mw_price_history WHERE provider = ? ORDER BY captured_at, id",
+            (provider,),
+        )
+
+    def add_history_row(self, provider, ref_id, price, currency,
+                        filters_key: str, captured_at) -> None:
+        """Inserisce un punto storico CON la sua data originale.
+
+        Diverso da `record_price`, che timbra `datetime('now')` e scarta i
+        prezzi invariati: reimportando un backup le date vanno conservate,
+        altrimenti la storia si appiattirebbe tutta sul giorno dell'import."""
+        self.storage.execute(
+            "INSERT INTO mw_price_history "
+            "(provider, ref_id, price, currency, filters_key, captured_at) "
+            "VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')))",
+            (provider, str(ref_id), float(price), currency or "EUR",
+             filters_key or "", captured_at),
+        )
 
     def adopt_history_key(self, provider, ref_id, filters_key: str) -> None:
         """Assegna `filters_key` ai punti storici che ne sono privi.

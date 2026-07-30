@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 from PySide6.QtCore import (
     QAbstractAnimation,
@@ -45,6 +46,7 @@ from PySide6.QtWidgets import (
     QCompleter,
     QDialog,
     QDoubleSpinBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -71,6 +73,7 @@ from core.version import APP_VERSION
 from core.i18n import tr
 
 from . import config
+from . import transfer
 from .deck_dialog import DeckDialog
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
@@ -2560,12 +2563,17 @@ class MarketWatchWidget(QWidget):
         elif entry is not None and entry[0] == "folder":
             f = entry[1]
             menu.addAction(tr("Modifica base…"), lambda folder=f: self.open_deck(folder))
+            menu.addAction(tr("Esporta questa base…"),
+                           lambda folder=f: self.export_watchlist(folder))
             menu.addAction(tr("Rinomina cartella…"), lambda folder=f: self._rename_folder(folder))
             menu.addAction(tr("Elimina cartella (le carte tornano fuori)"),
                            lambda folder=f: self._delete_folder(folder))
         menu.addSeparator()
         menu.addAction(tr("Nuova base…"), lambda: self.open_deck())
         menu.addAction(tr("Nuova cartella…"), lambda: self._new_folder())
+        menu.addSeparator()
+        menu.addAction(tr("Esporta tutto…"), lambda: self.export_watchlist())
+        menu.addAction(tr("Importa da file…"), self.import_watchlist)
         menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def _move_and_reload(self, watch_id, dest_fid) -> None:
@@ -2715,6 +2723,89 @@ class MarketWatchWidget(QWidget):
         """Basta l'id del blueprint: il sito reindirizza alla pagina giusta
         (verificato dal vivo, /cards/382653 → /it/cards/382653-dominus-purge-…)."""
         QDesktopServices.openUrl(QUrl(self.CARD_PAGE.format(ref_id=ref_id)))
+
+    # ------------------------------------------------- esporta / importa (JSON)
+    def export_watchlist(self, folder=None) -> None:
+        """Salva su file. Con `folder` esporta SOLO quella base (senza storico
+        né preferenze: è il file da passare a un amico); senza, esporta tutto."""
+        suggerito = (f"ygo-{folder['name']}.json" if folder is not None
+                     else "ygo-watchlist.json")
+        path, _ = QFileDialog.getSaveFileName(
+            self, tr("Esporta la watchlist"),
+            str(Path.home() / suggerito), tr("File JSON (*.json)"))
+        if not path:
+            return
+        # storico e preferenze li include (o esclude) `export_data` da sé,
+        # in base al fatto che si stia esportando tutto o una sola base
+        dati = transfer.export_data(
+            self.repo, PROVIDER, app_version=APP_VERSION,
+            only_folder_id=(folder["id"] if folder is not None else None))
+        try:
+            transfer.write_file(path, dati)
+        except OSError as exc:
+            QMessageBox.warning(self, tr("Esportazione"), str(exc))
+            return
+        self._set_busy(False, tr("Esportato in {file} — {cosa}").format(
+            file=Path(path).name, cosa=transfer.describe(dati)))
+
+    def import_watchlist(self) -> None:
+        """Legge un file e chiede COME applicarlo, dopo aver detto cosa contiene:
+        una scelta fra 'aggiungi' e 'sostituisci' va fatta sapendo cosa arriva."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("Importa una watchlist"), str(Path.home()),
+            tr("File JSON (*.json)"))
+        if not path:
+            return
+        try:
+            dati = transfer.read_file(path)
+        except transfer.TransferError as exc:
+            QMessageBox.warning(self, tr("Importazione"), str(exc))
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("Importazione"))
+        box.setText(tr("Il file contiene: {cosa}.").format(cosa=transfer.describe(dati)))
+        box.setInformativeText(tr(
+            "«Aggiungi» unisce al tuo elenco (le carte già presenti vengono "
+            "aggiornate con quanto dice il file).\n"
+            "«Sostituisci» svuota la watchlist e ci mette il contenuto del file."))
+        aggiungi = box.addButton(tr("Aggiungi"), QMessageBox.ButtonRole.AcceptRole)
+        sostituisci = box.addButton(tr("Sostituisci"), QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(tr("Annulla"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(aggiungi)
+        box.exec()
+        scelto = box.clickedButton()
+        if scelto not in (aggiungi, sostituisci):
+            return
+        replace = scelto is sostituisci
+        if replace and QMessageBox.question(
+                self, tr("Sostituire?"),
+                tr("La watchlist attuale ({n} carte) verrà cancellata. Procedere?")
+                .format(n=len([w for w in self.repo.list_watches()
+                               if w["provider"] == PROVIDER]))
+        ) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            esito = transfer.import_data(self.repo, PROVIDER, dati, replace=replace)
+        except Exception as exc:      # un file storto non deve buttare giù l'app
+            QMessageBox.warning(self, tr("Importazione"), str(exc))
+            return
+        if replace:                   # le preferenze possono essere cambiate
+            self._filters = ListingFilters.from_dict(self._load_filters())
+            self._display = self._load_display()
+            self._load_sort()
+            self._refresh_sort_buttons()
+            if self.provider is not None:
+                self.provider.filters = self._filters
+        self._refresh_folder_cache()
+        self._rebuild_completer()
+        self._reload_table()
+        self._set_busy(False, tr(
+            "Importate: {agg} nuove, {upd} aggiornate, {cart} cartelle, "
+            "{st} punti di storico.").format(agg=esito["aggiunte"],
+                                             upd=esito["aggiornate"],
+                                             cart=esito["cartelle"],
+                                             st=esito["storico"]))
+        self.check_now()
 
     def _ask_copies(self, watch_id, card_name: str, current: int) -> None:
         value, ok = QInputDialog.getInt(

@@ -105,6 +105,30 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "This card's OWN filters (different from the default ones) — click to change them",
         "Filtri di questa carta (ora usa i predefiniti)":
             "Filters for this card (currently using the default ones)",
+        # esporta / importa
+        "Esporta tutto…": "Export everything…",
+        "Esporta questa base…": "Export this base…",
+        "Importa da file…": "Import from file…",
+        "Esporta la watchlist": "Export the watchlist",
+        "Importa una watchlist": "Import a watchlist",
+        "File JSON (*.json)": "JSON file (*.json)",
+        "Esportazione": "Export", "Importazione": "Import",
+        "Esportato in {file} — {cosa}": "Exported to {file} — {cosa}",
+        "Il file contiene: {cosa}.": "The file contains: {cosa}.",
+        "«Aggiungi» unisce al tuo elenco (le carte già presenti vengono "
+        "aggiornate con quanto dice il file).\n"
+        "«Sostituisci» svuota la watchlist e ci mette il contenuto del file.":
+            "“Add” merges into your list (cards already there are updated with "
+            "what the file says).\n"
+            "“Replace” empties the watchlist and puts the file's content in it.",
+        "Aggiungi": "Add", "Sostituisci": "Replace", "Annulla": "Cancel",
+        "Sostituire?": "Replace?",
+        "La watchlist attuale ({n} carte) verrà cancellata. Procedere?":
+            "The current watchlist ({n} cards) will be deleted. Proceed?",
+        "Importate: {agg} nuove, {upd} aggiornate, {cart} cartelle, "
+        "{st} punti di storico.":
+            "Imported: {agg} new, {upd} updated, {cart} folders, "
+            "{st} history points.",
         # aggiornamenti
         "↑ Aggiornamento {v}": "↑ Update {v}",
         "Hai la {corrente}, è disponibile la {nuova}. Clic per aprire la pagina di download.":
