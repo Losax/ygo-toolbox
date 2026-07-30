@@ -534,6 +534,37 @@ confini di parola per non pescare "usato").
   **trascinamento dall'intestazione** (`mousePressEvent` sopra
   `_drag_height`). Il clic fuori NON chiude: è un `Qt.Dialog`, non un
   `Qt.Popup` come le `CardDialog`.
+  **GOTCHA 15 — un'animazione si DEBUGGA in pixel al fotogramma.** La prima
+  versione (OutBack overshoot 2.2, 400 ms) fu giudicata "meccanica" e con "un
+  colpo di frusta" alla fine. Primo riflesso: sono frame persi. **Misurato:
+  62 fps, 0,4 ms di disegno per fotogramma — le prestazioni non c'entravano
+  niente.** Il difetto stava nella FORMA del movimento, e si vede stampando i
+  Δpx per fotogramma:
+  - `+124 +109 +96 …` → il primo fotogramma copriva 124 px dei 630 totali: la
+    finestra non si vedeva partire (= "meccanica");
+  - `… -12 -13 -12 -11 …` → 11 fotogrammi di RITIRO a 812 px/s (= "colpo di
+    frusta"). Tutte le `OutBack` fanno così: l'overshoot rientra veloce.
+  Cura: la forma non è più una `QEasingCurve` ma una **funzione pura**
+  (`pop_in`/`pop_out`), con l'animazione Qt lasciata LINEARE. Così il profilo
+  si prova senza aprire finestre — ed è com'è stato trovato il difetto e come
+  lo bloccano ora i test. `pop_in` = molla smorzata `1-e^(-5.5t)cos(4.6t)` con
+  tempo deformato `t^1.6` (derivata nulla in 0 = niente teletrasporto) e
+  correzione lineare perché `f(1)` sia ESATTO (senza, l'ultimo fotogramma
+  scatta di qualche px proprio mentre l'occhio si posa). Risultato misurato:
+  primo fotogramma +14 px, sfondamento +27 px, rientro peggiore -4 px che
+  decade a -1.
+  Altri tre punti dello stesso difetto, tutti "di forma" e non di velocità:
+  - **deformazione**: il rettangolo di partenza aveva le proporzioni della
+    miniatura (0,94) e quello finale della finestra (1,47) → l'istantanea si
+    stirava per tutta la corsa. Ora `_start_rect` impone le proporzioni della
+    finestra, centrate sulla miniatura;
+  - **scambio**: `ghost.hide()` prima di `exec()` lasciava un fotogramma di
+    vuoto (e lasciava vedere l'eventuale animazione di comparsa di Windows).
+    Ora `self.show()` → `processEvents()` → `ghost.hide()`: la finestra vera è
+    già sotto quando il fantasma se ne va. Stessa cosa al contrario in `done`;
+  - **collisione di animazioni**: `chart.replay()` partiva nell'istante in cui
+    la finestra si assestava, sommando due movimenti. Ora è ritardato di
+    140 ms e la comparsa della linea dura 600 ms invece di 430.
 - **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
   sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
   **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce

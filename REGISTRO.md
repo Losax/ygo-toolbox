@@ -489,6 +489,31 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     La **linea del grafico si disegna quando la finestra è atterrata**, non
     durante il volo: prima si disegnava mentre nessuno poteva vederla.
     Se in *Opzioni* le animazioni sono spente, la finestra si apre e basta.
+59. **L'animazione, rifatta come si deve (v1.0.28).** La prima versione era
+    **meccanica** e finiva con un **colpo di frusta**. Invece di ritoccare i
+    numeri a occhio ho misurato quanti pixel cresce la finestra a ogni
+    fotogramma, e i due difetti erano lì, in chiaro:
+    - il **primo fotogramma saltava di 124 px** (da 60 a 184): la finestra non
+      si vedeva partire, appariva già lanciata;
+    - dopo essersi allargata **si ritirava per 11 fotogrammi**, fino a 13 px
+      l'uno — 812 px/s all'indietro. Quello era il colpo di frusta.
+    Ora il movimento è una **molla smorzata con partenza dolce**: primo
+    fotogramma **+14 px**, sfondamento **+27 px** invece di 97, e il rientro
+    massimo è di **4 px** che si spegne gradualmente (4, 3, 2, 1) — un
+    assestamento, non un rinculo.
+    Tre cose in più che rendevano il movimento "di gomma":
+    - la finestra **non si deforma più**: partiva con le proporzioni della
+      miniatura (quasi quadrata) e arrivava a quelle della finestra (larga),
+      allungandosi per tutta la corsa. Ora parte già con le proporzioni
+      giuste, centrata sulla carta, e cresce e basta;
+    - **niente scatto allo scambio**: la finestra vera compare *sotto*
+      l'immagine che sta volando, e solo dopo l'immagine sparisce. Prima
+      restava un fotogramma di vuoto in mezzo;
+    - la **linea del grafico** non parte più nello stesso istante in cui la
+      finestra si assesta (i due movimenti si sommavano in un'unica frustata):
+      aspetta un decimo di secondo e si disegna più lenta.
+    I fotogrammi erano già a 62 al secondo anche prima: il problema non era la
+    velocità del computer, era la forma del movimento.
 
 ## 4. Note operative importanti
 

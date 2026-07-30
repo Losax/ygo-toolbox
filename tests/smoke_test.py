@@ -1097,10 +1097,44 @@ def main() -> int:
     # con t > 1 il rettangolo SFONDA quello finale: è il rimbalzo del pop-up
     assert hc.lerp_rect(a, b, 1.1).width() > b.width()
 
+    # Profilo del MOVIMENTO. Sono i due difetti segnalati dall'utente sulla
+    # prima versione (OutBack overshoot 2.2), qui bloccati in numeri:
+    # "sembra molto meccanica" = il primo fotogramma saltava di 124px, e
+    # "un colpo di frusta" = si ritirava di 13px per fotogramma.
+    assert hc.pop_in(0.0) == 0.0 and abs(hc.pop_in(1.0) - 1.0) < 1e-9, \
+        "gli estremi devono essere esatti, altrimenti l'ultimo fotogramma scatta"
+    passi = 31
+    mini, finale = _QRect(0, 0, 60, 41), _QRect(0, 0, 690, 470)
+    larghezze = [hc.lerp_rect(mini, finale, hc.pop_in(i / passi)).width()
+                 for i in range(passi + 1)]
+    delta = [larghezze[i] - larghezze[i - 1] for i in range(1, len(larghezze))]
+    assert delta[0] < 40, f"partenza a scatto: {delta[0]}px nel primo fotogramma"
+    ritiri = [d for d in delta if d < 0]
+    assert ritiri, "senza sfondamento non è un pop-up"
+    assert min(ritiri) >= -6, f"colpo di frusta: rientro di {min(ritiri)}px/fotogramma"
+    assert max(larghezze) > finale.width(), "il pop deve sfondare"
+    assert max(larghezze) - finale.width() < 45, "sfondamento esagerato"
+    # l'uscita non rimbalza: una finestra che si chiude non deve discutere
+    assert hc.pop_out(0.0) == 1.0 and hc.pop_out(1.0) == 0.0
+    assert all(hc.pop_out(i / 20) >= hc.pop_out((i + 1) / 20) for i in range(20))
+
+    # il rettangolo di partenza ha le PROPORZIONI della finestra (altrimenti
+    # l'immagine si deforma lungo tutta la corsa: effetto gommato)
+    dlg_p = hc.HistoryDialog("X", "", "", hc.split_runs(righe))
+    origine_p = _QRect(383, 769, 60, 64)
+    start_p = dlg_p._start_rect(origine_p, finale)
+    assert abs(start_p.width() / start_p.height()
+               - finale.width() / finale.height()) < 0.05, start_p
+    assert (start_p.center() - origine_p.center()).manhattanLength() <= 2, \
+        "deve restare centrato sulla miniatura"
+    dlg_p.deleteLater()
+
     dlg3 = hc.HistoryDialog("Carta", "UR · LOB", "", hc.split_runs(righe))
     finale = _QRect(0, 0, 690, 470)
     origine = _QRect(383, 769, 60, 64)
-    assert dlg3._start_rect(origine, finale) == origine, "deve partire dalla miniatura"
+    da = dlg3._start_rect(origine, finale)
+    assert (da.center() - origine.center()).manhattanLength() <= 2, \
+        "deve partire dalla miniatura"
     # riga non visibile (nessuna origine): si parte da un rettangolino al
     # centro, non da un punto a caso
     centro = dlg3._start_rect(None, finale)

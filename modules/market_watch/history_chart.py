@@ -39,6 +39,7 @@ from PySide6.QtCore import (
     QRect,
     QRectF,
     QSize,
+    QTimer,
     Qt,
     QVariantAnimation,
 )
@@ -54,6 +55,7 @@ from PySide6.QtGui import (
     QPolygonF,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -219,7 +221,10 @@ class PriceChart(QWidget):
         self._anim = QVariantAnimation(self)
         self._anim.setStartValue(0.0)
         self._anim.setEndValue(1.0)
-        self._anim.setDuration(430)
+        # 600 ms e non 430: la linea si disegna DOPO che la finestra si è
+        # posata, e un tratto lento si legge come un gesto, uno veloce come
+        # una frustata di seguito a quella della finestra.
+        self._anim.setDuration(600)
         self._anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._anim.valueChanged.connect(self._on_reveal)
 
@@ -484,9 +489,42 @@ class PriceChart(QWidget):
         painter.drawText(box, int(Qt.AlignmentFlag.AlignCenter), text)
 
 
+def pop_in(t: float) -> float:
+    """Curva d'ingresso del pop-up: **molla smorzata con avvio dolce**.
+
+    Non è una scelta a occhio, è il risultato di una misura. La prima versione
+    usava `OutBack` con overshoot 2.2 e aveva due difetti, entrambi segnalati
+    e poi ritrovati nei numeri (px di crescita per fotogramma):
+    - **partenza meccanica**: il primo fotogramma saltava di **124 px** (da 60
+      a 184): la finestra non si vedeva partire, appariva già lanciata;
+    - **colpo di frusta**: dopo lo sfondamento si ritirava per 11 fotogrammi
+      fino a **-13 px l'uno (812 px/s all'indietro)**.
+
+    Qui la parte finale è una molla smorzata `1 - e^(-kt)·cos(wt)`, che
+    rientra **decelerando** (-4 px al massimo, poi -3, -2, -1: un
+    assestamento, non un rinculo), e il tempo è deformato con `t^1.6`, che
+    ha derivata nulla in zero e quindi toglie il teletrasporto iniziale
+    (primo fotogramma +14 px) senza toccare la coda.
+    Misurato: sfondamento +27 px sui 690 finali — il "pop" si vede ancora.
+
+    Gli estremi sono ESATTI (0 → 0, 1 → 1): la correzione lineare `t·(1-f(1))`
+    evita lo scalino sull'ultimo fotogramma, che sarebbe un altro scatto
+    proprio nel momento in cui l'occhio si posa sulla finestra."""
+    warped = t ** 1.6
+    raw = 1.0 - math.exp(-5.5 * warped) * math.cos(4.6 * warped)
+    end = 1.0 - math.exp(-5.5) * math.cos(4.6)
+    return raw + warped * (1.0 - end)
+
+
+def pop_out(t: float) -> float:
+    """Curva d'uscita: parte ferma e accelera rientrando nella miniatura.
+    Nessun rimbalzo — una finestra che si chiude non deve discutere."""
+    return 1.0 - t * t
+
+
 def lerp_rect(a: QRect, b: QRect, t: float) -> QRect:
-    """Rettangolo interpolato. `t` può superare 1: con un'easing che "sfonda"
-    (OutBack) è proprio così che si ottiene il rimbalzo del pop-up."""
+    """Rettangolo interpolato. `t` può superare 1: è così che passa lo
+    sfondamento della molla, cioè il "pop"."""
     return QRect(round(a.x() + (b.x() - a.x()) * t),
                  round(a.y() + (b.y() - a.y()) * t),
                  max(1, round(a.width() + (b.width() - a.width()) * t)),
@@ -639,16 +677,21 @@ class HistoryDialog(QDialog):
         ghost = self._snapshot_ghost()
         if ghost is None:
             return self.exec()
-        # L'entrata "sfonda" il rettangolo finale e rientra (OutBack): è quello
-        # che rende il pop-up pronunciato invece che una comparsa educata.
-        curve = QEasingCurve(QEasingCurve.Type.OutBack)
-        curve.setOvershoot(2.2)
-        self._run_ghost(ghost, start, target, curve, 400, fade_in=True)
+        self._run_ghost(ghost, start, target, pop_in, 500)
+        # SCAMBIO SENZA SALTO: la finestra vera si mostra SOTTO il fantasma
+        # (che sta sempre sopra) e solo dopo il fantasma sparisce. Togliendolo
+        # prima restava un fotogramma di vuoto, e l'eventuale animazione di
+        # comparsa che Windows applica alle finestre nuove si vedeva tutta:
+        # due scatti proprio in coda al movimento.
+        self.show()
+        QApplication.processEvents()
         ghost.hide()
         ghost.deleteLater()
         self._ghost = None
-        # la linea si disegna ORA, sulla finestra vera appena atterrata
-        self.chart.replay()
+        # La linea si disegna DOPO l'atterraggio, con una pausa: partendo
+        # nello stesso istante in cui la finestra si assesta, i due movimenti
+        # si sommavano in un'unica frustata.
+        QTimer.singleShot(140, self.chart.replay)
         return self.exec()
 
     def done(self, result: int) -> None:  # noqa: N802 (override Qt)
@@ -663,9 +706,11 @@ class HistoryDialog(QDialog):
         start = self._start_rect(self._origin, target)
         ghost = self._snapshot_ghost()
         if ghost is not None:
-            self.hide()
-            self._run_ghost(ghost, start, target, QEasingCurve(QEasingCurve.Type.InCubic),
-                            230, fade_in=False)
+            ghost.set_frame(target, 1.0)
+            ghost.show()
+            QApplication.processEvents()   # il fantasma copre già la finestra…
+            self.hide()                    # …quindi togliendola non si vede il buco
+            self._run_ghost(ghost, start, target, pop_out, 240, already_up=True)
             ghost.hide()
             ghost.deleteLater()
         super().done(result)
@@ -685,11 +730,22 @@ class HistoryDialog(QDialog):
         self.move(x, y)
 
     def _start_rect(self, origin: QRect | None, target: QRect) -> QRect:
-        """Da dove nasce (e dove torna) la finestra."""
+        """Da dove nasce (e dove torna) la finestra: un rettangolino centrato
+        sulla miniatura della carta.
+
+        Ha le PROPORZIONI della finestra, non quelle della miniatura: partendo
+        da 60×64 e arrivando a 690×470 l'immagine si deformerebbe lungo tutta
+        la corsa (larga e schiacciata → normale), un effetto elastico che si
+        legge come una gommata. Con le proporzioni giuste il movimento è una
+        pura crescita, e il punto di partenza resta la carta."""
         self._origin = origin
         if origin is not None and origin.isValid() and not origin.isEmpty():
-            return QRect(origin)
-        return QRect(target.center().x() - 30, target.center().y() - 42, 60, 84)
+            w = max(24, origin.width())
+            h = max(16, round(w * target.height() / max(1, target.width())))
+            return QRect(origin.center().x() - w // 2, origin.center().y() - h // 2, w, h)
+        w = max(24, round(target.width() * 0.09))
+        h = max(16, round(w * target.height() / max(1, target.width())))
+        return QRect(target.center().x() - w // 2, target.center().y() - h // 2, w, h)
 
     def _snapshot_ghost(self):
         """Istantanea della finestra, presa SENZA mostrarla a schermo
@@ -711,31 +767,35 @@ class HistoryDialog(QDialog):
         self._ghost = ghost
         return ghost
 
-    def _run_ghost(self, ghost, start: QRect, target: QRect,
-                   curve: QEasingCurve, duration: int, fade_in: bool) -> None:
+    def _run_ghost(self, ghost, start: QRect, target: QRect, shape,
+                   duration: int, already_up: bool = False) -> None:
         """Fa correre il fantasma e ASPETTA che finisca, dentro un event loop
         annidato: `exec()` del dialogo bloccherebbe comunque il chiamante, e
         così l'animazione resta un dettaglio di `open_from`/`done` invece di
-        spargersi in callback."""
-        ghost.set_frame(start if fade_in else target, 1.0 if not fade_in else 0.0)
-        ghost.show()
+        spargersi in callback.
+
+        `shape` è una funzione 0→1 (vedi `pop_in`/`pop_out`): l'animazione Qt
+        resta LINEARE e la forma la dà lei. Così il profilo del movimento è
+        una funzione pura, che si può misurare e provare senza aprire nulla —
+        ed è esattamente come sono stati trovati il teletrasporto iniziale e
+        il colpo di frusta."""
+        if not already_up:
+            ghost.set_frame(start, 0.0)
+            ghost.show()
         loop = QEventLoop()
         motion = QVariantAnimation(self)
         motion.setStartValue(0.0)
         motion.setEndValue(1.0)
         motion.setDuration(duration)
-        motion.setEasingCurve(curve)
+        motion.setEasingCurve(QEasingCurve(QEasingCurve.Type.Linear))
 
         def frame(value):
-            t = float(value)
-            if not fade_in:
-                t = 1.0 - t
+            t = shape(float(value))
             try:
-                # in entrata la dissolvenza finisce a metà corsa, così il
-                # rimbalzo si vede tutto invece di arrivare mentre è ancora
-                # semitrasparente
+                # la dissolvenza chiude presto: il resto del movimento si
+                # guarda a piena opacità, non attraverso un velo
                 ghost.set_frame(lerp_rect(start, target, t),
-                                min(1.0, t * 2.0) if fade_in else min(1.0, t * 1.6))
+                                min(1.0, max(0.0, t) * 3.0))
             except RuntimeError:
                 pass
 
