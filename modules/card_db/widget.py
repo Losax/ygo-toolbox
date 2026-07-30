@@ -53,6 +53,14 @@ from .workers import SyncWorker, VersionWorker
 THUMB = QSize(48, 70)          # miniatura di riga (proporzioni della carta)
 ART = QSize(230, 336)          # immagine nella scheda
 RESULT_LIMIT = 300
+CARD_RATIO = 59 / 86           # proporzioni di una carta Yu-Gi-Oh!
+
+# Aria da aggiungere all'icona per ottenere l'altezza della riga. NON è un
+# margine estetico: il QSS del tema dà agli item della tabella 8px di padding
+# sopra e sotto più un bordo da 1px, e senza tenerne conto l'icona da 70px in
+# una riga da 78 ne riceve 61 e viene TAGLIATA sopra e sotto (visto dal vivo).
+# È la stessa trappola del "numero delle copie illeggibile" nel deck_dialog.
+ROW_PADDING = 8 + 8 + 1 + 2
 
 # Colori dello stato in ban list. Sono un GIUDIZIO sulla carta, quindi devono
 # essere leggibili come tali: rosso = non si gioca, arancio = una copia sola.
@@ -112,6 +120,51 @@ def _placeholder(size: QSize) -> QPixmap:
     painter.drawRoundedRect(1, 1, size.width() - 2, size.height() - 2, 4, 4)
     painter.end()
     return pixmap
+
+
+class _CardArt(QLabel):
+    """L'immagine della carta nella scheda.
+
+    Tiene da parte il pixmap ORIGINALE e lo riscala a ogni cambio di
+    dimensione. Senza, rimpicciolendo la finestra (la scala UI arriva a 0,9)
+    l'etichetta diventava più bassa del pixmap già disegnato e la carta si
+    vedeva tagliata.
+
+    NB: nel modulo del grafico prezzi c'è una classe quasi identica. Non si
+    importa: i moduli non si conoscono fra loro, e venti righe duplicate
+    costano meno di un aggancio fra due moduli indipendenti."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Verticale FISSA, non `Ignored`: l'altezza qui la impone
+        # `setFixedHeight`, e con `Ignored` il layout piazzava le etichette
+        # successive come se l'immagine fosse alta la metà — la carta finiva
+        # disegnata SOPRA il nome e le statistiche. (Nel modulo del grafico la
+        # stessa classe usa `Ignored` perché lì l'altezza gliela dà il layout:
+        # copiare la politica senza il contesto è stato l'errore.)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self._source = None
+
+    def set_source(self, pixmap) -> None:
+        self._source = pixmap
+        self._rescale()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (override Qt)
+        super().resizeEvent(event)
+        self._rescale()
+
+    def _rescale(self) -> None:
+        if self.width() <= 0 or self.height() <= 0:
+            return
+        if self._source is None or self._source.isNull():
+            alta = min(self.height(), round(self.width() / CARD_RATIO))
+            self.setPixmap(_placeholder(QSize(max(1, round(alta * CARD_RATIO)),
+                                              max(1, alta))))
+            return
+        self.setPixmap(self._source.scaled(
+            self.size(), Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
 
 
 class CardDbWidget(QWidget):
@@ -238,9 +291,11 @@ class CardDbWidget(QWidget):
         # --- risultati + scheda ---
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(
-            ["", tr("Nome"), tr("Tipo"), tr("Ban")])
+        # Elenco ESSENZIALE: immagine e nome. Tipo e stato in ban list stanno
+        # nella scheda, dove c'è spazio per dirli per intero — in una colonna
+        # stretta erano rumore accanto al nome.
+        self.table = QTableWidget(0, 2)
+        self.table.horizontalHeader().setVisible(False)  # una colonna sola: l'intestazione non aggiunge nulla
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
@@ -273,10 +328,9 @@ class CardDbWidget(QWidget):
         v.setContentsMargins(16, 16, 16, 16)
         v.setSpacing(10)
 
-        self.art = QLabel()
-        self.art.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.art = _CardArt()
         self.art.setFixedHeight(ART.height())
-        self.art.setPixmap(_placeholder(ART))
+        self.art.set_source(None)
         v.addWidget(self.art)
 
         self.d_name = QLabel(tr("Scegli una carta dall'elenco"))
@@ -529,46 +583,18 @@ class CardDbWidget(QWidget):
             nome = QTableWidgetItem(etichetta)
             nome.setData(Qt.ItemDataRole.UserRole, card_id)
             self.table.setItem(r, 1, nome)
-            dettaglio = riga["race"] or ""
-            if riga["attribute"]:
-                dettaglio = f"{riga['attribute']} · {dettaglio}"
-            self.table.setItem(r, 2, QTableWidgetItem(dettaglio or riga["type"]))
-            stato = riga["ban_tcg"] or riga["ban_ocg"] or riga["ban_goat"] or ""
-            cella = QTableWidgetItem("")
-            self.table.setItem(r, 3, cella)
-            if stato:
-                self.table.setCellWidget(r, 3, self._ban_cell(riga))
-            else:
-                self.table.removeCellWidget(r, 3)
-            self.table.setRowHeight(r, THUMB.height() + 8)
-        self.table.setColumnWidth(0, THUMB.width() + 12)
-        self.table.setColumnWidth(3, 92)
+            self.table.setRowHeight(r, self._row_height())
+        self.table.setColumnWidth(0, round((THUMB.width() + 12) * self._scale))
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
         self.table.setUpdatesEnabled(True)
         self._visible_timer.start()
 
-    def _ban_cell(self, riga) -> QWidget:
-        box = QWidget()
-        h = QHBoxLayout(box)
-        h.setContentsMargins(2, 0, 2, 0)
-        h.setSpacing(3)
-        for regione in ("tcg", "ocg", "goat"):
-            stato = riga[f"ban_{regione}"]
-            if not stato:
-                continue
-            etichetta = QLabel()
-            etichetta.setPixmap(_pill(regione.upper(),
-                                      BAN_COLORS.get(stato, theme.TEXT_MUTED), 18))
-            etichetta.setToolTip(f"{regione.upper()}: "
-                                 f"{tr(BAN_LABELS.get(stato, stato))}")
-            etichetta.setStyleSheet("background: transparent;")
-            h.addWidget(etichetta)
-        h.addStretch(1)
-        return box
+    def _row_height(self) -> int:
+        """Altezza di riga che lascia all'icona TUTTA la sua altezza.
+        Vedi ROW_PADDING: senza il padding del QSS l'immagine viene tagliata."""
+        return round((THUMB.height() + ROW_PADDING) * self._scale)
 
     # -------------------------------------------------------------- scheda
     def _on_row_selected(self) -> None:
@@ -638,7 +664,7 @@ class CardDbWidget(QWidget):
             + ("\n…" if len(stampe) > len(mostrate) else ""))
 
         self.watch_btn.setEnabled(True)
-        self.art.setPixmap(_placeholder(ART))
+        self.art.set_source(None)
         percorso = images.cached(card_id, small=False)
         if percorso is not None:
             self._set_art(str(percorso))
@@ -663,12 +689,8 @@ class CardDbWidget(QWidget):
 
     def _set_art(self, percorso: str) -> None:
         pixmap = QPixmap(percorso)
-        if pixmap.isNull():
-            return
-        self.art.setPixmap(pixmap.scaled(
-            QSize(self.art.width() or ART.width(), self.art.height()),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation))
+        if not pixmap.isNull():
+            self.art.set_source(pixmap)
 
     # ------------------------------------------------------------ immagini
     def _request_image(self, card_id: int, url: str, small: bool) -> None:
@@ -742,8 +764,9 @@ class CardDbWidget(QWidget):
         self.table.setIconSize(QSize(round(THUMB.width() * scale),
                                      round(THUMB.height() * scale)))
         for r in range(self.table.rowCount()):
-            self.table.setRowHeight(r, round((THUMB.height() + 8) * scale))
+            self.table.setRowHeight(r, self._row_height())
         self.table.setColumnWidth(0, round((THUMB.width() + 12) * scale))
+        # l'immagine si ri-adatta da sola (vedi _CardArt): qui basta l'altezza
         self.art.setFixedHeight(round(ART.height() * scale))
 
     def stop(self) -> None:

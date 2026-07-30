@@ -373,7 +373,23 @@ confini di parola per non pescare "usato").
     Corollario misurato: i filtri senza testo (es. solo attributo, 2.648
     carte) erano a 128 ms per scansione completa → indici sulle colonne
     filtrate, ~27 ms.
-18. **Un'animazione, un'API e una ricerca si misurano; un numero scritto a
+18. **Il padding del QSS mangia l'ICONA, non solo il testo** (v1.1.1). Nel
+    modulo Database le miniature dell'elenco si vedevano mozzate sopra e
+    sotto. `QTableWidget::item` ha `padding: 8px 10px` più un bordo da 1px:
+    in una riga da 78 px a un'icona da 70 ne restano 61, e Qt la TAGLIA
+    invece di rimpicciolirla. Cura: l'altezza della riga si calcola dalla
+    costante (`THUMB.height() + ROW_PADDING`), non a occhio. È lo stesso
+    inciampo del "numero delle copie illeggibile" nel `deck_dialog` — lì era
+    uno spinbox, qui un'icona: quando qualcosa appare tagliato in una cella,
+    il primo sospettato è il padding del tema.
+    Corollario (stessa versione): copiare `_CardArt` dal modulo del grafico
+    portandosi dietro `QSizePolicy.Ignored` è stato un errore. Là l'altezza la
+    dà il layout; qui è imposta da `setFixedHeight`, e con `Ignored` il layout
+    piazzava le etichette successive come se l'immagine fosse alta la metà —
+    la carta finiva **disegnata sopra il nome**. Verticale `Fixed`.
+    Morale: una politica di dimensionamento non si copia senza il contesto che
+    la giustifica.
+19. **Un'animazione, un'API e una ricerca si misurano; un numero scritto a
     memoria è un numero inventato.** Nel commento di `search_blob` avevo
     scritto "la ricerca scende a ~35 ms" PRIMA di misurare: la misura vera
     diceva l'opposto (da 120 a 190 ms, perché il testo raddoppia). Il numero

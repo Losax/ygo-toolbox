@@ -578,6 +578,18 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     servono a schermo**, e restano salvate sul disco per sempre. YGOPRODeck
     mette in blacklist chi tira immagini a volume, e scaricarle tutte
     significherebbe ~400 MB.
+64. **Database, prime correzioni (v1.1.1).**
+    - **Elenco essenziale**: via le colonne *Tipo* e *Ban*. Restano immagine e
+      nome (italiano sotto l'inglese); tipo e stato in ban list si leggono
+      nella scheda, dove c'è spazio per dirli per intero invece che in una
+      colonna stretta. Sparita anche l'intestazione: con una colonna sola non
+      diceva niente.
+    - **Miniature tagliate**: le immagini nell'elenco erano mozzate sopra e
+      sotto. Causa: il tema dà alle righe della tabella 8 px di margine sopra
+      e sotto, così in una riga da 78 px a un'immagine da 70 ne restavano 61.
+      Ora l'altezza della riga tiene conto del margine.
+    - **Immagine della scheda**: ora si ri-adatta da sola. Prima, rimpicciolendo
+      la finestra, veniva tagliata anche lei.
 
 ## 4. Note operative importanti
 
