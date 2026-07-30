@@ -54,7 +54,16 @@ ripristinare) → **installer**:
 ```
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=X.Y.Z installer.iss
 ```
-→ `dist\YGO Toolbox Setup vX.Y.Z.exe` (~46 MB), l'artefatto da consegnare.
+→ `dist\YGO-Toolbox-Setup-vX.Y.Z.exe` (~46 MB), l'artefatto da consegnare
+(nome SENZA spazi: GitHub li sostituisce con punti negli allegati di Release).
+Infine la **Release**, che è ciò che accende il controllo aggiornamenti:
+```
+gh release create vX.Y.Z "dist\YGO-Toolbox-Setup-vX.Y.Z.exe" \
+  --title "YGO Toolbox vX.Y.Z" --notes-file note.md --verify-tag
+```
+(`gh` sta in `C:\Program Files\GitHub CLI\gh.exe`, non è nel PATH di questa
+sessione. NB: in PowerShell `--json a,b -q '…'` viene sbriciolato — usare
+`--json` da solo e poi `ConvertFrom-Json`.)
 **`installer.iss` (Inno Setup 6), scelte deliberate:**
 - `PrivilegesRequired=lowest` → installazione PER UTENTE in
   `%LocalAppData%\Programs`, **nessun UAC**. Un cartello d'allarme in meno.

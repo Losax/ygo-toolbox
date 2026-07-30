@@ -39,7 +39,9 @@ DisableDirPage=auto
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=dist
-OutputBaseFilename=YGO Toolbox Setup v{#AppVersion}
+; Senza spazi: GitHub li sostituisce con punti quando il file viene allegato a
+; una Release, e "YGO.Toolbox.Setup.v1.0.24.exe" fa l'effetto sbagliato.
+OutputBaseFilename=YGO-Toolbox-Setup-v{#AppVersion}
 SetupIconFile=assets\icon.ico
 UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2/max
