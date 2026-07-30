@@ -526,6 +526,13 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       sul grafico, e un bordo verticale duro in movimento si legge come una
       sciabolata. Ora il bordo è **sfumato**: la linea si materializza invece
       di essere svelata da un taglio.
+61. **La linea si disegna UNA volta sola (v1.0.30).** Difetto introdotto dalle
+    due versioni precedenti: il tratto compariva e **subito dopo si rifaceva
+    da capo**. Motivo: la comparsa partiva da sola nel momento in cui il
+    grafico riceveva i dati — cioè mentre la finestra era ancora in volo,
+    quindi invisibile — e all'atterraggio ne vedevi la coda; poi ripartiva da
+    zero quella "vera". Ora la comparsa non parte più da sola: la lancia solo
+    chi mostra il grafico, una volta, a finestra ferma.
 
 ## 4. Note operative importanti
 

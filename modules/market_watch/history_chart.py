@@ -231,25 +231,28 @@ class PriceChart(QWidget):
 
     # --- dati -------------------------------------------------------------
     def set_runs(self, runs: list, now: datetime | None = None) -> None:
+        """Carica i dati e basta: la comparsa della linea **non parte da qui**.
+
+        Prima partiva, e con la finestra che nasce dalla miniatura si vedeva
+        disegnare DUE volte: la prima mentre la finestra era ancora in volo
+        (cioè invisibile, e all'atterraggio se ne vedeva la coda), la seconda
+        quando `replay()` la faceva ripartire da capo. La comparsa la lancia
+        chi mostra il grafico, quando è il momento giusto."""
         self._runs = list(runs)
         self._now = now or datetime.now()
         self._hover_x = None
+        self._anim.stop()
         cur = self.current_run()
-        if anim.is_enabled() and cur is not None and cur.points:
-            self._reveal = 0.0
-            self._anim.stop()
-            self._anim.start()
-        else:
-            self._reveal = 1.0
+        # con le animazioni spente il grafico dev'essere già tutto lì
+        self._reveal = 0.0 if (anim.is_enabled() and cur is not None and cur.points) else 1.0
         self.update()
 
     def replay(self) -> None:
-        """Rifà la comparsa della linea. Serve al pop-up: durante la
-        transizione la finestra è ancora un'istantanea, quindi la linea si
-        disegnerebbe dove nessuno la vede — e si atterrerebbe su un grafico
-        già finito."""
+        """Lancia (o rilancia) la comparsa della linea."""
         cur = self.current_run()
         if not (anim.is_enabled() and cur is not None and cur.points):
+            self._reveal = 1.0        # niente animazioni: il grafico c'è e si vede
+            self.update()
             return
         self._reveal = 0.0
         self._anim.stop()
@@ -721,11 +724,12 @@ class HistoryDialog(QDialog):
         cambia solo da dove nasce."""
         self._place()
         target = self.geometry()
-        if not anim.is_enabled():
-            return self.exec()
-        start = self._start_rect(origin, target)
-        ghost = self._snapshot_ghost()
+        start = self._start_rect(origin, target)   # registra anche l'origine
+        ghost = self._snapshot_ghost() if anim.is_enabled() else None
         if ghost is None:
+            # niente transizione (animazioni spente, o istantanea non
+            # riuscita): la linea si disegna appena la finestra è a schermo
+            QTimer.singleShot(0, self.chart.replay)
             return self.exec()
         self._run_ghost(ghost, start, target, pop_in, 500)
         # SCAMBIO SENZA SALTO: la finestra vera si mostra SOTTO il fantasma

@@ -1130,6 +1130,26 @@ def main() -> int:
     assert max(scoperti) < 30, f"tratto troppo veloce ({max(scoperti):.0f}px/fotogramma)"
     assert all(scoperti[i] >= -1e-9 for i in range(fotogrammi)), "non deve tornare indietro"
 
+    # La comparsa NON parte da sola caricando i dati: con la finestra che
+    # nasce dalla miniatura, la linea si disegnava due volte — una mentre la
+    # finestra era ancora in volo (invisibile) e una al `replay()`.
+    from PySide6.QtCore import QAbstractAnimation as _QAA  # noqa: E402
+    dlg_r = hc.HistoryDialog("X", "", "", hc.split_runs(righe))
+    assert dlg_r.chart._reveal == 0.0, "col grafico non ancora mostrato non si disegna nulla"
+    assert dlg_r.chart._anim.state() != _QAA.State.Running, \
+        "la comparsa non deve partire da set_runs: la lancia chi mostra il grafico"
+    dlg_r.chart.replay()
+    assert dlg_r.chart._anim.state() == _QAA.State.Running
+    dlg_r.chart._anim.stop()
+    # animazioni spente: il grafico dev'essere subito tutto lì, non invisibile
+    _anim.set_enabled(False)
+    dlg_r.chart.set_runs(hc.split_runs(righe))
+    assert dlg_r.chart._reveal == 1.0, "senza animazioni il grafico deve vedersi subito"
+    dlg_r.chart.replay()
+    assert dlg_r.chart._reveal == 1.0
+    _anim.set_enabled(True)
+    dlg_r.deleteLater()
+
     # il rettangolo di partenza ha le PROPORZIONI della finestra (altrimenti
     # l'immagine si deforma lungo tutta la corsa: effetto gommato)
     dlg_p = hc.HistoryDialog("X", "", "", hc.split_runs(righe))

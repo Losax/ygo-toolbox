@@ -578,6 +578,21 @@ confini di parola per non pescare "usato").
     orizzontale in `CompositionMode_DestinationIn`: linea, area e pallini
     sfumano insieme. Costa un pixmap per fotogramma, ma SOLO durante la
     comparsa — a `_reveal >= 1` si disegna diretto sul widget.
+  **DUE comparse invece di una (v1.0.30).** `set_runs` faceva partire la
+  comparsa da sé, nel costruttore: con la finestra che nasce dalla miniatura
+  quella corsa girava **mentre il dialogo era ancora nascosto** (in volo c'è
+  solo l'istantanea), all'atterraggio se ne vedeva la coda e 140 ms dopo
+  `replay()` la faceva ripartire da zero — il tratto si disegnava due volte.
+  Ora `set_runs` carica i dati e basta (`_reveal = 0`, o `1` se le animazioni
+  sono spente: senza quel ramo il grafico resterebbe invisibile per sempre) e
+  la comparsa la lancia **solo chi mostra il grafico**: `open_from` con un
+  `singleShot(140)` dopo l'atterraggio, o `singleShot(0)` quando non c'è
+  transizione. Regola generale: **un'animazione non si avvia dove si caricano
+  i dati**, ma dove si sa che il widget è visibile.
+  Verificato registrando tutti i valori di `_reveal` dall'apertura: una sola
+  salita 0→1, nessun ritorno indietro, inizio a 786 ms (la finestra atterra a
+  ~500). Il test lo blocca dall'altro capo: dopo `set_runs` l'animazione NON
+  dev'essere in corsa.
 - **Ordinamento** (`_SORT_MODES`, `_set_sort`, `_sorted_cards`): pulsantini
   sopra la tabella, criterio + verso in `mw_settings.sort` (`"price:desc"`).
   **Non** sono intestazioni cliccabili di proposito: l'ordinamento agisce
