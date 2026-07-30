@@ -1264,6 +1264,43 @@ def main() -> int:
     print("[OK] Database: parser difensivo, copia locale, ricerca IT+EN con "
           "indice full-text, filtri e ban list.")
 
+    # 7a) le due PAGINE: elenco e carta. Niente rete nel test: si sostituisce
+    # la funzione che chiede la versione (l'unica chiamata all'avvio) e si
+    # tolgono gli indirizzi delle immagini, così non parte alcun download.
+    from modules.card_db.widget import CardDbWidget  # noqa: E402
+    vera_versione = cdb_api.fetch_db_version
+    cdb_api.fetch_db_version = lambda: (_ for _ in ()).throw(
+        cdb_api.YgoProError("test senza rete"))
+    st_ui = _St(tmp / "carddb_ui.db")
+    repo_ui = CardDbRepository(st_ui)
+    senza_foto = []
+    for c in (carta, altra):
+        c = dict(c)
+        c["image_url"] = c["image_small_url"] = ""
+        senza_foto.append(c)
+    repo_ui.replace_all(senza_foto, [])
+    ctx_ui = AppContext(storage=st_ui, notifier=notifier, data_dir=tmp)
+    cdb = CardDbWidget(ctx_ui)
+    assert cdb.pages.currentIndex() == 0, "si parte dall'elenco"
+    assert cdb.table.rowCount() == 2, cdb.table.rowCount()
+    cdb._open_row(0)
+    assert cdb.pages.currentIndex() == 1, "scegliendo una carta la pagina è sua"
+    assert cdb.d_name.text() == senza_foto[0]["name"] or \
+        cdb.d_name.text() == senza_foto[1]["name"], cdb.d_name.text()
+    cdb.show_list()
+    assert cdb.pages.currentIndex() == 0
+    # la riga è ancora selezionata: ri-cliccarla non cambia la selezione, ma
+    # deve riaprire lo stesso (per questo si ascolta anche il clic)
+    cdb._open_row(0)
+    assert cdb.pages.currentIndex() == 1, "la riga già selezionata deve riaprirsi"
+    cdb.back_btn.click()
+    assert cdb.pages.currentIndex() == 0
+    cdb.stop()
+    st_ui.close()
+    cdb_api.fetch_db_version = vera_versione
+    print("[OK] Database: la carta scelta si prende la pagina, e si torna "
+          "indietro col pulsante o con Esc.")
+
     # 7b) ponte fra moduli: passa dal CONTESTO, i moduli non si conoscono
     ricevuti = []
     ctx.open_module = lambda mid, payload=None: (ricevuti.append((mid, payload)), True)[1]

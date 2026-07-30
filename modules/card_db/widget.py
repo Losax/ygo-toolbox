@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -51,7 +51,7 @@ from .repository import CardDbRepository
 from .workers import SyncWorker, VersionWorker
 
 THUMB = QSize(48, 70)          # miniatura di riga (proporzioni della carta)
-ART = QSize(230, 336)          # immagine nella scheda
+ART = QSize(320, 466)          # immagine nella pagina della carta
 RESULT_LIMIT = 300
 CARD_RATIO = 59 / 86           # proporzioni di una carta Yu-Gi-Oh!
 
@@ -134,16 +134,17 @@ class _CardArt(QLabel):
     importa: i moduli non si conoscono fra loro, e venti righe duplicate
     costano meno di un aggancio fra due moduli indipendenti."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, width: int, parent=None) -> None:
         super().__init__(parent)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Verticale FISSA, non `Ignored`: l'altezza qui la impone
-        # `setFixedHeight`, e con `Ignored` il layout piazzava le etichette
-        # successive come se l'immagine fosse alta la metà — la carta finiva
-        # disegnata SOPRA il nome e le statistiche. (Nel modulo del grafico la
-        # stessa classe usa `Ignored` perché lì l'altezza gliela dà il layout:
-        # copiare la politica senza il contesto è stato l'errore.)
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        self.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        self.setFixedWidth(width)
+        # Larghezza fissa, altezza dal LAYOUT (`Ignored`): la colonna
+        # dell'immagine è alta quanto la pagina, e la carta ci si adatta.
+        # Attenzione: `Ignored` va bene SOLO perché l'altezza la decide il
+        # layout — dove invece è imposta con `setFixedHeight`, il layout
+        # piazza i vicini come se il widget fosse alto la metà e l'immagine
+        # finisce disegnata sopra di loro (successo, v1.1.1).
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Ignored)
         self._source = None
 
     def set_source(self, pixmap) -> None:
@@ -281,16 +282,23 @@ class CardDbWidget(QWidget):
         self.ban_combo.currentIndexChanged.connect(lambda _i: self.run_search())
         riga2.addWidget(self.ban_combo)
         pv.addLayout(riga2)
-        root.addWidget(pannello)
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
         self.progress.setTextVisible(True)
         root.addWidget(self.progress)
 
-        # --- risultati + scheda ---
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
+        # --- due PAGINE: l'elenco, e la carta scelta ---
+        # Non un pannello laterale: scegliendo una carta la pagina diventa
+        # sua. Così l'elenco ha tutta la larghezza quando serve scorrerlo, e
+        # la carta tutta la larghezza quando serve leggerla — invece di stare
+        # stretti in due metà per sempre.
+        self.pages = QStackedWidget()
+        elenco = QWidget()
+        ev = QVBoxLayout(elenco)
+        ev.setContentsMargins(0, 0, 0, 0)
+        ev.setSpacing(14)
+        ev.addWidget(pannello)
         # Elenco ESSENZIALE: immagine e nome. Tipo e stato in ban list stanno
         # nella scheda, dove c'è spazio per dirli per intero — in una colonna
         # stretta erano rumore accanto al nome.
@@ -305,38 +313,65 @@ class CardDbWidget(QWidget):
         self.table.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.table.setIconSize(THUMB)
         self.table.itemSelectionChanged.connect(self._on_row_selected)
+        # Anche il clic secco, oltre al cambio di selezione: tornando
+        # all'elenco la riga di prima è ancora selezionata, e ri-cliccarla non
+        # cambierebbe la selezione — la carta non si riaprirebbe più.
+        self.table.cellClicked.connect(lambda r, _c: self._open_row(r))
         self.table.verticalScrollBar().valueChanged.connect(
             lambda _v: self._visible_timer.start())
-        splitter.addWidget(self.table)
-        splitter.addWidget(self._build_detail())
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 2)
-        self.splitter = splitter
-        root.addWidget(splitter, 1)
+        ev.addWidget(self.table, 1)
 
         self.status = QLabel("")
         self.status.setObjectName("subtitle")
-        root.addWidget(self.status)
+        ev.addWidget(self.status)
 
-    def _build_detail(self) -> QWidget:
+        self.pages.addWidget(elenco)
+        self.pages.addWidget(self._build_card_page())
+        root.addWidget(self.pages, 1)
+
+    def _build_card_page(self) -> QWidget:
+        """La pagina dedicata alla carta: arte grande a sinistra, tutto il
+        resto a destra. Occupa la pagina intera — l'elenco sparisce."""
+        pagina = QWidget()
+        pl = QVBoxLayout(pagina)
+        pl.setContentsMargins(0, 0, 0, 0)
+        pl.setSpacing(12)
+
+        barra = QHBoxLayout()
+        self.back_btn = QPushButton(tr("←  Torna all'elenco"))
+        self.back_btn.setObjectName("ghost")
+        self.back_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.back_btn.clicked.connect(self.show_list)
+        self.back_btn.setToolTip(tr("Anche il tasto Esc"))
+        barra.addWidget(self.back_btn)
+        barra.addStretch(1)
+        pl.addLayout(barra)
+
+        dentro = QFrame()
+        dentro.setObjectName("card")
+        anim.drop_shadow(dentro, blur=26, dy=6, alpha=120)
+        corpo = QHBoxLayout(dentro)
+        corpo.setContentsMargins(18, 18, 18, 18)
+        corpo.setSpacing(18)
+
+        self.art = _CardArt(ART.width())
+        self.art.set_source(None)
+        corpo.addWidget(self.art)
+
         area = QScrollArea()
         area.setWidgetResizable(True)
         area.setFrameShape(QFrame.Shape.NoFrame)
-        dentro = QFrame()
-        dentro.setObjectName("card")
-        v = QVBoxLayout(dentro)
-        v.setContentsMargins(16, 16, 16, 16)
+        area.setStyleSheet("background: transparent;")
+        colonna = QWidget()
+        colonna.setStyleSheet("background: transparent;")
+        v = QVBoxLayout(colonna)
+        v.setContentsMargins(0, 0, 6, 0)
         v.setSpacing(10)
-
-        self.art = _CardArt()
-        self.art.setFixedHeight(ART.height())
-        self.art.set_source(None)
-        v.addWidget(self.art)
 
         self.d_name = QLabel(tr("Scegli una carta dall'elenco"))
         self.d_name.setWordWrap(True)
         font = QFont(theme.FONT_FAMILY)
-        font.setPointSizeF(13)
+        font.setPointSizeF(17)
         font.setBold(True)
         self.d_name.setFont(font)
         v.addWidget(self.d_name)
@@ -393,12 +428,39 @@ class CardDbWidget(QWidget):
         self.watch_btn = QPushButton(tr("Segui i prezzi in Market Watch"))
         self.watch_btn.setEnabled(False)
         self.watch_btn.clicked.connect(self._send_to_market_watch)
-        v.addWidget(self.watch_btn)
+        v.addWidget(self.watch_btn, 0, Qt.AlignmentFlag.AlignLeft)
         v.addStretch(1)
 
-        area.setWidget(dentro)
-        area.setMinimumWidth(300)
-        return area
+        area.setWidget(colonna)
+        corpo.addWidget(area, 1)
+        pl.addWidget(dentro, 1)
+        return pagina
+
+    # ------------------------------------------------- passaggio fra pagine
+    def show_list(self) -> None:
+        if self.pages.currentIndex() == 0:
+            return
+        self.pages.setCurrentIndex(0)
+        anim.fade_in(self.pages.currentWidget(), duration=180)
+        self.search_input.setFocus()
+        self._visible_timer.start()      # riprende le miniature rimaste indietro
+
+    def _open_row(self, row: int) -> None:
+        elemento = self.table.item(row, 0)
+        if elemento is None:
+            return
+        card_id = elemento.data(Qt.ItemDataRole.UserRole)
+        if card_id is not None:
+            self.show_card(int(card_id))
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 (override Qt)
+        """Esc torna all'elenco: senza cornice di finestra e con la pagina
+        piena, è il gesto che ci si aspetta."""
+        if (event.key() == Qt.Key.Key_Escape
+                and self.pages.currentIndex() == 1):
+            self.show_list()
+            return
+        super().keyPressEvent(event)
 
     # --------------------------------------------------------- stato/header
     def _refresh_status(self) -> None:
@@ -611,6 +673,9 @@ class CardDbWidget(QWidget):
         if carta is None:
             return
         self._current_id = card_id
+        if self.pages.currentIndex() != 1:
+            self.pages.setCurrentIndex(1)
+            anim.fade_in(self.pages.currentWidget(), duration=200)
         # Il nome INGLESE resta il titolo anche con l'italiano disponibile: è
         # quello con cui la carta si cerca ovunque (liste, tornei, negozi).
         # L'italiano sta sotto, dov'è utile a chi ha la carta in mano.
@@ -706,8 +771,8 @@ class CardDbWidget(QWidget):
 
         È il freno principale verso il loro CDN: con 300 risultati a schermo
         ne servono una decina, non trecento."""
-        if not self.table.rowCount():
-            return
+        if not self.table.rowCount() or self.pages.currentIndex() != 0:
+            return          # con la pagina della carta aperta non serve nulla
         viewport = self.table.viewport().rect()
         prima = self.table.rowAt(max(0, viewport.top()))
         ultima = self.table.rowAt(max(0, viewport.bottom()))
@@ -766,8 +831,8 @@ class CardDbWidget(QWidget):
         for r in range(self.table.rowCount()):
             self.table.setRowHeight(r, self._row_height())
         self.table.setColumnWidth(0, round((THUMB.width() + 12) * scale))
-        # l'immagine si ri-adatta da sola (vedi _CardArt): qui basta l'altezza
-        self.art.setFixedHeight(round(ART.height() * scale))
+        # l'altezza la dà il layout; l'immagine si ri-adatta da sola
+        self.art.setFixedWidth(round(ART.width() * scale))
 
     def stop(self) -> None:
         for worker in (self._sync_worker, self._version_worker):

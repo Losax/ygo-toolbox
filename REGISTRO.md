@@ -590,6 +590,15 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       Ora l'altezza della riga tiene conto del margine.
     - **Immagine della scheda**: ora si ri-adatta da sola. Prima, rimpicciolendo
       la finestra, veniva tagliata anche lei.
+65. **La carta si prende la pagina (v1.1.2).** Niente più pannello laterale:
+    scegliendo una carta dall'elenco, **la pagina diventa sua** — ricerca,
+    filtri ed elenco spariscono, e restano l'immagine grande a sinistra e
+    tutto il resto a destra. Si torna indietro col pulsante *← Torna
+    all'elenco* o col tasto **Esc**.
+    Il vantaggio è doppio: l'elenco ha tutta la larghezza quando serve
+    scorrerlo, la carta tutta la larghezza quando serve leggerla, invece di
+    stare stretti in due metà per sempre. L'immagine della carta è passata da
+    230 a 320 px di larghezza e si adatta all'altezza della pagina.
 
 ## 4. Note operative importanti
 

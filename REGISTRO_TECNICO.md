@@ -688,6 +688,22 @@ confini di parola per non pescare "usato").
   colonna aggiunta. La scrittura su DB avviene nella GUI, in **una
   transazione** (`replace_all`): una sincronizzazione interrotta a metà
   lascerebbe un archivio mezzo vecchio e mezzo nuovo, peggio di uno vecchio.
+- **Modulo Database — due PAGINE** (`QStackedWidget`, v1.1.2): pagina 0 =
+  ricerca + filtri + elenco, pagina 1 = la carta a tutta larghezza. Non è un
+  pannello laterale: scegliendo una carta la pagina diventa sua, e l'elenco
+  riprende tutta la larghezza quando si torna. Si torna con il pulsante o con
+  **Esc** (`keyPressEvent`).
+  Due trappole già inciampate:
+  - si ascolta **anche `cellClicked`**, non solo `itemSelectionChanged`:
+    tornando all'elenco la riga di prima è ancora selezionata, e ri-cliccarla
+    non cambia la selezione — senza il clic la carta non si riaprirebbe più;
+  - `_load_visible_thumbs` esce subito se la pagina attiva non è l'elenco:
+    con la carta aperta non c'è nessuna miniatura da scaricare, e il timer
+    continuerebbe a girare.
+  Attenzione nelle verifiche: la pagina entra con `anim.fade_in`, quindi una
+  schermata catturata subito dopo il cambio pagina esce **vuota** — non è un
+  difetto del layout (ci sono cascato: sembrava una pagina che non si
+  disegnava, era la dissolvenza a metà).
 - **Ponte fra moduli** (`AppContext.open_module`, v1.1.0): i moduli **non si
   importano fra loro**, si chiamano per `id` attraverso il contesto. La
   `MainWindow` porta in primo piano il modulo e gli passa il messaggio se
