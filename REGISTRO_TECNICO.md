@@ -712,8 +712,24 @@ confini di parola per non pescare "usato").
   compare solo dove `desc_it` esiste: dove manca (2.878 carte) si mostra
   l'inglese e l'etichetta lo dichiara, invece di far sembrare una scelta
   quello che è un buco nei dati.
-  Il doppio nome nell'elenco resta invece in entrambe le lingue: lì non è una
-  preferenza di lettura ma un aiuto a RITROVARE la carta che si ha in mano.
+  **Badge di lingua (v1.1.4)**: la scelta è passata da un interruttore
+  accanto al testo a una fila di **badge** (`LANGUAGES`, oggi `en`/`it`) in
+  cima alla pagina della carta, perché è un comando di PAGINA — cambia nome
+  e testo insieme, non solo l'effetto. Tutto passa da `_refresh_desc`: un
+  solo posto in cui la lingua decide cosa si legge (prima nome e sottotitolo
+  li scriveva anche `show_card`, e sarebbero andati fuori sincrono al primo
+  clic sul badge). Il nome inglese non sparisce mai: con l'italiano acceso
+  scende nella riga del tipo.
+  Dove la traduzione manca il badge è **disabilitato, non nascosto**:
+  nasconderlo farebbe ballare la fila e non direbbe nulla, spento dichiara
+  "questa carta in italiano non c'è" (tooltip). È l'eccezione alla regola
+  "un comando che non fa niente si toglie": qui il comando spento è
+  un'informazione.
+  Aggiungere una lingua = una voce in `LANGUAGES`, due colonne e un download
+  in più nel `SyncWorker` (l'API dà anche fr, de, pt).
+  Nell'ELENCO invece nessuna traduzione: solo il nome inglese, canonico. La
+  ricerca continua a coprire entrambe le lingue (colonna `search`), quindi si
+  cerca "cenere" e si trova Ash Blossom anche se in lista si legge l'inglese.
 - **Ponte fra moduli** (`AppContext.open_module`, v1.1.0): i moduli **non si
   importano fra loro**, si chiamano per `id` attraverso il contesto. La
   `MainWindow` porta in primo piano il modulo e gli passa il messaggio se

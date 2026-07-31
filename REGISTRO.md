@@ -610,6 +610,22 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     lasciar credere che l'inglese sia una scelta tua.
     Nell'elenco il nome italiano resta sempre sotto quello inglese: lì serve a
     ritrovare una carta che hai in mano, in qualunque lingua sia stampata.
+67. **Badge delle lingue, e traduzioni fuori dall'elenco (v1.1.4).**
+    - **Nell'elenco solo il nome inglese**, quello canonico: la traduzione
+      sotto ogni voce affollava senza aiutare a scorrere. La **ricerca**
+      continua però a coprire entrambe le lingue — puoi cercare *cenere* e
+      trovare *Ash Blossom*.
+    - **Sulla carta ci sono i badge delle lingue** (EN / IT) in alto a destra.
+      Quello acceso decide cosa leggi, e cambia **nome e testo insieme**, non
+      solo l'effetto. Il nome inglese non si perde mai: con l'italiano acceso
+      passa nella riga sotto, perché è quello con cui la carta si cerca, si
+      scambia e si gioca.
+    - Dove la traduzione non esiste, il badge IT resta **spento e
+      disabilitato**, col perché nel suggerimento. Toglierlo del tutto
+      avrebbe fatto ballare la fila e non avrebbe detto niente; spento dice
+      "questa carta in italiano non c'è".
+    Il predefinito resta la lingua dell'app, e la scelta fatta coi badge vale
+    anche per le carte che apri dopo.
 
 ## 4. Note operative importanti
 

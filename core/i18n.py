@@ -357,12 +357,15 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "tutti": "all", "tutte": "all",
         "In lista (qualsiasi)": "On a list (any)",
         "Effetto": "Card text",
-        "Effetto (italiano)": "Card text (Italian)",
-        "Effetto (inglese)": "Card text (English)",
-        "Mostra il testo in italiano": "Show the Italian text",
         "Effetto (in inglese: l'italiano non esiste per questa carta)":
             "Card text (English: no Italian version for this card)",
-        "Mostra il testo originale in inglese": "Show the original English text",
+        "←  Torna all'elenco": "←  Back to the list",
+        "Anche il tasto Esc": "Esc works too",
+        "Questa carta non esiste in italiano":
+            "This card has no Italian version",
+        "Mostra nome e testo in italiano": "Show the Italian name and text",
+        "Mostra nome e testo originali in inglese":
+            "Show the original English name and text",
         "Scegli una carta dall'elenco": "Pick a card from the list",
         "Stampata in {n} set:": "Printed in {n} sets:",
         "Nessuna stampa registrata.": "No printing on record.",

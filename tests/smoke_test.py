@@ -1285,8 +1285,8 @@ def main() -> int:
     assert cdb.table.rowCount() == 2, cdb.table.rowCount()
     cdb._open_row(0)
     assert cdb.pages.currentIndex() == 1, "scegliendo una carta la pagina è sua"
-    assert cdb.d_name.text() == senza_foto[0]["name"] or \
-        cdb.d_name.text() == senza_foto[1]["name"], cdb.d_name.text()
+    nomi_noti = {n for c in senza_foto for n in (c["name"], c["name_it"]) if n}
+    assert cdb.d_name.text() in nomi_noti, cdb.d_name.text()
     cdb.show_list()
     assert cdb.pages.currentIndex() == 0
     # la riga è ancora selezionata: ri-cliccarla non cambia la selezione, ma
@@ -1297,38 +1297,51 @@ def main() -> int:
     assert cdb.pages.currentIndex() == 0
     cdb.stop()
 
-    # 7a-bis) la lingua del TESTO segue quella dell'interfaccia: con l'app in
-    # inglese le carte in italiano sarebbero una sorpresa, e viceversa.
+    # 7a-bis) badge delle lingue. Il predefinito segue l'INTERFACCIA (con
+    # l'app in inglese le carte in italiano sarebbero una sorpresa) e il badge
+    # acceso cambia NOME e TESTO insieme.
     from core import i18n as _i18n  # noqa: E402
     lingua_prima = _i18n.current()
-    for lingua, inizio, altra in (("en", "When a card", "IT"),
-                                  ("it", "Quando una carta", "EN")):
+    for lingua, inizio in (("en", "When a card"), ("it", "Quando una carta")):
         _i18n._current = lingua
         cdb_l = CardDbWidget(ctx_ui)
         assert cdb_l._desc_lang == lingua
         cdb_l._open_row(0)
         assert cdb_l.d_desc.text().startswith(inizio), \
             f"con l'app in {lingua} il testo dev'essere in {lingua}: {cdb_l.d_desc.text()[:40]}"
-        # il pulsante mostra la lingua verso cui si passa, non quella attuale
-        assert cdb_l.lang_btn.text() == altra
-        cdb_l.lang_btn.click()
-        assert not cdb_l.d_desc.text().startswith(inizio), "l'interruttore non commuta"
+        assert cdb_l.lang_badges[lingua].isChecked(), "badge acceso sbagliato"
+        atteso = carta["name_it"] if lingua == "it" else carta["name"]
+        assert cdb_l.d_name.text() == atteso, cdb_l.d_name.text()
+        # premendo l'altro badge cambiano insieme nome e testo
+        altro = "it" if lingua == "en" else "en"
+        cdb_l.lang_badges[altro].click()
+        assert not cdb_l.d_desc.text().startswith(inizio), "il badge non commuta"
+        assert cdb_l.d_name.text() != atteso, "il badge deve cambiare anche il nome"
+        # il nome INGLESE non si perde mai: con l'italiano acceso va sotto
+        if altro == "it":
+            assert carta["name"] in cdb_l.d_type.text(), cdb_l.d_type.text()
         cdb_l.stop()
-    # carta senza testo italiano: inglese, e il pulsante sparisce (non c'è
-    # nulla verso cui commutare)
+    # carta senza italiano: badge IT spento E disabilitato, col perché nel
+    # tooltip — un badge assente farebbe saltare la fila e non direbbe nulla
     _i18n._current = "it"
     cdb_l = CardDbWidget(ctx_ui)
     cdb_l.show_card(2)                      # "Pot of Greed", solo inglese
     assert cdb_l.d_desc.text() == "Draw 2 cards."
-    assert not cdb_l.lang_btn.isVisible()
+    assert not cdb_l.lang_badges["it"].isEnabled()
+    assert not cdb_l.lang_badges["it"].isChecked()
+    assert cdb_l.lang_badges["en"].isChecked()
+    assert cdb_l.lang_badges["it"].toolTip()
     cdb_l.stop()
+    # e nell'ELENCO nessuna traduzione: solo il nome inglese, canonico
+    assert "\n" not in cdb.table.item(0, 1).text(), \
+        "l'elenco non deve mostrare il nome tradotto"
     _i18n._current = lingua_prima
     st_ui.close()
     cdb_api.fetch_db_version = vera_versione
     print("[OK] Database: la carta scelta si prende la pagina, e si torna "
           "indietro col pulsante o con Esc.")
-    print("[OK] Database: il testo della carta segue la lingua dell'app, "
-          "con interruttore IT/EN dove la traduzione esiste.")
+    print("[OK] Database: badge di lingua sulla carta (nome e testo insieme), "
+          "predefinito = lingua dell'app, elenco senza traduzioni.")
 
     # 7b) ponte fra moduli: passa dal CONTESTO, i moduli non si conoscono
     ricevuti = []

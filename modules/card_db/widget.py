@@ -55,6 +55,12 @@ ART = QSize(320, 466)          # immagine nella pagina della carta
 RESULT_LIMIT = 300
 CARD_RATIO = 59 / 86           # proporzioni di una carta Yu-Gi-Oh!
 
+# Lingue in cui si può leggere una carta. L'inglese è la base (c'è sempre);
+# l'italiano esiste per 11.599 carte su 14.477. Aggiungerne altre (l'API dà
+# anche fr, de, pt) vuol dire un download in più per lingua in `SyncWorker` e
+# una coppia di colonne: la lista sta qui apposta.
+LANGUAGES = (("en", "EN"), ("it", "IT"))
+
 # Aria da aggiungere all'icona per ottenere l'altezza della riga. NON è un
 # margine estetico: il QSS del tema dà agli item della tabella 8px di padding
 # sopra e sotto più un bordo da 1px, e senza tenerne conto l'icona da 70px in
@@ -348,6 +354,19 @@ class CardDbWidget(QWidget):
         self.back_btn.setToolTip(tr("Anche il tasto Esc"))
         barra.addWidget(self.back_btn)
         barra.addStretch(1)
+        # Badge delle lingue: la carta si legge in quella accesa. Sono un
+        # comando di PAGINA (cambiano nome e testo insieme), per questo stanno
+        # qui in alto e non accanto al solo testo dell'effetto.
+        self.lang_badges: dict = {}
+        for codice, sigla in LANGUAGES:
+            badge = QPushButton(sigla)
+            badge.setCheckable(True)
+            badge.setCursor(Qt.CursorShape.PointingHandCursor)
+            badge.setFixedHeight(24)
+            badge.setMinimumWidth(38)
+            badge.clicked.connect(lambda _c=False, code=codice: self._set_card_lang(code))
+            self.lang_badges[codice] = badge
+            barra.addWidget(badge)
         pl.addLayout(barra)
 
         dentro = QFrame()
@@ -399,16 +418,6 @@ class CardDbWidget(QWidget):
         self.d_desc_label.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         riga_testo.addWidget(self.d_desc_label)
         riga_testo.addStretch(1)
-        # Interruttore di lingua del testo. Mostra la lingua verso cui si
-        # passa (non quella attuale), e compare solo dove l'italiano esiste
-        # davvero: c'è per 11.599 carte su 14.477, e un pulsante che non
-        # commuta niente è peggio di un pulsante assente.
-        self.lang_btn = QPushButton("IT")
-        self.lang_btn.setObjectName("ghost")
-        self.lang_btn.setFixedWidth(44)
-        self.lang_btn.clicked.connect(self._toggle_desc_lang)
-        self.lang_btn.setVisible(False)
-        riga_testo.addWidget(self.lang_btn)
         v.addLayout(riga_testo)
 
         self.d_desc = QLabel("")
@@ -640,12 +649,11 @@ class CardDbWidget(QWidget):
                 icona.setIcon(vuota)
             icona.setData(Qt.ItemDataRole.UserRole, card_id)
             self.table.setItem(r, 0, icona)
-            # nome inglese sopra, italiano sotto (la riga è alta: ci sta, e
-            # serve a chi ha la carta stampata in mano)
-            etichetta = riga["name"]
-            if riga["name_it"] and riga["name_it"] != riga["name"]:
-                etichetta = f"{etichetta}\n{riga['name_it']}"
-            nome = QTableWidgetItem(etichetta)
+            # Solo il nome inglese: è quello canonico, con cui la carta si
+            # cerca ovunque. La traduzione affollava l'elenco senza aiutare a
+            # scorrerlo — e la RICERCA continua comunque a coprire entrambe le
+            # lingue (si può cercare "cenere" e trovare Ash Blossom).
+            nome = QTableWidgetItem(riga["name"])
             nome.setData(Qt.ItemDataRole.UserRole, card_id)
             self.table.setItem(r, 1, nome)
             self.table.setRowHeight(r, self._row_height())
@@ -679,16 +687,9 @@ class CardDbWidget(QWidget):
         if self.pages.currentIndex() != 1:
             self.pages.setCurrentIndex(1)
             anim.fade_in(self.pages.currentWidget(), duration=200)
-        # Il nome INGLESE resta il titolo anche con l'italiano disponibile: è
-        # quello con cui la carta si cerca ovunque (liste, tornei, negozi).
-        # L'italiano sta sotto, dov'è utile a chi ha la carta in mano.
-        self.d_name.setText(carta["name"])
-        pezzi = [p for p in (carta["human_type"] or carta["type"],
-                             carta["archetype"]) if p]
-        italiano = carta["name_it"] if "name_it" in carta.keys() else ""
-        if italiano and italiano != carta["name"]:
-            pezzi.insert(0, italiano)
-        self.d_type.setText(" · ".join(pezzi))
+        # Nome, sottotitolo, testo e badge: li mette tutti `_refresh_desc`,
+        # che è anche quello che gira premendo un badge — un solo posto in cui
+        # la lingua decide cosa si legge.
         self._refresh_desc()
 
         stats = []
@@ -739,39 +740,71 @@ class CardDbWidget(QWidget):
         elif carta["image_url"] and not images.failed(carta["image_url"]):
             self._request_image(card_id, carta["image_url"], small=False)
 
-    def _toggle_desc_lang(self) -> None:
-        """La scelta resta finché non la si cambia: sfogliando le carte non
-        si torna alla lingua di partenza a ogni scheda."""
-        self._desc_lang = "en" if self._desc_lang == "it" else "it"
+    def _set_card_lang(self, codice: str) -> None:
+        """La scelta resta finché non la si cambia: sfogliando le carte non si
+        torna alla lingua di partenza a ogni scheda."""
+        self._desc_lang = codice
         self._refresh_desc()
 
     def _refresh_desc(self) -> None:
-        """Testo dell'effetto nella lingua scelta.
+        """Nome e testo della carta nella lingua accesa.
 
-        Il predefinito è la **lingua dell'interfaccia** (`i18n.current()`), non
-        l'italiano fisso: chi tiene l'app in inglese si aspetta le carte in
-        inglese, e viceversa. Se per quella carta l'italiano non esiste
-        (2.878 su 14.477) si mostra l'inglese e lo si DICE, invece di lasciar
-        credere che sia una scelta."""
+        Il predefinito è la **lingua dell'interfaccia** (`i18n.current()`):
+        chi tiene l'app in inglese si aspetta le carte in inglese.
+        Se per quella carta la traduzione non esiste (2.878 su 14.477) il
+        badge resta SPENTO e disabilitato, col perché nel tooltip: un badge
+        assente farebbe saltare la fila e non direbbe niente; uno spento dice
+        "questa carta in italiano non c'è"."""
         if self._current_id is None:
             return
         carta = self.repo.card(self._current_id)
         if carta is None:
             return
         italiano = (carta["desc_it"] if "desc_it" in carta.keys() else "") or ""
-        mostra_it = self._desc_lang == "it" and bool(italiano)
+        nome_it = (carta["name_it"] if "name_it" in carta.keys() else "") or ""
+        disponibili = {"en": True, "it": bool(italiano or nome_it)}
+        mostra_it = self._desc_lang == "it" and disponibili["it"]
+
+        for codice, badge in self.lang_badges.items():
+            attivo = (codice == "it") == mostra_it
+            badge.setEnabled(disponibili.get(codice, False))
+            badge.setChecked(attivo)
+            badge.setStyleSheet(self._badge_style(attivo, disponibili.get(codice, False)))
+            badge.setToolTip(
+                tr("Questa carta non esiste in italiano")
+                if not disponibili.get(codice, False)
+                else tr("Mostra nome e testo in italiano") if codice == "it"
+                else tr("Mostra nome e testo originali in inglese"))
+
+        # Titolo nella lingua accesa; il nome inglese non si perde mai — con
+        # l'italiano acceso finisce nella riga sotto, perché è quello con cui
+        # la carta si cerca, si scambia e si gioca.
+        self.d_name.setText(nome_it if (mostra_it and nome_it) else carta["name"])
+        pezzi = [p for p in (carta["human_type"] or carta["type"],
+                             carta["archetype"]) if p]
+        if mostra_it and nome_it and nome_it != carta["name"]:
+            pezzi.insert(0, carta["name"])
+        self.d_type.setText(" · ".join(pezzi))
+
         self.d_desc.setText(italiano if mostra_it else (carta["desc"] or ""))
-        self.lang_btn.setVisible(bool(italiano))
-        self.lang_btn.setText("EN" if mostra_it else "IT")
-        self.lang_btn.setToolTip(tr("Mostra il testo originale in inglese")
-                                 if mostra_it else tr("Mostra il testo in italiano"))
-        if mostra_it:
-            etichetta = tr("Effetto (italiano)")
-        elif italiano:
-            etichetta = tr("Effetto (inglese)")
+        self.d_desc_label.setText(
+            tr("Effetto") if mostra_it or italiano
+            else tr("Effetto (in inglese: l'italiano non esiste per questa carta)"))
+
+    def _badge_style(self, attivo: bool, disponibile: bool) -> str:
+        """Pillola: accesa in teal, spenta contornata, non disponibile smorta.
+        Stessa grammatica dei badge di condizione/rarità del market watch —
+        testo colorato su fondo dello stesso colore molto trasparente."""
+        if not disponibile:
+            colore, fondo, bordo = theme.TEXT_DISABLED, "transparent", theme.BORDER
+        elif attivo:
+            colore, fondo, bordo = theme.ACCENT, "rgba(26,195,178,0.18)", theme.ACCENT
         else:
-            etichetta = tr("Effetto (in inglese: l'italiano non esiste per questa carta)")
-        self.d_desc_label.setText(etichetta)
+            colore, fondo, bordo = theme.TEXT_MUTED, "transparent", theme.BORDER
+        return (f"QPushButton {{ color: {colore}; background: {fondo};"
+                f" border: 1px solid {bordo}; border-radius: 11px;"
+                f" padding: 2px 10px; font-weight: 700; font-size: 11px; }}"
+                f"QPushButton:hover:enabled {{ border-color: {theme.ACCENT}; }}")
 
     def _set_art(self, percorso: str) -> None:
         pixmap = QPixmap(percorso)
