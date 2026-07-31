@@ -59,6 +59,12 @@ class CardDbRepository:
         )
         self.storage.execute(
             "CREATE INDEX IF NOT EXISTS cdb_sets_card ON cdb_sets(card_id)")
+        # Date di uscita dei set: stanno in un endpoint a parte
+        # (`cardsets.php`), non nei dati delle carte. Servono a ordinare le
+        # ristampe cronologicamente.
+        self.storage.execute(
+            "CREATE TABLE IF NOT EXISTS cdb_setinfo ("
+            " set_name TEXT PRIMARY KEY, set_code TEXT, tcg_date TEXT)")
         self.storage.execute(
             "CREATE TABLE IF NOT EXISTS cdb_meta (key TEXT PRIMARY KEY, value TEXT)")
         self.fts = self._init_fts()
@@ -266,7 +272,39 @@ class CardDbRepository:
         rows = self.storage.query("SELECT * FROM cdb_cards WHERE id = ?", (int(card_id),))
         return rows[0] if rows else None
 
+    def replace_setinfo(self, righe: list) -> None:
+        """(nome, codice, data) di ogni set. Si aggancia per NOME: misurato,
+        combacia su 1.023 set su 1.028, mentre per prefisso di codice sarebbe
+        638 su 657."""
+        conn = self.storage.conn
+        with conn:
+            conn.execute("DELETE FROM cdb_setinfo")
+            conn.executemany(
+                "INSERT OR REPLACE INTO cdb_setinfo (set_name, set_code, tcg_date) "
+                "VALUES (?, ?, ?)", righe)
+
+    def has_setinfo(self) -> bool:
+        rows = self.storage.query("SELECT 1 FROM cdb_setinfo LIMIT 1")
+        return bool(rows)
+
     def sets_of(self, card_id: int) -> list:
+        """Le stampe di una carta, in ordine CRONOLOGICO di uscita del set.
+
+        La data arriva da `cdb_setinfo` (endpoint a parte). Chi non ce l'ha
+        — 5 set su 1.028, più tutto l'archivio finché non si risincronizza —
+        finisce IN FONDO invece che in cima: una data mancante non deve
+        spacciarsi per "uscito prima di tutti"."""
+        # ATTENZIONE: nell'ORDER BY si ripete il COALESCE invece di usare
+        # l'alias `tcg_date`. Con l'alias, SQLite lega il nome alla COLONNA
+        # della tabella (che nel LEFT JOIN senza corrispondenza è NULL):
+        # `NULL = ''` vale NULL, e i NULL in ASC finiscono per PRIMI — cioè i
+        # set senza data comparivano in cima come se fossero i più vecchi.
+        # Visto dal vivo, non ipotizzato.
         return self.storage.query(
-            "SELECT set_name, set_code, rarity FROM cdb_sets WHERE card_id = ? "
-            "ORDER BY set_code", (int(card_id),))
+            "SELECT s.set_name, s.set_code, s.rarity, "
+            "       COALESCE(i.tcg_date, '') AS tcg_date "
+            "FROM cdb_sets s LEFT JOIN cdb_setinfo i ON i.set_name = s.set_name "
+            "WHERE s.card_id = ? "
+            "ORDER BY (COALESCE(i.tcg_date, '') = '') ASC, "
+            "         COALESCE(i.tcg_date, '') ASC, s.set_code ASC",
+            (int(card_id),))

@@ -45,12 +45,12 @@ from PySide6.QtWidgets import (
 from core import anim, badges, i18n, theme
 from core.context import AppContext
 from core.i18n import tr
-from core.rarity import rarity_pixmap
+from core.rarity import rarity_pixmap, rarity_rank
 
 from . import images
 from .api import YgoProError
 from .repository import CardDbRepository
-from .workers import SyncWorker, VersionWorker
+from .workers import SetsWorker, SyncWorker, VersionWorker
 
 THUMB = QSize(48, 70)          # miniatura di riga (proporzioni della carta)
 ART = QSize(320, 466)          # immagine nella pagina della carta
@@ -186,6 +186,7 @@ class CardDbWidget(QWidget):
         self._scale = 1.0
         self._sync_worker: SyncWorker | None = None
         self._version_worker: VersionWorker | None = None
+        self._sets_worker: SetsWorker | None = None
         self._remote_version = ""
         self._current_id: int | None = None
         # Lingua del testo delle carte: segue l'INTERFACCIA. Con l'app in
@@ -216,6 +217,7 @@ class CardDbWidget(QWidget):
             self._fill_filter_values()
             self.run_search()
         self._check_remote_version()
+        self._ensure_setinfo()
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:
@@ -511,6 +513,21 @@ class CardDbWidget(QWidget):
         self._version_worker.done.connect(self._on_remote_version)
         self._version_worker.start()
 
+    def _ensure_setinfo(self) -> None:
+        """Le date dei set mancano solo a chi ha scaricato il database prima
+        che esistessero: si prende il pezzo mancante (170 KB) invece di
+        chiedere di risincronizzare 24 MB."""
+        if not self.repo.count_cards() or self.repo.has_setinfo():
+            return
+        self._sets_worker = SetsWorker(self)
+        self._sets_worker.done.connect(self._on_setinfo)
+        self._sets_worker.start()
+
+    def _on_setinfo(self, righe: list) -> None:
+        self.repo.replace_setinfo(righe)
+        if self._current_id is not None:      # riordina la carta già aperta
+            self._fill_sets(self.repo.sets_of(self._current_id))
+
     def _on_remote_version(self, versione: str, quando: str) -> None:
         self._remote_version = versione
         locale = self.repo.get_meta("version")
@@ -557,11 +574,14 @@ class CardDbWidget(QWidget):
             self.progress.setValue(fatto)
             self.progress.setFormat(tr("Preparo le carte… %v/%m"))
 
-    def _on_sync_done(self, carte: list, sets: list, versione: str, quando: str) -> None:
+    def _on_sync_done(self, carte: list, sets: list, setinfo: list,
+                      versione: str, quando: str) -> None:
         # La scrittura su DB avviene QUI, nel thread della GUI (regola del
         # progetto): il worker ha solo scaricato e preparato le righe.
         try:
             self.repo.replace_all(carte, sets)
+            if setinfo:
+                self.repo.replace_setinfo(setinfo)
         except Exception as exc:               # disco pieno, DB bloccato…
             self._on_sync_failed(str(exc))
             return
@@ -743,11 +763,19 @@ class CardDbWidget(QWidget):
             self._request_image(card_id, carta["image_url"], small=False)
 
     def _fill_sets(self, stampe: list) -> None:
-        """Il riquadro delle ristampe: una riga per stampa, col **codice set**
-        e la **rarità** resi con gli stessi badge del Market Watch (stanno nel
-        core apposta). Nessun taglio: una staple esce in decine di set, e la
-        pagina scorre — mostrarne dodici e mettere "…" nascondeva proprio il
-        dato che si è venuti a cercare."""
+        """Il riquadro delle ristampe: una riga per CODICE SET, con tutte le
+        sue rarità accanto.
+
+        Il nome esteso dell'espansione non si scrive: occupava metà riquadro e
+        si ripeteva identico per ogni rarità dello stesso set (RA01-EN016
+        compare otto volte). Sta nel suggerimento del codice, insieme alla
+        data di uscita — il dato c'è, non ruba spazio.
+
+        Ordine: **cronologico** per data di uscita del set, e dentro ogni set
+        le rarità dalla più comune alla più ricercata (`rarity_rank`). Chi non
+        ha la data va in fondo, chi non ha una rarità riconosciuta va in fondo
+        alla sua riga: un dato mancante non si mette in mezzo agli altri come
+        se valesse zero."""
         while self.d_sets_grid.count():
             elemento = self.d_sets_grid.takeAt(0)
             widget = elemento.widget()
@@ -757,21 +785,40 @@ class CardDbWidget(QWidget):
             tr("Stampata in {n} set:").format(n=len(stampe)) if stampe
             else tr("Nessuna stampa registrata."))
         self.d_sets_box.setVisible(bool(stampe))
+        if not stampe:
+            return
+
+        gruppi: dict = {}
+        for stampa in stampe:                    # già in ordine cronologico
+            codice = stampa["set_code"] or "—"
+            voce = gruppi.setdefault(codice, {"nome": stampa["set_name"] or "",
+                                              "data": stampa["tcg_date"] or "",
+                                              "rarita": []})
+            if stampa["rarity"] and stampa["rarity"] not in voce["rarita"]:
+                voce["rarita"].append(stampa["rarity"])
+
         altezza = round(20 * self._scale)
-        for riga, stampa in enumerate(stampe):
-            codice = QLabel()
-            codice.setPixmap(badges.set_pill(stampa["set_code"] or "—", altezza))
-            self.d_sets_grid.addWidget(codice, riga, 0)
-            nome = QLabel(stampa["set_name"] or "")
-            nome.setStyleSheet(f"color: {theme.TEXT};")
-            nome.setWordWrap(True)
-            self.d_sets_grid.addWidget(nome, riga, 1)
-            if stampa["rarity"]:
-                rara = QLabel()
-                rara.setPixmap(rarity_pixmap(stampa["rarity"], altezza))
-                rara.setToolTip(stampa["rarity"])   # il nome intero: le sigle
-                self.d_sets_grid.addWidget(          # sono convenzioni, non ovvie
-                    rara, riga, 2, Qt.AlignmentFlag.AlignRight)
+        for riga, (codice, voce) in enumerate(gruppi.items()):
+            pillola = QLabel()
+            pillola.setPixmap(badges.set_pill(codice, altezza))
+            descrizione = voce["nome"]
+            if voce["data"]:
+                descrizione += f" — {voce['data']}"
+            pillola.setToolTip(descrizione or codice)
+            self.d_sets_grid.addWidget(pillola, riga, 0)
+
+            fila = QWidget()
+            fh = QHBoxLayout(fila)
+            fh.setContentsMargins(0, 0, 0, 0)
+            fh.setSpacing(4)
+            for rara in sorted(voce["rarita"],
+                               key=lambda r: (rarity_rank(r) < 0, rarity_rank(r))):
+                badge = QLabel()
+                badge.setPixmap(rarity_pixmap(rara, altezza))
+                badge.setToolTip(rara)      # le sigle sono convenzioni, non ovvie
+                fh.addWidget(badge)
+            fh.addStretch(1)
+            self.d_sets_grid.addWidget(fila, riga, 1)
 
     def _set_card_lang(self, codice: str) -> None:
         """La scelta resta finché non la si cambia: sfogliando le carte non si
@@ -922,7 +969,10 @@ class CardDbWidget(QWidget):
         self.art.setFixedWidth(round(ART.width() * scale))
 
     def stop(self) -> None:
-        for worker in (self._sync_worker, self._version_worker):
+        # TUTTI i thread, `_sets_worker` compreso: uno lasciato in corsa
+        # sopravvive al widget e fa cadere il processo alla chiusura
+        # (visto: uscita 0xC0000409 a fine test, senza un rigo di errore).
+        for worker in (self._sync_worker, self._version_worker, self._sets_worker):
             if worker is not None and worker.isRunning():
                 worker.requestInterruption()
                 worker.wait(2000)

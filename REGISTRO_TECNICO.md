@@ -740,6 +740,28 @@ confini di parola per non pescare "usato").
   cerca — la pagina scorre. Il riquadro si NASCONDE se non ci sono stampe,
   invece di restare lì vuoto. Le righe si ricostruiscono a ogni carta
   (`takeAt` + `deleteLater`): un `QGridLayout` non si svuota da solo.
+  **v1.1.6 — raggruppate per CODICE e ordinate:** niente nome esteso (si
+  ripeteva identico per ogni rarità dello stesso set: *RA01-EN016* otto volte;
+  ora sta nel tooltip col la data). Una riga per codice, rarità accanto:
+  34 stampe → 21 righe su *Ash Blossom*. Ordine **cronologico** per data del
+  set, poi rarità crescente (`rarity_rank`); senza data → in fondo, rarità
+  fuori scala → in fondo alla riga.
+  Le DATE non stanno nei dati delle carte: arrivano da `cardsets.php`
+  (1.028 set, 170 KB) in `cdb_setinfo`, agganciate per **nome** — misurato,
+  1.023 su 1.028, mentre per prefisso di codice sarebbe 638 su 657. Chi ha
+  già l'archivio non deve risincronizzare: `_ensure_setinfo` si prende il
+  pezzo mancante all'avvio (`SetsWorker`, silenzioso se fallisce).
+  **GOTCHA 20 — alias di colonna nell'ORDER BY.** `SELECT COALESCE(i.x,'') AS
+  x … ORDER BY (x = '')` NON usa l'alias: SQLite lega il nome alla colonna
+  della tabella, che nel LEFT JOIN senza corrispondenza è **NULL**; `NULL=''`
+  vale NULL e i NULL in ASC vengono per PRIMI. Risultato: i set senza data in
+  cima, come se fossero i più vecchi. Cura: ripetere l'espressione
+  (`ORDER BY (COALESCE(i.x,'')='')`), non fidarsi dell'alias.
+  **GOTCHA 21 — un thread nuovo va aggiunto a `stop()`.** `SetsWorker` non era
+  nella lista dei thread da fermare: i test passavano tutti ma il processo
+  usciva con **0xC0000409** (fail-fast di Windows) senza un rigo di errore,
+  perché il thread sopravviveva al widget. Si vede SOLO guardando il codice di
+  uscita, non l'output: "tutti i controlli superati" era stampato lo stesso.
 - **Ponte fra moduli** (`AppContext.open_module`, v1.1.0): i moduli **non si
   importano fra loro**, si chiamano per `id` attraverso il contesto. La
   `MainWindow` porta in primo piano il modulo e gli passa il messaggio se

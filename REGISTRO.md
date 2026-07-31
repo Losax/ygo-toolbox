@@ -639,6 +639,26 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     **cuore dell'app** invece di restare dentro il Market Watch: i due moduli
     non si conoscono fra loro, e un vocabolario visivo comune deve stare in un
     posto comune. Nel Market Watch non cambia niente di visibile.
+69. **Ristampe: via il nome esteso, e ordine sensato (v1.1.6).**
+    - **Niente più nome dell'espansione scritto per esteso**: occupava metà
+      riquadro e si ripeteva identico per ogni rarità dello stesso set
+      (*RA01-EN016* compariva otto volte di fila). Ora c'è **una riga per
+      codice**, con tutte le sue rarità accanto: su *Ash Blossom* 34 stampe
+      stanno in 21 righe. Il nome dell'espansione e la data di uscita sono nel
+      suggerimento del codice — il dato c'è, non ruba spazio.
+    - **Ordine cronologico** per data di uscita del set, e dentro ogni set le
+      rarità dalla più comune alla più ricercata. Le date non erano nei dati
+      delle carte: si prendono da un elenco a parte dei set (1.028 set, 170 KB
+      una tantum). Chi le ha già scaricate non deve rifare niente: l'app si
+      procura il pezzo mancante da sola alla prima apertura.
+    - I set di cui la fonte non dà la data (5 su 1.028) finiscono **in fondo**,
+      non in cima: una data mancante non deve spacciarsi per "uscito prima di
+      tutti".
+    Nota su alcune rarità strane: per 192 stampe su 44.190 (lo 0,4%)
+    YGOPRODeck mette nel campo rarità cose come *2*, *3*, *New* o *European
+    debut*. Non sono rarità, ma sono quello che dice la fonte: si mostrano in
+    grigio neutro col testo originale nel suggerimento, senza inventare una
+    classificazione che non esiste.
 
 ## 4. Note operative importanti
 

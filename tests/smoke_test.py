@@ -1269,8 +1269,11 @@ def main() -> int:
     # tolgono gli indirizzi delle immagini, così non parte alcun download.
     from modules.card_db.widget import CardDbWidget  # noqa: E402
     vera_versione = cdb_api.fetch_db_version
-    cdb_api.fetch_db_version = lambda: (_ for _ in ()).throw(
-        cdb_api.YgoProError("test senza rete"))
+    vere_espansioni = cdb_api.fetch_sets
+    def _niente_rete(*_a, **_k):
+        raise cdb_api.YgoProError("test senza rete")
+    cdb_api.fetch_db_version = _niente_rete
+    cdb_api.fetch_sets = _niente_rete    # il widget le chiede all'avvio
     st_ui = _St(tmp / "carddb_ui.db")
     repo_ui = CardDbRepository(st_ui)
     senza_foto = []
@@ -1345,18 +1348,39 @@ def main() -> int:
     assert _badges.set_pill("MP22-EN257", 20) is _badges.set_pill("MP22-EN257", 20), \
         "la pillola del set va tenuta in cache"
     assert not _rar("Secret Rare", 20).isNull()
+    # le stampe escono in ordine CRONOLOGICO, e chi non ha data va in FONDO
+    # (l'alias nell'ORDER BY legava alla colonna NULL: i set senza data
+    # finivano in cima come se fossero i più vecchi)
+    repo_ui.replace_setinfo([("Tin", "MP22", "2022-09-15"),
+                             ("Vecchio", "OLD", "2010-01-01"),
+                             ("Ignoto", "NEW", "")])
+    conn_ui = st_ui.conn
+    conn_ui.execute("INSERT INTO cdb_sets (card_id, set_name, set_code, rarity) "
+                    "VALUES (?,?,?,?)", (carta["id"], "Vecchio", "OLD-EN001", "Common"))
+    conn_ui.execute("INSERT INTO cdb_sets (card_id, set_name, set_code, rarity) "
+                    "VALUES (?,?,?,?)", (carta["id"], "Ignoto", "NEW-EN001", "Rare"))
+    conn_ui.commit()
+    ordinate = repo_ui.sets_of(carta["id"])
+    assert [r["set_code"] for r in ordinate] == \
+        ["OLD-EN001", "MP22-EN257", "NEW-EN001"], [r["set_code"] for r in ordinate]
+
     _i18n._current = "en"
     cdb_s = CardDbWidget(ctx_ui)
-    cdb_s._open_row(0)                      # la carta con una stampa
-    assert cdb_s.d_sets_box.isVisible() or cdb_s.d_sets_grid.count() > 0
-    # una riga = pillola del set + nome + badge rarità
-    assert cdb_s.d_sets_grid.count() == 3, cdb_s.d_sets_grid.count()
-    assert "1" in cdb_s.d_sets_title.text()
+    cdb_s._open_row(0)                      # la carta con le stampe
+    # isHidden e non isVisible: qui il widget padre non è mai a schermo, e
+    # isVisible sarebbe False comunque — mentirebbe sul nostro setVisible
+    assert not cdb_s.d_sets_box.isHidden()
+    # una riga per CODICE set = pillola + contenitore delle rarità (niente
+    # nome esteso: si ripeteva identico per ogni rarità dello stesso set)
+    assert cdb_s.d_sets_grid.rowCount() == 3, cdb_s.d_sets_grid.rowCount()
+    assert cdb_s.d_sets_grid.count() == 6, cdb_s.d_sets_grid.count()
+    assert "3" in cdb_s.d_sets_title.text()
     # la carta senza stampe non mostra un riquadro vuoto
     cdb_s.show_card(2)
-    assert cdb_s.d_sets_grid.count() == 0 and not cdb_s.d_sets_box.isVisible()
+    assert cdb_s.d_sets_grid.count() == 0 and cdb_s.d_sets_box.isHidden()
     cdb_s.stop()
     _i18n._current = lingua_prima
+    cdb_api.fetch_sets = vere_espansioni
     _i18n._current = lingua_prima
     st_ui.close()
     cdb_api.fetch_db_version = vera_versione

@@ -29,6 +29,25 @@ class VersionWorker(QThread):
         self.done.emit(versione, quando)
 
 
+class SetsWorker(QThread):
+    """Solo l'elenco dei set con le date (170 KB).
+
+    Serve a chi ha già scaricato il database prima che le date esistessero:
+    invece di chiedergli di risincronizzare 24 MB, si prende il pezzo che
+    manca. Se fallisce **tace**: l'ordine delle ristampe resta quello per
+    codice, che è comunque un ordine."""
+
+    done = Signal(list)
+
+    def run(self) -> None:  # noqa: D102
+        try:
+            righe = api.fetch_sets()
+        except api.YgoProError:
+            return
+        if righe:
+            self.done.emit(righe)
+
+
 class SyncWorker(QThread):
     """Scarica l'intero database e lo prepara per l'inserimento.
 
@@ -37,7 +56,8 @@ class SyncWorker(QThread):
     spiegazione sembra un blocco."""
 
     progress = Signal(str, int, int)          # fase, fatto, totale
-    finished_ok = Signal(list, list, str, str)  # carte, set, versione, data
+    # carte, stampe, elenco set (con le date), versione, data
+    finished_ok = Signal(list, list, list, str, str)
     failed = Signal(str)
 
     def run(self) -> None:  # noqa: D102
@@ -86,6 +106,17 @@ class SyncWorker(QThread):
                         carta["desc_it"] = raw.get("desc") or ""
                 except api.YgoProError:
                     pass
+
+            # --- terza richiesta, piccola (170 KB): le DATE dei set, che nei
+            # dati delle carte non ci sono. Se manca, le ristampe restano in
+            # ordine di codice invece che cronologico: si perde l'ordine, non
+            # il database.
+            setinfo: list = []
+            if not self.isInterruptionRequested():
+                try:
+                    setinfo = api.fetch_sets()
+                except api.YgoProError:
+                    pass
         except api.YgoProError as exc:
             self.failed.emit(str(exc))
             return
@@ -95,4 +126,4 @@ class SyncWorker(QThread):
         if not carte:
             self.failed.emit("Nessuna carta valida nella risposta.")
             return
-        self.finished_ok.emit(carte, sets, versione, quando)
+        self.finished_ok.emit(carte, sets, setinfo, versione, quando)

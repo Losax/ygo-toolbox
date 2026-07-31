@@ -137,6 +137,26 @@ def fetch_all_cards(should_stop=None, progress=None, language: str = "") -> list
     return carte
 
 
+def fetch_sets() -> list:
+    """Elenco dei set con la loro DATA DI USCITA — l'unico posto in cui l'API
+    la espone (nei dati delle carte non c'è).
+
+    **Misurato il 2026-07-31:** 1.028 set, 170 KB, e la data c'è per 1.026.
+    L'aggancio ai set citati dalle carte si fa per NOME: combacia su 1.023 su
+    1.028, mentre per prefisso di codice andrebbe molto peggio (638 su 657) —
+    provato, non supposto."""
+    response = _get("cardsets.php")
+    try:
+        dati = response.json()
+    except ValueError as exc:
+        raise YgoProError(f"Elenco set non leggibile: {exc}") from exc
+    if not isinstance(dati, list):
+        raise YgoProError("Elenco set in un formato inatteso.")
+    return [(s.get("set_name") or "", s.get("set_code") or "",
+             s.get("tcg_date") or "")
+            for s in dati if isinstance(s, dict) and s.get("set_name")]
+
+
 def parse_card(raw: dict) -> tuple[dict, list]:
     """Da una carta dell'API a un dizionario pronto per il DB, più le sue
     stampe.
