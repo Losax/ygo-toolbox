@@ -384,6 +384,14 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "A single request, then everything stays on your computer.",
         "Scarico… %.1f MB": "Downloading… %.1f MB",
         "Scarico i testi italiani… %.1f MB": "Downloading Italian text… %.1f MB",
+        "Scarico i punti Genesys… %.1f MB": "Downloading Genesys points… %.1f MB",
+        "Nei formati:": "In each format:",
+        "3 copie": "3 copies",
+        "non uscita in questo formato": "never released in this format",
+        "{n} punti": "{n} points",
+        "dato non scaricato — premi Aggiorna":
+            "not downloaded yet — press Update",
+        "nessun punteggio": "no score",
         "Preparo le carte… %v/%m": "Preparing cards… %v/%m",
         "Database aggiornato: {n} carte e {s} stampe.":
             "Database updated: {n} cards and {s} printings.",

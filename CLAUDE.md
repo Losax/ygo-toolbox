@@ -119,9 +119,11 @@ le tabelle esistenti).
   blocco** a chi sfora. Quindi: la ricerca interroga SQLite, mai la rete; le
   immagini vanno su DISCO in `~/.ygo_toolbox/card_images/`, una alla volta e
   solo quelle visibili a schermo (tutte insieme sarebbero ~400 MB).
-- Sincronizzazione = **due** richieste: inglese (base, 14.477 carte) +
-  italiano (`language=it`, 11.599) sovrapposto per id. Mai il contrario: in
-  italiano mancano 2.878 carte.
+- Sincronizzazione = **quattro** richieste: inglese (base, 14.477 carte) +
+  italiano (`language=it`, 11.599) sovrapposto per id — mai il contrario, in
+  italiano mancano 2.878 carte — + `format=genesys` per i punti (altri 24 MB:
+  il campo non esiste nella risposta normale) + `cardsets.php` per le date dei
+  set (170 KB, agganciate per NOME).
 - Ricerca con **FTS5** (GOTCHA 17): 1 ms invece di 190. La query dell'utente
   va sempre passata da `fts_query`, che neutralizza gli operatori di FTS5.
 - I moduli **non si importano fra loro**: il ponte verso il market_watch passa

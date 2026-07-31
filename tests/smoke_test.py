@@ -1405,6 +1405,51 @@ def main() -> int:
     cdb_s.show_card(2)
     assert cdb_s.d_sets_grid.count() == 0 and cdb_s.d_sets_box.isHidden()
     cdb_s.stop()
+
+    # 7a-quater) riquadro dei FORMATI: ban list TCG/OCG e punti Genesys.
+    # Tre distinzioni che a schermo si scriverebbero uguale: in lista /
+    # legale (3 copie) / mai uscita in quel formato. E per Genesys, uno 0 è un
+    # punteggio VERO, mentre "non scaricato" è un'altra cosa.
+    _i18n._current = "it"      # le attese qui sotto sono in italiano
+    conn_ui.execute("UPDATE cdb_cards SET genesys = 42 WHERE id = ?", (carta["id"],))
+    conn_ui.execute("UPDATE cdb_cards SET formats = ? WHERE id = ?",
+                    (_json.dumps(["OCG"]), 2))       # Pot of Greed: solo OCG
+    conn_ui.commit()
+    assert repo_ui.has_genesys()
+    cdb_f = CardDbWidget(ctx_ui)
+
+    def _formati(widget):
+        letto = {}
+        for r in range(widget.d_formats.rowCount()):
+            c0 = widget.d_formats.itemAtPosition(r, 0)
+            c1 = widget.d_formats.itemAtPosition(r, 1)
+            if c0 and c1:
+                valore = c1.widget()
+                letto[c0.widget().text()] = valore.text() or f"badge:{valore.toolTip()}"
+        return letto
+
+    cdb_f.show_card(carta["id"])
+    letto = _formati(cdb_f)
+    assert letto["TCG"] == "badge:Limited", letto      # in lista → badge
+    assert letto["OCG"] == "3 copie", letto            # legale e non in lista
+    assert letto["Genesys"] == "42 punti", letto
+    cdb_f.show_card(2)                                  # solo OCG, 0 punti
+    letto = _formati(cdb_f)
+    assert "non uscita" in letto["TCG"], letto
+    assert letto["OCG"] == "3 copie", letto
+    # uno 0 è un punteggio, non un buco
+    conn_ui.execute("UPDATE cdb_cards SET genesys = 0 WHERE id = 2")
+    conn_ui.commit()
+    cdb_f.show_card(2)
+    assert _formati(cdb_f)["Genesys"] == "0 punti", _formati(cdb_f)
+    # ...e "non scaricato" è un'altra cosa ancora
+    conn_ui.execute("UPDATE cdb_cards SET genesys = NULL")
+    conn_ui.commit()
+    cdb_f.show_card(2)
+    assert not repo_ui.has_genesys()
+    assert "non scaricato" in _formati(cdb_f)["Genesys"], _formati(cdb_f)
+    cdb_f.stop()
+
     _i18n._current = lingua_prima
     cdb_api.fetch_sets = vere_espansioni
     _i18n._current = lingua_prima
@@ -1416,6 +1461,8 @@ def main() -> int:
           "predefinito = lingua dell'app, elenco senza traduzioni.")
     print("[OK] Database: ristampe in un riquadro, con i badge di set e rarità "
           "condivisi col Market Watch (core/badges.py, core/rarity.py).")
+    print("[OK] Database: riquadro dei formati — ban list TCG/OCG, 3 copie, "
+          "'mai uscita' e punti Genesys (0 ≠ dato mancante).")
 
     # 7b) ponte fra moduli: passa dal CONTESTO, i moduli non si conoscono
     ricevuti = []

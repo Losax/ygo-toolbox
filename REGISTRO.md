@@ -684,6 +684,28 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     Corretto anche un difetto emerso qui: passando da una carta all'altra, il
     badge della ban list della carta PRECEDENTE restava disegnato sopra le
     statistiche di quella nuova.
+72. **Riquadro dei formati (v1.2.0).** Sotto il testo della carta c'è un
+    riquadro nuovo con tre righe: **TCG**, **OCG** e **Genesys**. I badge
+    della ban list, che prima stavano sciolti accanto al tipo, sono finiti
+    lì — sono la stessa informazione: cosa può fare quella carta, in quel
+    formato.
+    Tre casi che prima si confondevano e ora si distinguono:
+    - **in ban list** → il badge con lo stato (Vietata / Limitata /
+      Semi-limitata);
+    - **legale e non in lista** → *3 copie*, che è la regola, non una stima;
+    - **mai uscita in quel formato** → lo dice, invece di far credere che se
+      ne possano giocare tre. (Il dato c'è: la fonte elenca in quali formati
+      ogni carta è uscita.)
+    **Punti Genesys**: 715 carte hanno un punteggio, le altre 13.762 valgono
+    zero — e uno zero è un punteggio vero, non un dato mancante: se il
+    punteggio non è ancora stato scaricato la riga lo dice chiaramente.
+    Nota sul costo: il punteggio Genesys l'API lo dà **solo** chiedendo tutto
+    il database col filtro apposito, cioè **altri 24 MB** per un numero a
+    carta. La sincronizzazione passa da ~41 a ~65 MB e da 4 a 7 secondi
+    circa. Non esiste un modo più leggero: verificato, il campo non compare
+    nella risposta normale nemmeno chiedendo i dati estesi.
+    Chi ha già il database deve premere **Aggiorna** una volta per avere i
+    punteggi; fino ad allora la riga Genesys dice che il dato manca.
 
 ## 4. Note operative importanti
 

@@ -23,7 +23,7 @@ CARD_COLUMNS = (
     "attribute", "atk", "def", "level", "linkval", "scale", "archetype",
     "typeline", "human_type", "image_url", "image_small_url", "tcg_date",
     "ocg_date", "staple", "ban_tcg", "ban_ocg", "ban_goat", "formats",
-    "art_count", "search",
+    "art_count", "genesys", "search",
 )
 
 
@@ -42,8 +42,17 @@ class CardDbRepository:
             " archetype TEXT, typeline TEXT, human_type TEXT,"
             " image_url TEXT, image_small_url TEXT, tcg_date TEXT, ocg_date TEXT,"
             " staple INTEGER DEFAULT 0, ban_tcg TEXT, ban_ocg TEXT, ban_goat TEXT,"
-            " formats TEXT, art_count INTEGER DEFAULT 1, search TEXT)"
+            " formats TEXT, art_count INTEGER DEFAULT 1, genesys INTEGER,"
+            " search TEXT)"
         )
+        # `CREATE TABLE IF NOT EXISTS` non aggiorna una tabella già esistente:
+        # le colonne nuove vanno aggiunte a mano (regola del progetto).
+        esistenti = {r["name"] for r in
+                     self.storage.query("PRAGMA table_info(cdb_cards)")}
+        for colonna, tipo in (("genesys", "INTEGER"),):
+            if colonna not in esistenti:
+                self.storage.execute(
+                    f"ALTER TABLE cdb_cards ADD COLUMN {colonna} {tipo}")
         self.storage.execute(
             "CREATE INDEX IF NOT EXISTS cdb_cards_name ON cdb_cards(name)")
         # Indici sulle colonne dei filtri: una ricerca per solo attributo
@@ -282,6 +291,14 @@ class CardDbRepository:
             conn.executemany(
                 "INSERT OR REPLACE INTO cdb_setinfo (set_name, set_code, tcg_date) "
                 "VALUES (?, ?, ?)", righe)
+
+    def has_genesys(self) -> bool:
+        """La copia locale contiene i punti Genesys? Serve a distinguere
+        "questa carta vale 0 punti" da "il dato non l'abbiamo scaricato" —
+        due cose diverse che a schermo si scriverebbero uguale."""
+        rows = self.storage.query(
+            "SELECT 1 FROM cdb_cards WHERE genesys IS NOT NULL LIMIT 1")
+        return bool(rows)
 
     def has_setinfo(self) -> bool:
         rows = self.storage.query("SELECT 1 FROM cdb_setinfo LIMIT 1")

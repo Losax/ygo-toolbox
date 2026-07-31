@@ -732,6 +732,20 @@ confini di parola per non pescare "usato").
   Nell'ELENCO invece nessuna traduzione: solo il nome inglese, canonico. La
   ricerca continua a coprire entrambe le lingue (colonna `search`), quindi si
   cerca "cenere" e si trova Ash Blossom anche se in lista si legge l'inglese.
+- **Riquadro dei formati** (`_fill_formats`, v1.2.0): ban list TCG/OCG +
+  punti Genesys, dove prima c'erano badge sciolti accanto al tipo. Distingue
+  **tre** stati che a schermo si scriverebbero uguale: in lista (badge),
+  legale e non in lista (*3 copie*, che è la regola), **mai uscita in quel
+  formato** (dal campo `formats` della fonte — senza, si farebbe credere che
+  se ne possano giocare tre). Per Genesys, `0` è un punteggio VERO (13.762
+  carte su 14.477) mentre `NULL` è "non scaricato": `repo.has_genesys()`
+  distingue i due casi, altrimenti si scriverebbe la stessa cosa.
+  **`genesys_points` costa 24 MB.** Verificato: NON compare nella risposta
+  normale, nemmeno con `misc=yes` — arriva solo con `format=genesys`, e quel
+  filtro non filtra nulla (restituisce comunque tutte le 14.477 carte). È una
+  quarta richiesta piena nel `SyncWorker`; se fallisce, il resto della copia
+  resta valido. Colonna `genesys` aggiunta con `ALTER TABLE` in `_init_schema`
+  (i DB esistenti non la avrebbero: `CREATE TABLE IF NOT EXISTS` non migra).
 - **Ristampe** (`_fill_sets`, v1.1.5): riquadro con bordo (`QGridLayout` in un
   `QFrame`), una riga per stampa = `badges.set_pill` + nome + `rarity_pixmap`,
   col nome intero della rarità nel tooltip (le sigle sono convenzioni della

@@ -447,11 +447,6 @@ class CardDbWidget(QWidget):
         self.d_type.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         v.addWidget(self.d_type)
 
-        self.d_badges = QHBoxLayout()
-        self.d_badges.setSpacing(6)
-        self.d_badges.addStretch(1)
-        v.addLayout(self.d_badges)
-
         self.d_stats = QLabel("")
         self.d_stats.setWordWrap(True)
         v.addWidget(self.d_stats)
@@ -472,6 +467,24 @@ class CardDbWidget(QWidget):
             f"background: {theme.SURFACE_2}; border: 1px solid {theme.BORDER};"
             f" border-radius: 8px; padding: 10px;")
         v.addWidget(self.d_desc)
+
+        # --- riquadro dei formati: ban list TCG/OCG e punti Genesys.
+        # Sono tre informazioni della stessa natura ("questa carta, in quel
+        # formato, cosa può fare"): stanno insieme, in un riquadro loro.
+        self.d_formats_title = QLabel(tr("Nei formati:"))
+        self.d_formats_title.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        v.addWidget(self.d_formats_title)
+        self.d_formats_box = QFrame()
+        self.d_formats_box.setStyleSheet(
+            f"QFrame {{ background: {theme.SURFACE_2};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 8px; }}"
+            f" QLabel {{ border: none; background: transparent; }}")
+        self.d_formats = QGridLayout(self.d_formats_box)
+        self.d_formats.setContentsMargins(10, 8, 10, 8)
+        self.d_formats.setHorizontalSpacing(12)
+        self.d_formats.setVerticalSpacing(5)
+        self.d_formats.setColumnStretch(2, 1)
+        v.addWidget(self.d_formats_box)
 
         self.d_sets_title = QLabel("")
         self.d_sets_title.setStyleSheet(f"color: {theme.TEXT_MUTED};")
@@ -600,9 +613,12 @@ class CardDbWidget(QWidget):
         self._sync_worker.start()
 
     def _on_sync_progress(self, fase: str, fatto: int, totale: int) -> None:
-        if fase in ("download", "italiano"):
-            etichetta = (tr("Scarico… %.1f MB") if fase == "download"
-                         else tr("Scarico i testi italiani… %.1f MB"))
+        if fase in ("download", "italiano", "genesys"):
+            etichetta = {
+                "download": tr("Scarico… %.1f MB"),
+                "italiano": tr("Scarico i testi italiani… %.1f MB"),
+                "genesys": tr("Scarico i punti Genesys… %.1f MB"),
+            }[fase]
             if totale > 0:
                 self.progress.setRange(0, totale)
                 self.progress.setValue(fatto)
@@ -777,17 +793,9 @@ class CardDbWidget(QWidget):
             stats.append(f"DEF {carta['def']}")
         self.d_stats.setText("   ".join(stats))
 
-        _svuota(self.d_badges, tieni_ultimo=True)   # l'ultimo è lo stretch
-        for regione in ("tcg", "ocg", "goat"):
-            stato = carta[f"ban_{regione}"]
-            if not stato:
-                continue
-            badge = QLabel()
-            badge.setPixmap(_pill(f"{regione.upper()} · {tr(BAN_LABELS.get(stato, stato))}",
-                                  BAN_COLORS.get(stato, theme.TEXT_MUTED), 22))
-            badge.setStyleSheet("background: transparent;")
-            self.d_badges.insertWidget(self.d_badges.count() - 1, badge)
-
+        # I badge della ban list non stanno più sciolti accanto al tipo:
+        # sono finiti nel riquadro dei formati, insieme a Genesys.
+        self._fill_formats(carta)
         self._fill_sets(self.repo.sets_of(card_id))
 
         self.watch_btn.setEnabled(True)
@@ -797,6 +805,60 @@ class CardDbWidget(QWidget):
             self._set_art(str(percorso))
         elif carta["image_url"] and not images.failed(carta["image_url"]):
             self._request_image(card_id, carta["image_url"], small=False)
+
+    def _fill_formats(self, carta) -> None:
+        """Riquadro dei formati: ban list TCG e OCG, punti Genesys.
+
+        Tre distinzioni che a schermo si scriverebbero uguale e invece non lo
+        sono, e vanno tenute separate:
+        - **in lista** → il badge con lo stato (Vietata / Limitata / Semi);
+        - **legale e non in lista** → 3 copie, che è la regola, non una stima;
+        - **mai uscita in quel formato** → si dice, invece di far credere che
+          se ne possano giocare tre. Il dato c'è: `formats` della fonte.
+        Per Genesys, un `0` è un punteggio VERO (carta senza costo); se invece
+        il dato non è stato scaricato si scrive che manca — sono cose diverse.
+        """
+        _svuota(self.d_formats)
+        try:
+            formati = {f.lower() for f in json.loads(carta["formats"] or "[]")}
+        except (ValueError, TypeError):
+            formati = set()
+        altezza = round(20 * self._scale)
+        riga = 0
+        for codice, etichetta in (("tcg", "TCG"), ("ocg", "OCG")):
+            nome = QLabel(etichetta)
+            nome.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+            self.d_formats.addWidget(nome, riga, 0)
+            stato = carta[f"ban_{codice}"] or ""
+            if stato:
+                valore = QLabel()
+                valore.setPixmap(_pill(tr(BAN_LABELS.get(stato, stato)),
+                                       BAN_COLORS.get(stato, theme.TEXT_MUTED),
+                                       altezza))
+                valore.setToolTip(stato)
+            elif codice in formati:
+                valore = QLabel(tr("3 copie"))
+                valore.setStyleSheet(f"color: {theme.POSITIVE};")
+            else:
+                valore = QLabel(tr("non uscita in questo formato"))
+                valore.setStyleSheet(f"color: {theme.TEXT_DISABLED};")
+            self.d_formats.addWidget(valore, riga, 1)
+            riga += 1
+
+        nome = QLabel("Genesys")
+        nome.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        self.d_formats.addWidget(nome, riga, 0)
+        punti = carta["genesys"] if "genesys" in carta.keys() else None
+        if punti is None:
+            testo = (tr("dato non scaricato — premi Aggiorna")
+                     if not self.repo.has_genesys() else tr("nessun punteggio"))
+            valore = QLabel(testo)
+            valore.setStyleSheet(f"color: {theme.TEXT_DISABLED};")
+        else:
+            valore = QLabel(tr("{n} punti").format(n=punti))
+            valore.setStyleSheet(
+                f"color: {theme.WARN if punti else theme.TEXT};")
+        self.d_formats.addWidget(valore, riga, 1)
 
     def _fill_sets(self, stampe: list) -> None:
         """Il riquadro delle ristampe: una riga per CODICE SET, con tutte le

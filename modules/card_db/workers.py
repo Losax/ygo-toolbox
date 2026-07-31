@@ -107,6 +107,22 @@ class SyncWorker(QThread):
                 except api.YgoProError:
                     pass
 
+            # --- i PUNTI GENESYS arrivano solo con `format=genesys`, e quel
+            # filtro restituisce comunque tutte le carte: altri 24 MB per un
+            # intero a carta. È il prezzo del dato, non c'è di meglio. Se
+            # fallisce, il resto della copia resta buono.
+            if not self.isInterruptionRequested():
+                try:
+                    punti = api.fetch_genesys(
+                        should_stop=self.isInterruptionRequested,
+                        progress=lambda f, t: self.progress.emit("genesys", f, t))
+                    for card_id, valore in punti.items():
+                        carta = per_id.get(card_id)
+                        if carta is not None:
+                            carta["genesys"] = valore
+                except api.YgoProError:
+                    pass
+
             # --- terza richiesta, piccola (170 KB): le DATE dei set, che nei
             # dati delle carte non ci sono. Se manca, le ristampe restano in
             # ordine di codice invece che cronologico: si perde l'ordine, non

@@ -137,6 +137,41 @@ def fetch_all_cards(should_stop=None, progress=None, language: str = "") -> list
     return carte
 
 
+def fetch_genesys(should_stop=None, progress=None) -> dict:
+    """{id carta: punti Genesys}.
+
+    **Verificato il 2026-07-31:** `genesys_points` NON compare nella risposta
+    normale, nemmeno con `misc=yes` — la guida lo elenca, ma il campo arriva
+    SOLO chiedendo `format=genesys`. E quel filtro non filtra niente:
+    restituisce comunque tutte le 14.477 carte, cioè **altri 24 MB** per un
+    intero a carta. È il prezzo del dato, non c'è un endpoint più piccolo.
+    Delle 14.477, **13.762 valgono 0 punti**: i punteggi veri sono 715."""
+    response = _get("cardinfo.php", {"misc": "yes", "format": "genesys"}, stream=True)
+    atteso = int(response.headers.get("Content-Length") or 0)
+    pezzi, scaricati = [], 0
+    for chunk in response.iter_content(1 << 16):
+        if should_stop is not None and should_stop():
+            raise YgoProError("Sincronizzazione interrotta.")
+        pezzi.append(chunk)
+        scaricati += len(chunk)
+        if progress is not None:
+            progress(scaricati, atteso)
+    try:
+        carte = json.loads(b"".join(pezzi).decode("utf-8")).get("data") or []
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise YgoProError(f"Punti Genesys non leggibili: {exc}") from exc
+    punti = {}
+    for carta in carte:
+        misc = (carta.get("misc_info") or [{}])[0]
+        valore = misc.get("genesys_points")
+        if valore is not None:
+            try:
+                punti[int(carta.get("id") or 0)] = int(valore)
+            except (TypeError, ValueError):
+                continue
+    return punti
+
+
 def fetch_sets() -> list:
     """Elenco dei set con la loro DATA DI USCITA — l'unico posto in cui l'API
     la espone (nei dati delle carte non c'è).
@@ -200,6 +235,7 @@ def parse_card(raw: dict) -> tuple[dict, list]:
         "ban_goat": ban.get("ban_goat") or "",
         "formats": json.dumps(misc.get("formats") or [], ensure_ascii=False),
         "art_count": len(immagini),
+        "genesys": None,       # arriva da `fetch_genesys` (altra richiesta)
     }
     sets = [
         (carta["id"], s.get("set_name") or "", s.get("set_code") or "",
