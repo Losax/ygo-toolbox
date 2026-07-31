@@ -351,7 +351,20 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "Cerca per nome o nel testo dell'effetto…":
             "Search by name or in the card text…",
         "Azzera filtri": "Clear filters",
-        "Tipo": "Type", "Razza": "Race", "Attributo": "Attribute",
+        # filtri, col vocabolario del gioco
+        "Carta": "Card", "Mostro": "Monster", "Magia": "Spell",
+        "Trappola": "Trap", "Categoria": "Category", "Proprietà": "Property",
+        "Livello/Rango": "Level/Rank",
+        "Categoria del mostro: Normale, Effetto, Rituale, Fusione, "
+        "Synchro, Xyz, Pendulum, Link, Tuner…":
+            "Monster category: Normal, Effect, Ritual, Fusion, Synchro, Xyz, "
+            "Pendulum, Link, Tuner…",
+        "Normal": "Normal", "Effect": "Effect", "Ritual": "Ritual",
+        "Fusion": "Fusion", "Synchro": "Synchro", "Xyz": "Xyz",
+        "Pendulum": "Pendulum", "Link": "Link", "Tuner": "Tuner",
+        "Flip": "Flip", "Gemini": "Gemini", "Spirit": "Spirit",
+        "Toon": "Toon", "Union": "Union",
+        "Tipo": "Type", "Attributo": "Attribute",
         "Archetipo": "Archetype", "Livello": "Level", "Rango": "Rank",
         "Scala": "Scale", "Ban list": "Banlist", "Ban": "Ban",
         "tutti": "all", "tutte": "all",

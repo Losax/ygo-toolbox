@@ -37,7 +37,7 @@ come artefatto: due volte era un difetto vero (GOTCHA 14).
   numerata**: i punti nuovi si aggiungono **IN FONDO, in ordine crescente**
   (inserendoli in cima la cronologia si legge al rovescio: è già capitato e ho
   dovuto riordinarla).
-- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 22
+- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 23
   **GOTCHAS** e le decisioni col loro *perché*. Quando scopri una trappola,
   scrivila lì con il sintomo, la causa e la cura — è la parte più utile del
   documento.
@@ -84,7 +84,7 @@ le tabelle esistenti).
   storage + notifier), SQLite (`storage.py`), tema (`theme.py`), animazioni
   (`anim.py`), traduzioni (`i18n.py`), controllo aggiornamenti (`updates.py`).
 - Dettagli, decisioni e trappole stanno in **`REGISTRO_TECNICO.md`**: leggerlo
-  prima di mettere le mani su market_watch, ha 22 GOTCHAS che spiegano *perché*
+  prima di mettere le mani su market_watch, ha 23 GOTCHAS che spiegano *perché*
   il codice è com'è.
 - `modules/<nome>/module.py` = punto di aggancio: una sottoclasse di
   `ToolModule` con `id`, `title`, `create_widget()`. Viene scoperta da sola al
@@ -128,6 +128,11 @@ le tabelle esistenti).
   va sempre passata da `fts_query`, che neutralizza gli operatori di FTS5.
 - I moduli **non si importano fra loro**: il ponte verso il market_watch passa
   da `AppContext.open_module(id, payload)` + `handle_request` sul widget.
+- **I campi dell'API NON sono il vocabolario del gioco** (GOTCHA 23): `race` è
+  il **Tipo** del mostro (Drago…) o la **Proprietà** di magia/trappola
+  (Rapida, Counter…) — "razza" non esiste; `type` è una stringa composta che
+  contiene sia la **Carta** (Mostro/Magia/Trappola) sia la **Categoria**
+  (Xyz, Link, Synchro…). La traduzione sta in cima a `repository.py`.
 
 ## Modulo market_watch (fonte: API ufficiale CardTrader)
 

@@ -706,6 +706,26 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     nella risposta normale nemmeno chiedendo i dati estesi.
     Chi ha già il database deve premere **Aggiorna** una volta per avere i
     punteggi; fino ad allora la riga Genesys dice che il dato manca.
+73. **Filtri col vocabolario del gioco (v1.2.1).** I filtri usavano i nomi dei
+    campi dell'API, non quelli di Yu-Gi-Oh!, e due erano proprio sbagliati:
+    - **"Razza" non esiste** nel gioco. Quel campo, per i mostri, è il
+      **Tipo** (Drago, Guerriero, Mago…); per magie e trappole è la
+      **Proprietà** (Normale, Rapida, Continua, Equipaggiamento, Terreno,
+      Rituale, Counter). L'API li mette tutti insieme in un campo solo: ora
+      la tendina cambia nome e contenuto a seconda della carta scelta, così
+      non ti offre "Counter" mentre cerchi un mostro.
+    - **"Tipo" ora è "Carta"**, con le tre opzioni vere: **Mostro, Magia,
+      Trappola**.
+    - Siccome così si perdeva la possibilità di cercare Xyz, Synchro o Link,
+      c'è una tendina **Categoria** con Normale, Effetto, Rituale, Fusione,
+      Synchro, Xyz, Pendulum, Link, Tuner, Flip, Gemini, Spirit, Toon, Union.
+    Categoria, Attributo e Livello/Rango riguardano **solo i mostri**:
+    scegliendo Magia o Trappola si spengono e si azzerano, perché un filtro
+    invisibile ancora attivo darebbe zero risultati senza spiegare perché.
+    Contati sul database: 9.308 mostri, 2.864 magie, 2.075 trappole (le 230
+    che mancano all'appello sono Skill Card e Token, che non sono nessuna
+    delle tre); 599 Xyz, 473 Link, 816 Draghi, 571 magie Rapide, 179 trappole
+    Counter.
 
 ## 4. Note operative importanti
 

@@ -732,6 +732,25 @@ confini di parola per non pescare "usato").
   Nell'ELENCO invece nessuna traduzione: solo il nome inglese, canonico. La
   ricerca continua a coprire entrambe le lingue (colonna `search`), quindi si
   cerca "cenere" e si trova Ash Blossom anche se in lista si legge l'inglese.
+- **GOTCHA 23 — i campi dell'API NON sono il vocabolario del gioco** (v1.2.1).
+  I filtri erano stati costruiti sui nomi dei campi YGOPRODeck, e due erano
+  inesistenti a Yu-Gi-Oh!. La traduzione giusta sta in cima a
+  `repository.py` (`CARD_KINDS`, `MONSTER_CATEGORIES`):
+  - API `race` → per i MOSTRI è il **Tipo** (Dragon, Warrior…, 26 valori), per
+    magie e trappole è la **Proprietà** (Normal, Quick-Play, Continuous,
+    Field, Equip, Ritual / Normal, Continuous, Counter). "Razza" non esiste.
+    Sono due vocabolari che non si incontrano mai: `repo.races(card)` offre
+    solo quelli giusti, altrimenti si propone "Counter" a chi cerca un mostro.
+  - API `type` → una stringa composta ("Pendulum Effect Fusion Monster") che
+    contiene DUE informazioni: la **Carta** (Mostro/Magia/Trappola, per
+    sottostringa — verificato che nessun mostro contenga "Spell" nel `type`:
+    lo "Spellcaster" sta in `race`) e la **Categoria** del mostro.
+  - Attributo, Livello/Rango e Categoria valgono SOLO per i mostri: con Magia
+    o Trappola si disabilitano **e si azzerano**. Lasciarli attivi ma
+    invisibili darebbe zero risultati senza dire perché.
+  Contati sul DB: 9.308 mostri + 2.864 magie + 2.075 trappole = 14.247; le
+  230 mancanti sono 124 Skill Card e 106 Token, che non sono nessuna delle
+  tre e restano raggiungibili senza filtro Carta.
 - **Riquadro dei formati** (`_fill_formats`, v1.2.0): ban list TCG/OCG +
   punti Genesys, dove prima c'erano badge sciolti accanto al tipo. Distingue
   **tre** stati che a schermo si scriverebbero uguale: in lista (badge),

@@ -1259,12 +1259,26 @@ def main() -> int:
     assert repo_db.fts_query("-") == "" and repo_db.search("-") is not None
     assert repo_db.search('pot" OR 1=1') is not None, "gli operatori FTS vanno neutralizzati"
 
-    # filtri
-    assert len(repo_db.search("", {"type": "Effect Monster"})) == 1
+    # Filtri, col vocabolario del GIOCO: "Carta" = Mostro/Magia/Trappola
+    # (dentro la stringa `type` dell'API), "Tipo" = Drago/Guerriero… per i
+    # mostri e Proprietà = Normale/Rapida/Counter… per magie e trappole
+    # (l'API li mette entrambi in `race`, che il gioco NON chiama "razza").
+    assert len(repo_db.search("", {"card": "monster"})) == 1
+    assert len(repo_db.search("", {"card": "spell"})) == 1
+    assert len(repo_db.search("", {"card": "trap"})) == 0
+    assert len(repo_db.search("", {"card": "monster", "category": "Effect"})) == 1
+    assert len(repo_db.search("", {"card": "monster", "category": "Xyz"})) == 0
+    assert len(repo_db.search("", {"race": "Zombie"})) == 1      # Tipo del mostro
+    assert len(repo_db.search("", {"race": "Normal"})) == 1      # Proprietà della magia
     assert len(repo_db.search("", {"attribute": "FIRE"})) == 1
     assert len(repo_db.search("", {"banlist": "tcg"})) == 1
     assert len(repo_db.search("", {"banlist": "ocg"})) == 0
     assert repo_db.distinct("attribute") == ["FIRE"]
+    # le voci di Tipo/Proprietà cambiano con la carta scelta: offrire
+    # "Counter" a chi cerca un mostro sarebbe una scelta che dà sempre zero
+    assert repo_db.races("monster") == ["Zombie"], repo_db.races("monster")
+    assert repo_db.races("spell") == ["Normal"], repo_db.races("spell")
+    assert "Effect" in repo_db.categories()
     # totale e pagina: chi chiama deve sapere quante ne sono state tagliate
     righe, totale = repo_db.search_page("", {}, 1)
     assert len(righe) == 1 and totale == 2, (len(righe), totale)
@@ -1273,7 +1287,7 @@ def main() -> int:
     assert scheda["desc_it"].startswith("Quando")
     st_db.close()
     print("[OK] Database: parser difensivo, copia locale, ricerca IT+EN con "
-          "indice full-text, filtri e ban list.")
+          "indice full-text, filtri col vocabolario del gioco e ban list.")
 
     # 7a) le due PAGINE: elenco e carta. Niente rete nel test: si sostituisce
     # la funzione che chiede la versione (l'unica chiamata all'avvio) e si

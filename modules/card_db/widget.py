@@ -312,29 +312,48 @@ class CardDbWidget(QWidget):
         riga1.addWidget(self.reset_btn)
         pv.addLayout(riga1)
 
+        # --- filtri, col vocabolario del GIOCO (vedi repository.CARD_KINDS):
+        # "Carta" = Mostro/Magia/Trappola, "Tipo" = Drago/Guerriero… per i
+        # mostri e "Proprietà" = Normale/Rapida/Counter… per magie e trappole.
+        # Attributo, Livello e Categoria valgono SOLO per i mostri: quando non
+        # servono si spengono, invece di offrire scelte che daranno zero.
         riga2 = QHBoxLayout()
         riga2.setSpacing(8)
-        self.filters: dict = {}
-        for chiave, etichetta in (("type", tr("Tipo")), ("race", tr("Razza")),
-                                  ("attribute", tr("Attributo")),
-                                  ("archetype", tr("Archetipo"))):
-            combo = QComboBox()
-            combo.addItem(f"{etichetta}: {tr('tutti')}", None)
-            combo.currentIndexChanged.connect(lambda _i: self.run_search())
-            self.filters[chiave] = combo
-            riga2.addWidget(combo, 1)
+        self.card_combo = QComboBox()
+        for etichetta, valore in ((f"{tr('Carta')}: {tr('tutte')}", None),
+                                  (tr("Mostro"), "monster"),
+                                  (tr("Magia"), "spell"),
+                                  (tr("Trappola"), "trap")):
+            self.card_combo.addItem(etichetta, valore)
+        self.card_combo.currentIndexChanged.connect(self._on_card_kind)
+        riga2.addWidget(self.card_combo, 1)
+        self.cat_combo = QComboBox()
+        self.cat_combo.setToolTip(
+            tr("Categoria del mostro: Normale, Effetto, Rituale, Fusione, "
+               "Synchro, Xyz, Pendulum, Link, Tuner…"))
+        self.race_combo = QComboBox()
+        self.attr_combo = QComboBox()
         self.level_combo = QComboBox()
-        self.level_combo.addItem(f"{tr('Livello')}: {tr('tutti')}", None)
-        self.level_combo.currentIndexChanged.connect(lambda _i: self.run_search())
-        riga2.addWidget(self.level_combo)
+        for combo in (self.cat_combo, self.race_combo, self.attr_combo,
+                      self.level_combo):
+            combo.currentIndexChanged.connect(lambda _i: self.run_search())
+            riga2.addWidget(combo, 1)
+        pv.addLayout(riga2)
+
+        riga3 = QHBoxLayout()
+        riga3.setSpacing(8)
+        self.arch_combo = QComboBox()
+        self.arch_combo.currentIndexChanged.connect(lambda _i: self.run_search())
+        riga3.addWidget(self.arch_combo, 2)
         self.ban_combo = QComboBox()
         for etichetta, valore in ((f"{tr('Ban list')}: {tr('tutte')}", None),
                                   (tr("In lista (qualsiasi)"), "any"),
                                   ("TCG", "tcg"), ("OCG", "ocg"), ("Goat", "goat")):
             self.ban_combo.addItem(etichetta, valore)
         self.ban_combo.currentIndexChanged.connect(lambda _i: self.run_search())
-        riga2.addWidget(self.ban_combo)
-        pv.addLayout(riga2)
+        riga3.addWidget(self.ban_combo, 1)
+        riga3.addStretch(1)
+        pv.addLayout(riga3)
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -662,42 +681,80 @@ class CardDbWidget(QWidget):
         QMessageBox.warning(self, tr("Database"), messaggio)
 
     # ------------------------------------------------------------- ricerca
+    @staticmethod
+    def _riempi(combo, intestazione: str, valori, tieni=True) -> None:
+        """Ricarica una tendina conservando la scelta, se c'è ancora."""
+        corrente = combo.currentData() if tieni else None
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem(intestazione, None)
+        for valore, etichetta in valori:
+            combo.addItem(etichetta, valore)
+        indice = combo.findData(corrente)
+        combo.setCurrentIndex(max(0, indice))
+        combo.blockSignals(False)
+
     def _fill_filter_values(self) -> None:
         """Riempie le tendine coi valori PRESENTI nei dati.
 
-        Non con liste scritte a mano: invecchierebbero al primo tipo di carta
-        nuovo, e ci sono 29 tipi diversi solo oggi."""
-        for chiave, combo in self.filters.items():
-            corrente = combo.currentData()
-            combo.blockSignals(True)
-            etichetta = combo.itemText(0)
-            combo.clear()
-            combo.addItem(etichetta, None)
-            for valore in self.repo.distinct(chiave):
-                combo.addItem(str(valore), valore)
-            indice = combo.findData(corrente)
-            combo.setCurrentIndex(max(0, indice))
-            combo.blockSignals(False)
-        self.level_combo.blockSignals(True)
-        etichetta = self.level_combo.itemText(0)
-        self.level_combo.clear()
-        self.level_combo.addItem(etichetta, None)
-        for livello in self.repo.levels():
-            self.level_combo.addItem(str(livello), livello)
-        self.level_combo.blockSignals(False)
+        Non con liste scritte a mano: invecchierebbero alla prima carta di un
+        tipo nuovo. L'unica lista fissa è l'ORDINE delle categorie di mostro,
+        che è quello con cui le elenca un giocatore (base, Extra Deck,
+        abilità) e non ha senso alfabetico."""
+        card = self.card_combo.currentData()
+        mostri = card in (None, "monster")
+        self._riempi(self.cat_combo, f"{tr('Categoria')}: {tr('tutte')}",
+                     [(c, tr(c)) for c in self.repo.categories()])
+        self._riempi(self.race_combo,
+                     (f"{tr('Tipo')}: {tr('tutti')}" if mostri
+                      else f"{tr('Proprietà')}: {tr('tutte')}"),
+                     [(v, v) for v in self.repo.races(card or "")])
+        self._riempi(self.attr_combo, f"{tr('Attributo')}: {tr('tutti')}",
+                     [(v, v) for v in self.repo.distinct("attribute")])
+        self._riempi(self.level_combo, f"{tr('Livello/Rango')}: {tr('tutti')}",
+                     [(v, str(v)) for v in self.repo.levels()])
+        self._riempi(self.arch_combo, f"{tr('Archetipo')}: {tr('tutti')}",
+                     [(v, v) for v in self.repo.distinct("archetype")])
+        # Categoria, Attributo e Livello sono cose da MOSTRI: con Magia o
+        # Trappola selezionata si spengono (e si azzerano, altrimenti
+        # resterebbe attivo un filtro invisibile che dà zero risultati).
+        for combo in (self.cat_combo, self.attr_combo, self.level_combo):
+            combo.setEnabled(mostri)
+            if not mostri and combo.currentIndex() != 0:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(0)
+                combo.blockSignals(False)
+
+    def _on_card_kind(self) -> None:
+        """Cambiando Mostro/Magia/Trappola cambiano anche le voci possibili
+        di Tipo (Drago… ⇄ Rapida…): si ricaricano prima di cercare."""
+        self._fill_filter_values()
+        self.run_search()
+
+    def _combos(self) -> tuple:
+        return (self.card_combo, self.cat_combo, self.race_combo,
+                self.attr_combo, self.level_combo, self.arch_combo,
+                self.ban_combo)
 
     def _current_filters(self) -> dict:
-        scelti = {k: c.currentData() for k, c in self.filters.items()}
-        scelti["level"] = self.level_combo.currentData()
-        scelti["banlist"] = self.ban_combo.currentData()
+        scelti = {
+            "card": self.card_combo.currentData(),
+            "category": self.cat_combo.currentData(),
+            "race": self.race_combo.currentData(),
+            "attribute": self.attr_combo.currentData(),
+            "level": self.level_combo.currentData(),
+            "archetype": self.arch_combo.currentData(),
+            "banlist": self.ban_combo.currentData(),
+        }
         return {k: v for k, v in scelti.items() if v is not None}
 
     def reset_filters(self) -> None:
-        for combo in list(self.filters.values()) + [self.level_combo, self.ban_combo]:
+        for combo in self._combos():
             combo.blockSignals(True)
             combo.setCurrentIndex(0)
             combo.blockSignals(False)
         self.search_input.clear()
+        self._fill_filter_values()
         self.run_search()
 
     def run_search(self) -> None:

@@ -15,6 +15,29 @@ from core.storage import Storage
 
 from .api import search_blob
 
+# --- vocabolario del GIOCO, non dell'API -----------------------------------
+# L'API tiene tutto in due campi (`type` e `race`) che non corrispondono a
+# come si chiamano le cose a Yu-Gi-Oh!. Qui si traduce:
+#
+#   API `type`  = una stringa composta ("Pendulum Effect Fusion Monster"),
+#                 che dentro contiene DUE informazioni distinte: se la carta
+#                 è un Mostro / una Magia / una Trappola, e — per i mostri —
+#                 la CATEGORIA (Normale, Effetto, Fusione, Synchro, Xyz…).
+#   API `race`  = per i mostri il **Tipo** (Drago, Guerriero…), per magie e
+#                 trappole la **Proprietà** (Normale, Rapida, Counter…).
+#                 "Razza" non esiste nel gioco.
+#
+# Nei dati ci sono anche 124 "Skill Card" e 106 "Token", che non sono nessuna
+# delle tre: restano cercabili, semplicemente non hanno un filtro Carta.
+CARD_KINDS = {"monster": "Monster", "spell": "Spell", "trap": "Trap"}
+
+# Categorie di mostro, in ordine da giocatore: le due base, poi l'Extra Deck,
+# poi le abilità. Si riconoscono per SOTTOSTRINGA dentro `type`.
+MONSTER_CATEGORIES = (
+    "Normal", "Effect", "Ritual", "Fusion", "Synchro", "Xyz", "Pendulum",
+    "Link", "Tuner", "Flip", "Gemini", "Spirit", "Toon", "Union",
+)
+
 # Colonne di `cdb_cards`. L'ordine vale solo qui: le carte arrivano come
 # DIZIONARI e la tupla la costruisce `replace_all`, così aggiungere una
 # colonna non spacca nulla altrove.
@@ -176,6 +199,29 @@ class CardDbRepository:
             f'WHERE "{column}" IS NOT NULL AND "{column}" != "" ORDER BY v')
         return [r["v"] for r in rows]
 
+    def races(self, card: str = "") -> list:
+        """I valori del campo che il gioco chiama **Tipo** per i mostri
+        (Drago, Guerriero, Mago…) e **Proprietà** per magie e trappole
+        (Normale, Rapida, Continua, Counter…).
+
+        L'API li mette tutti in una colonna sola (`race`), ma sono due
+        vocabolari diversi che non si incontrano mai: filtrare per "card"
+        evita di offrire "Counter" a chi sta cercando un mostro."""
+        sql = ('SELECT DISTINCT race AS v FROM cdb_cards '
+               'WHERE race IS NOT NULL AND race != ""')
+        params: tuple = ()
+        if card in CARD_KINDS:
+            sql += " AND type LIKE ?"
+            params = (f"%{CARD_KINDS[card]}%",)
+        return [r["v"] for r in self.storage.query(sql + " ORDER BY v", params)]
+
+    def categories(self) -> list:
+        """Le categorie di mostro PRESENTI nei dati, nell'ordine in cui un
+        giocatore le elenca (non alfabetico: Normale e Effetto vengono prima,
+        poi l'Extra Deck, poi le abilità)."""
+        tipi = " ".join(self.distinct("type")).lower()
+        return [c for c in MONSTER_CATEGORIES if c.lower() in tipi]
+
     def levels(self) -> list:
         rows = self.storage.query(
             "SELECT DISTINCT level AS v FROM cdb_cards WHERE level IS NOT NULL "
@@ -258,8 +304,19 @@ class CardDbRepository:
             else:
                 where.append("search LIKE ?")
                 params.append(f"%{testo}%")
-        for colonna, chiave in (("type", "type"), ("race", "race"),
-                                ("attribute", "attribute"),
+        # Mostro / Magia / Trappola: sta dentro la stringa `type`
+        # ("Effect Monster", "Spell Card"…). Verificato che non ci siano
+        # equivoci: nessun mostro ha "Spell" nel proprio `type` (lo
+        # "Spellcaster" sta in `race`, che è un altro campo).
+        kind = filters.get("card")
+        if kind in CARD_KINDS:
+            where.append("type LIKE ?")
+            params.append(f"%{CARD_KINDS[kind]}%")
+        categoria = filters.get("category")
+        if categoria:
+            where.append("type LIKE ?")
+            params.append(f"%{categoria}%")
+        for colonna, chiave in (("race", "race"), ("attribute", "attribute"),
                                 ("archetype", "archetype")):
             valore = filters.get(chiave)
             if valore:
