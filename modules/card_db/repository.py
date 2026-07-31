@@ -302,6 +302,7 @@ class CardDbRepository:
         # Visto dal vivo, non ipotizzato.
         return self.storage.query(
             "SELECT s.set_name, s.set_code, s.rarity, "
+            "       COALESCE(i.set_code, '') AS set_short, "
             "       COALESCE(i.tcg_date, '') AS tcg_date "
             "FROM cdb_sets s LEFT JOIN cdb_setinfo i ON i.set_name = s.set_name "
             "WHERE s.card_id = ? "

@@ -1359,6 +1359,21 @@ def main() -> int:
     assert _badges.set_pill("MP22-EN257", 20) is _badges.set_pill("MP22-EN257", 20), \
         "la pillola del set va tenuta in cache"
     assert not _rar("Secret Rare", 20).isNull()
+
+    # Etichetta del set: il codice CORTO quando basta, quello completo quando
+    # due espansioni lo condividono (142 codici sono condivisi: MVP1 vale per
+    # Movie Pack, Gold Edition, Secret Edition e Special Edition).
+    from modules.card_db.widget import set_labels  # noqa: E402
+    etichette = set_labels({
+        "Maximum Crisis": {"corto": "MACR", "carta": "MACR-EN036"},
+        "Movie Pack": {"corto": "MVP1", "carta": "MVP1-EN038"},
+        "Movie Pack: Gold Edition": {"corto": "MVP1", "carta": "MVP1-ENG38"},
+        "Senza codice": {"corto": "", "carta": "XYZ-EN001"},
+    })
+    assert etichette["Maximum Crisis"] == "MACR", etichette
+    assert etichette["Movie Pack"] == "MVP1-EN038", etichette
+    assert etichette["Movie Pack: Gold Edition"] == "MVP1-ENG38", etichette
+    assert etichette["Senza codice"] == "XYZ-EN001", etichette
     # le stampe escono in ordine CRONOLOGICO, e chi non ha data va in FONDO
     # (l'alias nell'ORDER BY legava alla colonna NULL: i set senza data
     # finivano in cima come se fossero i più vecchi)

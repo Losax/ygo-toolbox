@@ -116,6 +116,46 @@ def _pill(text: str, color: str, height: int = 20) -> QPixmap:
     return pixmap
 
 
+def set_labels(gruppi: dict) -> dict:
+    """Per ogni set, il codice più CORTO che resta univoco in questa carta.
+
+    Normalmente basta il codice del set (`MACR`, `RA01`). Ma **142 codici sono
+    condivisi da più espansioni** (misurato: `MVP1` sta per Movie Pack, Gold
+    Edition, Secret Edition e Special Edition; `JUMP` copre 70 promo diverse):
+    se una carta esce in due di quelle, due badge identici uno sopra l'altro
+    sarebbero indistinguibili — ed è proprio il caso in cui la differenza
+    conta. Per quelle righe si torna al codice completo della carta.
+
+    `gruppi` = {nome del set: {"corto": codice set, "carta": codice carta}}."""
+    quante: dict = {}
+    for voce in gruppi.values():
+        corto = voce.get("corto") or voce.get("carta") or "—"
+        quante[corto] = quante.get(corto, 0) + 1
+    etichette = {}
+    for nome, voce in gruppi.items():
+        corto = voce.get("corto") or voce.get("carta") or "—"
+        etichette[nome] = corto if quante[corto] == 1 else (voce.get("carta") or corto)
+    return etichette
+
+
+def _svuota(layout, tieni_ultimo: bool = False) -> None:
+    """Svuota un layout **staccando davvero** i widget dal genitore.
+
+    `takeAt` li toglie dal layout ma NON dalla gerarchia: restano figli e Qt
+    continua a disegnarli dov'erano. E `deleteLater()` non basta, perché
+    l'evento di distruzione differita non viene processato da un semplice
+    `processEvents` — nel frattempo si vedono i badge della carta PRECEDENTE
+    sovrapposti a quella nuova. È la stessa trappola dei "cell widget
+    fantasma" del market_watch (GOTCHA 14): la cura è `setParent(None)`, che
+    stacca subito; `deleteLater` resta solo per liberare la memoria."""
+    while layout.count() > (1 if tieni_ultimo else 0):
+        elemento = layout.takeAt(0)
+        widget = elemento.widget()
+        if widget is not None:
+            widget.setParent(None)
+            widget.deleteLater()
+
+
 def _placeholder(size: QSize) -> QPixmap:
     """Cornice tratteggiata: l'immagine non c'è (ancora). Mai un segnaposto
     che somigli a una carta vera."""
@@ -737,11 +777,7 @@ class CardDbWidget(QWidget):
             stats.append(f"DEF {carta['def']}")
         self.d_stats.setText("   ".join(stats))
 
-        while self.d_badges.count() > 1:
-            elemento = self.d_badges.takeAt(0)
-            widget = elemento.widget()
-            if widget is not None:
-                widget.deleteLater()
+        _svuota(self.d_badges, tieni_ultimo=True)   # l'ultimo è lo stretch
         for regione in ("tcg", "ocg", "goat"):
             stato = carta[f"ban_{regione}"]
             if not stato:
@@ -776,11 +812,7 @@ class CardDbWidget(QWidget):
         ha la data va in fondo, chi non ha una rarità riconosciuta va in fondo
         alla sua riga: un dato mancante non si mette in mezzo agli altri come
         se valesse zero."""
-        while self.d_sets_grid.count():
-            elemento = self.d_sets_grid.takeAt(0)
-            widget = elemento.widget()
-            if widget is not None:
-                widget.deleteLater()
+        _svuota(self.d_sets_grid)
         self.d_sets_title.setText(
             tr("Stampata in {n} set:").format(n=len(stampe)) if stampe
             else tr("Nessuna stampa registrata."))
@@ -788,12 +820,18 @@ class CardDbWidget(QWidget):
         if not stampe:
             return
 
+        # Si raggruppa per NOME del set, non per codice: 142 codici sono
+        # condivisi da più espansioni (MVP1 = Movie Pack, Gold Edition,
+        # Secret Edition e Special Edition; JUMP copre 70 promo diverse).
+        # Raggruppare per codice fonderebbe prodotti diversi in una riga sola.
         gruppi: dict = {}
         for stampa in stampe:                    # già in ordine cronologico
-            codice = stampa["set_code"] or "—"
-            voce = gruppi.setdefault(codice, {"nome": stampa["set_name"] or "",
-                                              "data": stampa["tcg_date"] or "",
-                                              "rarita": []})
+            nome = stampa["set_name"] or stampa["set_code"] or "—"
+            voce = gruppi.setdefault(nome, {
+                "corto": stampa["set_short"] or (stampa["set_code"] or "").split("-")[0],
+                "carta": stampa["set_code"] or "",
+                "data": stampa["tcg_date"] or "",
+                "rarita": []})
             # `is_rarity` scarta quello che rarità non è: la fonte a volte
             # mette "2", "New" o "European debut" in quel campo (192 stampe su
             # 44.190). Un badge lì darebbe a un refuso della fonte la dignità
@@ -802,14 +840,16 @@ class CardDbWidget(QWidget):
             if rara and is_rarity(rara) and rara not in voce["rarita"]:
                 voce["rarita"].append(rara)
 
+        etichette = set_labels(gruppi)     # vedi lì: il codice più corto che basta
+
         altezza = round(20 * self._scale)
-        for riga, (codice, voce) in enumerate(gruppi.items()):
+        for riga, (nome, voce) in enumerate(gruppi.items()):
             pillola = QLabel()
-            pillola.setPixmap(badges.set_pill(codice, altezza))
-            descrizione = voce["nome"]
+            pillola.setPixmap(badges.set_pill(etichette[nome], altezza))
+            descrizione = nome
             if voce["data"]:
                 descrizione += f" — {voce['data']}"
-            pillola.setToolTip(descrizione or codice)
+            pillola.setToolTip(descrizione)
             self.d_sets_grid.addWidget(pillola, riga, 0)
 
             fila = QWidget()

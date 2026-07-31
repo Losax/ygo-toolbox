@@ -670,6 +670,20 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     continua a vedersi. Verificato su tutti i 48 valori diversi presenti nel
     database: scartati esattamente gli 8 sbagliati, **nessuna rarità vera
     persa**.
+71. **Solo il codice del SET, non quello della carta (v1.1.8).** Nelle
+    ristampe si legge *MACR* invece di *MACR-EN036*: il numero della carta
+    dentro il set non serviva a niente e allungava ogni riga.
+    C'è però un caso in cui il codice corto **non basta**: 142 codici sono
+    condivisi da più espansioni — *MVP1* vale per Movie Pack, Gold Edition,
+    Secret Edition e Special Edition, e *JUMP* copre 70 promo diverse. Se la
+    stessa carta esce in due di quelle, due badge identici uno sopra l'altro
+    sarebbero indistinguibili: per quelle righe (e solo per quelle) resta il
+    codice completo. La regola è "il codice più corto che resta univoco".
+    Le espansioni restano comunque **righe separate**: raggruppare per codice
+    avrebbe fuso prodotti diversi in uno solo.
+    Corretto anche un difetto emerso qui: passando da una carta all'altra, il
+    badge della ban list della carta PRECEDENTE restava disegnato sopra le
+    statistiche di quella nuova.
 
 ## 4. Note operative importanti
 

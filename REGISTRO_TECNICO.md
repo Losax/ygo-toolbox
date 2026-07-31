@@ -757,6 +757,23 @@ confini di parola per non pescare "usato").
   vale NULL e i NULL in ASC vengono per PRIMI. Risultato: i set senza data in
   cima, come se fossero i più vecchi. Cura: ripetere l'espressione
   (`ORDER BY (COALESCE(i.x,'')='')`), non fidarsi dell'alias.
+  **v1.1.8 — badge del SET, non della carta.** Si mostra `MACR`, non
+  `MACR-EN036`. Il codice del set arriva da `cdb_setinfo` (`set_short`), col
+  prefisso del codice carta come ripiego. **Il codice del set NON identifica
+  il set**: misurato, 142 codici sono condivisi da più espansioni (`MVP1` =
+  Movie Pack + Gold/Secret/Special Edition; `JUMP` = 70 promo). Quindi:
+  raggruppare per **nome** (per codice fonderebbe prodotti diversi) ed
+  etichettare con `set_labels` = *il codice più corto che resta univoco in
+  quella carta* — corto se unico, completo se due edizioni lo condividono.
+  `set_labels` è una funzione PURA, provata dai test senza aprire finestre.
+  **GOTCHA 22 — `takeAt` non stacca il widget dal genitore.** Svuotando un
+  layout con `takeAt` + `deleteLater`, i widget restano FIGLI e Qt continua a
+  disegnarli dov'erano: passando da una carta all'altra si vedeva il badge
+  della ban list precedente sopra le statistiche nuove. Peggio: `deleteLater`
+  non viene processato da un semplice `processEvents`, quindi nelle verifiche
+  a schermate il fantasma resta per sempre. Cura: `setParent(None)` SUBITO
+  (helper `_svuota`), `deleteLater` solo per la memoria. È la stessa famiglia
+  del GOTCHA 14 del market_watch.
   **GOTCHA 21 — un thread nuovo va aggiunto a `stop()`.** `SetsWorker` non era
   nella lista dei thread da fermare: i test passavano tutti ma il processo
   usciva con **0xC0000409** (fail-fast di Windows) senza un rigo di errore,
