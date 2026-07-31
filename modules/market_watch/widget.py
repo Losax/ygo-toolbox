@@ -68,7 +68,8 @@ from PySide6.QtWidgets import (
 )
 
 from core.context import AppContext
-from core import anim, i18n, theme, updates
+from core import anim, badges, i18n, theme, updates
+from core.rarity import rarity_pixmap, rarity_rank
 from core.version import APP_VERSION
 from core.i18n import tr
 
@@ -78,7 +79,6 @@ from .deck_dialog import DeckDialog
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
 from .history_chart import HistoryDialog, Run, split_runs
-from .rarity import rarity_pixmap, rarity_rank
 from .providers import cardtrader
 from .providers.base import CardRef, ListingFilters, PriceQuote
 from .providers.cardtrader import CardTraderClient, CardTraderProvider
@@ -605,35 +605,9 @@ class _WatchTable(QTableWidget):
         painter.end()
 
 
-_set_pill_cache: dict[tuple[str, int], QPixmap] = {}
-
-
-def _make_set_pill(code: str, height: int) -> QPixmap:
-    """Pill del codice set, stessa estetica del popup di ricerca:
-    sfondo scuro (#2f3744) e sigla teal in grassetto."""
-    key = (code, height)
-    cached = _set_pill_cache.get(key)
-    if cached is not None:
-        return cached
-    font = QFont(theme.FONT_FAMILY)
-    font.setBold(True)
-    font.setPixelSize(max(6, round(height * 0.58)))
-    fm = QFontMetrics(font)
-    w = max(round(height * 1.6), fm.horizontalAdvance(code) + round(height * 0.9))
-    pm = QPixmap(w, height)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(QColor(theme.BORDER))          # #2f3744, come _PILL_BG della ricerca
-    p.setPen(Qt.PenStyle.NoPen)
-    radius = height / 3.0
-    p.drawRoundedRect(QRectF(0, 0, w, height), radius, radius)
-    p.setFont(font)
-    p.setPen(QColor(theme.ACCENT))
-    p.drawText(QRectF(0, 0, w, height), Qt.AlignmentFlag.AlignCenter, code)
-    p.end()
-    _set_pill_cache[key] = pm
-    return pm
+# Codice set e rarità stanno nel CORE (`core.badges`, `core.rarity`): li usa
+# anche il modulo Database, e i moduli non si importano fra loro.
+_make_set_pill = badges.set_pill
 
 
 _cond_pill_cache: dict[tuple[str, int], QPixmap] = {}
@@ -674,26 +648,7 @@ def _condition_color(name: str) -> QColor:
                   round(a.blue() + (b.blue() - a.blue()) * t))
 
 
-def _pill(text: str, height: int, ink: QColor, bg: QColor) -> QPixmap:
-    """Pill generica: stessa forma e stesso font di quelle già in giro."""
-    font = QFont(theme.FONT_FAMILY)
-    font.setBold(True)
-    font.setPixelSize(max(6, round(height * 0.58)))
-    fm = QFontMetrics(font)
-    w = max(round(height * 1.6), fm.horizontalAdvance(text) + round(height * 0.9))
-    pm = QPixmap(w, height)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(bg)
-    p.setPen(Qt.PenStyle.NoPen)
-    radius = height / 3.0
-    p.drawRoundedRect(QRectF(0, 0, w, height), radius, radius)
-    p.setFont(font)
-    p.setPen(ink)
-    p.drawText(QRectF(0, 0, w, height), Qt.AlignmentFlag.AlignCenter, text)
-    p.end()
-    return pm
+_pill = badges.pill      # forma comune di tutte le pillole (vedi core/badges.py)
 
 
 def _make_condition_pill(name: str, height: int) -> QPixmap:

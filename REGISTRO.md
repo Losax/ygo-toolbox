@@ -626,6 +626,19 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       "questa carta in italiano non c'è".
     Il predefinito resta la lingua dell'app, e la scelta fatta coi badge vale
     anche per le carte che apri dopo.
+68. **Le ristampe in un riquadro, con i badge di sempre (v1.1.5).** L'elenco
+    dei set in cui la carta è uscita non è più testo sfuso: ora è un
+    **riquadro col bordo**, una riga per stampa, con il **codice set** e la
+    **rarità** resi con gli **stessi badge del Market Watch** — la pillola
+    teal del set e la pillola colorata della rarità (UR, ScR, QCSR…, coi loro
+    colori foil), nome completo nel suggerimento.
+    Non si tagliano più a dodici: si vedono **tutte**. Una staple esce in
+    decine di set, e mettere "…" nascondeva proprio il dato che si era venuti
+    a cercare; la pagina scorre.
+    Per riusare gli stessi badge, codice set e rarità si sono spostati nel
+    **cuore dell'app** invece di restare dentro il Market Watch: i due moduli
+    non si conoscono fra loro, e un vocabolario visivo comune deve stare in un
+    posto comune. Nel Market Watch non cambia niente di visibile.
 
 ## 4. Note operative importanti
 

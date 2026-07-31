@@ -1,4 +1,4 @@
-"""Smoke test headless (offscreen, niente rete) per la versione CardTrader.
+﻿"""Smoke test headless (offscreen, niente rete) per la versione CardTrader.
 
 Verifica con dati finti:
 1. estrazione del prezzo più basso da /marketplace/products (forme diverse);
@@ -223,7 +223,7 @@ def main() -> int:
     print("[OK] Rimozione: storico e ultimo annuncio eliminati (niente dati orfani).")
 
     # 3c-bis) opzioni di visualizzazione: rarità come badge, set come codice
-    from modules.market_watch.rarity import rarity_abbrev, rarity_pixmap  # noqa: E402
+    from core.rarity import rarity_abbrev, rarity_pixmap  # noqa: E402
     assert rarity_abbrev("Quarter Century Secret Rare") == "QCSR"
     assert rarity_abbrev("Secret Rare") == "ScR"
     assert rarity_abbrev("Ultra Rare") == "UR"
@@ -663,7 +663,7 @@ def main() -> int:
           "verde→rosso monotona, sconosciute grigie e intatte.")
 
     # 5a-septies) ordinamento: rarità, prezzo, variazione — dentro i gruppi
-    from modules.market_watch.rarity import rarity_rank  # noqa: E402
+    from core.rarity import rarity_rank  # noqa: E402
     assert rarity_rank("Common") < rarity_rank("Ultra Rare") < rarity_rank("Starlight Rare")
     assert rarity_rank("Boh?") == -1, "rarità ignota: fuori scala, non in mezzo"
 
@@ -1278,7 +1278,7 @@ def main() -> int:
         c = dict(c)
         c["image_url"] = c["image_small_url"] = ""
         senza_foto.append(c)
-    repo_ui.replace_all(senza_foto, [])
+    repo_ui.replace_all(senza_foto, stampe)
     ctx_ui = AppContext(storage=st_ui, notifier=notifier, data_dir=tmp)
     cdb = CardDbWidget(ctx_ui)
     assert cdb.pages.currentIndex() == 0, "si parte dall'elenco"
@@ -1335,6 +1335,28 @@ def main() -> int:
     # e nell'ELENCO nessuna traduzione: solo il nome inglese, canonico
     assert "\n" not in cdb.table.item(0, 1).text(), \
         "l'elenco non deve mostrare il nome tradotto"
+
+    # 7a-ter) ristampe: riquadro con una riga per stampa, e i badge di codice
+    # set e rarità sono quelli CONDIVISI col market watch (stanno nel core
+    # apposta: i moduli non si importano fra loro)
+    from core import badges as _badges  # noqa: E402
+    from core.rarity import rarity_pixmap as _rar  # noqa: E402
+    assert not _badges.set_pill("MP22-EN257", 20).isNull()
+    assert _badges.set_pill("MP22-EN257", 20) is _badges.set_pill("MP22-EN257", 20), \
+        "la pillola del set va tenuta in cache"
+    assert not _rar("Secret Rare", 20).isNull()
+    _i18n._current = "en"
+    cdb_s = CardDbWidget(ctx_ui)
+    cdb_s._open_row(0)                      # la carta con una stampa
+    assert cdb_s.d_sets_box.isVisible() or cdb_s.d_sets_grid.count() > 0
+    # una riga = pillola del set + nome + badge rarità
+    assert cdb_s.d_sets_grid.count() == 3, cdb_s.d_sets_grid.count()
+    assert "1" in cdb_s.d_sets_title.text()
+    # la carta senza stampe non mostra un riquadro vuoto
+    cdb_s.show_card(2)
+    assert cdb_s.d_sets_grid.count() == 0 and not cdb_s.d_sets_box.isVisible()
+    cdb_s.stop()
+    _i18n._current = lingua_prima
     _i18n._current = lingua_prima
     st_ui.close()
     cdb_api.fetch_db_version = vera_versione
@@ -1342,6 +1364,8 @@ def main() -> int:
           "indietro col pulsante o con Esc.")
     print("[OK] Database: badge di lingua sulla carta (nome e testo insieme), "
           "predefinito = lingua dell'app, elenco senza traduzioni.")
+    print("[OK] Database: ristampe in un riquadro, con i badge di set e rarità "
+          "condivisi col Market Watch (core/badges.py, core/rarity.py).")
 
     # 7b) ponte fra moduli: passa dal CONTESTO, i moduli non si conoscono
     ricevuti = []

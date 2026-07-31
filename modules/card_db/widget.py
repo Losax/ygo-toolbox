@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -41,9 +42,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from core import anim, i18n, theme
+from core import anim, badges, i18n, theme
 from core.context import AppContext
 from core.i18n import tr
+from core.rarity import rarity_pixmap
 
 from . import images
 from .api import YgoProError
@@ -432,10 +434,19 @@ class CardDbWidget(QWidget):
         self.d_sets_title = QLabel("")
         self.d_sets_title.setStyleSheet(f"color: {theme.TEXT_MUTED};")
         v.addWidget(self.d_sets_title)
-        self.d_sets = QLabel("")
-        self.d_sets.setWordWrap(True)
-        self.d_sets.setStyleSheet(f"color: {theme.TEXT_MUTED};")
-        v.addWidget(self.d_sets)
+        # Le ristampe in un riquadro con un bordo netto: sono un ELENCO dentro
+        # una scheda, e senza un contorno si confondevano col resto del testo.
+        self.d_sets_box = QFrame()
+        self.d_sets_box.setStyleSheet(
+            f"QFrame {{ background: {theme.SURFACE_2};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 8px; }}"
+            f" QLabel {{ border: none; background: transparent; }}")
+        self.d_sets_grid = QGridLayout(self.d_sets_box)
+        self.d_sets_grid.setContentsMargins(10, 8, 10, 8)
+        self.d_sets_grid.setHorizontalSpacing(10)
+        self.d_sets_grid.setVerticalSpacing(4)
+        self.d_sets_grid.setColumnStretch(1, 1)
+        v.addWidget(self.d_sets_box)
 
         self.watch_btn = QPushButton(tr("Segui i prezzi in Market Watch"))
         self.watch_btn.setEnabled(False)
@@ -721,16 +732,7 @@ class CardDbWidget(QWidget):
             badge.setStyleSheet("background: transparent;")
             self.d_badges.insertWidget(self.d_badges.count() - 1, badge)
 
-        stampe = self.repo.sets_of(card_id)
-        self.d_sets_title.setText(
-            tr("Stampata in {n} set:").format(n=len(stampe)) if stampe
-            else tr("Nessuna stampa registrata."))
-        # Solo le prime: l'elenco completo di una staple sono decine di righe
-        # e sposterebbe fuori vista tutto il resto della scheda.
-        mostrate = stampe[:12]
-        self.d_sets.setText("\n".join(
-            f"{s['set_code']} · {s['set_name']} ({s['rarity']})" for s in mostrate)
-            + ("\n…" if len(stampe) > len(mostrate) else ""))
+        self._fill_sets(self.repo.sets_of(card_id))
 
         self.watch_btn.setEnabled(True)
         self.art.set_source(None)
@@ -739,6 +741,37 @@ class CardDbWidget(QWidget):
             self._set_art(str(percorso))
         elif carta["image_url"] and not images.failed(carta["image_url"]):
             self._request_image(card_id, carta["image_url"], small=False)
+
+    def _fill_sets(self, stampe: list) -> None:
+        """Il riquadro delle ristampe: una riga per stampa, col **codice set**
+        e la **rarità** resi con gli stessi badge del Market Watch (stanno nel
+        core apposta). Nessun taglio: una staple esce in decine di set, e la
+        pagina scorre — mostrarne dodici e mettere "…" nascondeva proprio il
+        dato che si è venuti a cercare."""
+        while self.d_sets_grid.count():
+            elemento = self.d_sets_grid.takeAt(0)
+            widget = elemento.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.d_sets_title.setText(
+            tr("Stampata in {n} set:").format(n=len(stampe)) if stampe
+            else tr("Nessuna stampa registrata."))
+        self.d_sets_box.setVisible(bool(stampe))
+        altezza = round(20 * self._scale)
+        for riga, stampa in enumerate(stampe):
+            codice = QLabel()
+            codice.setPixmap(badges.set_pill(stampa["set_code"] or "—", altezza))
+            self.d_sets_grid.addWidget(codice, riga, 0)
+            nome = QLabel(stampa["set_name"] or "")
+            nome.setStyleSheet(f"color: {theme.TEXT};")
+            nome.setWordWrap(True)
+            self.d_sets_grid.addWidget(nome, riga, 1)
+            if stampa["rarity"]:
+                rara = QLabel()
+                rara.setPixmap(rarity_pixmap(stampa["rarity"], altezza))
+                rara.setToolTip(stampa["rarity"])   # il nome intero: le sigle
+                self.d_sets_grid.addWidget(          # sono convenzioni, non ovvie
+                    rara, riga, 2, Qt.AlignmentFlag.AlignRight)
 
     def _set_card_lang(self, codice: str) -> None:
         """La scelta resta finché non la si cambia: sfogliando le carte non si
