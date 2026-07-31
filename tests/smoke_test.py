@@ -223,7 +223,18 @@ def main() -> int:
     print("[OK] Rimozione: storico e ultimo annuncio eliminati (niente dati orfani).")
 
     # 3c-bis) opzioni di visualizzazione: rarità come badge, set come codice
-    from core.rarity import rarity_abbrev, rarity_pixmap  # noqa: E402
+    from core.rarity import is_rarity, rarity_abbrev, rarity_pixmap  # noqa: E402
+    # `is_rarity`: la fonte YGOPRODeck a volte mette altro nel campo rarità
+    # (192 stampe su 44.190: "2", "New", "European debut"…). Si scarta il
+    # rumore SENZA una lista nera, che invecchierebbe al primo refuso nuovo:
+    # passa ciò che la scala conosce o che contiene una parola da rarità —
+    # così una rarità inventata domani resta visibile.
+    assert is_rarity("Common") and is_rarity("Quarter Century Secret Rare")
+    assert is_rarity("Ultra Mega Rare 2030"), "una rarità NUOVA non deve sparire"
+    assert is_rarity("Short Print") and is_rarity("Duel Terminal Normal Rare")
+    for rumore in ("2", "3", "New", "New artwork", "European debut",
+                   "force-SMW", "", "   "):
+        assert not is_rarity(rumore), rumore
     assert rarity_abbrev("Quarter Century Secret Rare") == "QCSR"
     assert rarity_abbrev("Secret Rare") == "ScR"
     assert rarity_abbrev("Ultra Rare") == "UR"

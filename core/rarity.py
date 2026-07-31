@@ -94,6 +94,34 @@ def rarity_abbrev(name: str) -> str:
     return _style(name)[0]
 
 
+# Parole che compaiono in QUALSIASI nome di rarità reale. Servono a
+# riconoscere anche quelle che la tabella qui sopra non conosce ancora:
+# Konami ne inventa di nuove (la "Quarter Century Secret Rare" è del 2023) e
+# contengono sempre "rare" o "common".
+_RARITY_WORDS = ("rare", "common", "short print", "duel terminal")
+
+
+def is_rarity(name: str) -> bool:
+    """La stringa è davvero una rarità?
+
+    Serve perché la fonte a volte mette altro in quel campo. **Misurato sul
+    database YGOPRODeck (2026-07-31): 192 stampe su 44.190 (0,4%)** hanno come
+    "rarità" valori tipo `2`, `3`, `New`, `New artwork`, `European debut`,
+    `force-SMW`. Non sono rarità: mostrarne il badge significherebbe dare a un
+    refuso della fonte la dignità di un dato.
+
+    Il riconoscimento NON è una lista nera di quei valori (invecchierebbe al
+    primo refuso nuovo): si accetta ciò che la scala conosce **oppure** ciò che
+    contiene una parola da rarità. Così una rarità inventata domani continua a
+    passare, anche se la tabella dei colori non la conosce ancora."""
+    low = (name or "").strip().lower()
+    if not low:
+        return False
+    if rarity_rank(low) >= 0:
+        return True
+    return any(parola in low for parola in _RARITY_WORDS)
+
+
 _cache: dict[tuple[str, int], QPixmap] = {}
 
 

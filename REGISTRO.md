@@ -659,6 +659,17 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     debut*. Non sono rarità, ma sono quello che dice la fonte: si mostrano in
     grigio neutro col testo originale nel suggerimento, senza inventare una
     classificazione che non esiste.
+70. **Via le "rarità" che rarità non sono (v1.1.7).** Quei badge con scritto
+    *2*, *3*, *New* o *European debut* non compaiono più: erano refusi della
+    fonte finiti nel campo sbagliato, e un badge dava loro la dignità di un
+    dato. Sono 192 stampe su 44.190 (lo 0,43%); dove capitavano, la riga
+    mostra il codice del set senza badge.
+    Il filtro **non è una lista di quei valori** — invecchierebbe al primo
+    refuso nuovo. Passa quello che l'app riconosce come rarità **oppure** che
+    contiene una parola da rarità, così una rarità inventata l'anno prossimo
+    continua a vedersi. Verificato su tutti i 48 valori diversi presenti nel
+    database: scartati esattamente gli 8 sbagliati, **nessuna rarità vera
+    persa**.
 
 ## 4. Note operative importanti
 

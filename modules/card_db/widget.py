@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 from core import anim, badges, i18n, theme
 from core.context import AppContext
 from core.i18n import tr
-from core.rarity import rarity_pixmap, rarity_rank
+from core.rarity import is_rarity, rarity_pixmap, rarity_rank
 
 from . import images
 from .api import YgoProError
@@ -794,8 +794,13 @@ class CardDbWidget(QWidget):
             voce = gruppi.setdefault(codice, {"nome": stampa["set_name"] or "",
                                               "data": stampa["tcg_date"] or "",
                                               "rarita": []})
-            if stampa["rarity"] and stampa["rarity"] not in voce["rarita"]:
-                voce["rarita"].append(stampa["rarity"])
+            # `is_rarity` scarta quello che rarità non è: la fonte a volte
+            # mette "2", "New" o "European debut" in quel campo (192 stampe su
+            # 44.190). Un badge lì darebbe a un refuso della fonte la dignità
+            # di un dato.
+            rara = stampa["rarity"]
+            if rara and is_rarity(rara) and rara not in voce["rarita"]:
+                voce["rarita"].append(rara)
 
         altezza = round(20 * self._scale)
         for riga, (codice, voce) in enumerate(gruppi.items()):
