@@ -17,6 +17,7 @@ from PySide6.QtGui import (
     QColor,
     QFont,
     QIcon,
+    QIntValidator,
     QPainter,
     QPen,
     QPixmap,
@@ -54,7 +55,7 @@ from .workers import SetsWorker, SyncWorker, VersionWorker
 
 THUMB = QSize(48, 70)          # miniatura di riga (proporzioni della carta)
 ART = QSize(320, 466)          # immagine nella pagina della carta
-RESULT_LIMIT = 300
+PAGE_SIZE = 100                # risultati per pagina (prima: tetto secco a 300)
 CARD_RATIO = 59 / 86           # proporzioni di una carta Yu-Gi-Oh!
 
 # Lingue in cui si può leggere una carta. L'inglese è la base (c'è sempre);
@@ -229,6 +230,7 @@ class CardDbWidget(QWidget):
         self._sets_worker: SetsWorker | None = None
         self._remote_version = ""
         self._current_id: int | None = None
+        self._page = 0
         # Lingua del testo delle carte: segue l'INTERFACCIA. Con l'app in
         # inglese le carte in italiano sarebbero una sorpresa, e viceversa.
         self._desc_lang = i18n.current()
@@ -297,15 +299,24 @@ class CardDbWidget(QWidget):
         pv.setContentsMargins(16, 14, 16, 14)
         pv.setSpacing(10)
 
+        # Nome e testo SEPARATI (come su DuelingBook): cercare "dragon" nel
+        # nome non deve restituire le centinaia di carte che nominano un drago
+        # nel proprio effetto.
         riga1 = QHBoxLayout()
         riga1.setSpacing(8)
+        riga1.addWidget(self._etichetta(tr("Nome")))
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText(
-            tr("Cerca per nome o nel testo dell'effetto…"))
+        self.search_input.setPlaceholderText(tr("nome della carta…"))
         self.search_input.setClearButtonEnabled(True)
-        self.search_input.textEdited.connect(lambda _t: self._search_timer.start())
-        self.search_input.returnPressed.connect(self.run_search)
         riga1.addWidget(self.search_input, 1)
+        riga1.addWidget(self._etichetta(tr("Testo")))
+        self.desc_input = QLineEdit()
+        self.desc_input.setPlaceholderText(tr("parole nell'effetto…"))
+        self.desc_input.setClearButtonEnabled(True)
+        riga1.addWidget(self.desc_input, 1)
+        for campo in (self.search_input, self.desc_input):
+            campo.textEdited.connect(lambda _t: self._search_timer.start())
+            campo.returnPressed.connect(self.run_search)
         self.reset_btn = QPushButton(tr("Azzera filtri"))
         self.reset_btn.setObjectName("ghost")
         self.reset_btn.clicked.connect(self.reset_filters)
@@ -317,43 +328,78 @@ class CardDbWidget(QWidget):
         # mostri e "Proprietà" = Normale/Rapida/Counter… per magie e trappole.
         # Attributo, Livello e Categoria valgono SOLO per i mostri: quando non
         # servono si spengono, invece di offrire scelte che daranno zero.
+        # Carta = [Mostro/Magia/Trappola] + [categoria]; Tipo = [Drago…] +
+        # [abilità]. Due tendine per riga come su DuelingBook: categoria e
+        # abilità sono cose diverse (un mostro è Synchro E Tuner), e in una
+        # sola non si potrebbe cercare la coppia.
         riga2 = QHBoxLayout()
         riga2.setSpacing(8)
+        riga2.addWidget(self._etichetta(tr("Carta")))
         self.card_combo = QComboBox()
-        for etichetta, valore in ((f"{tr('Carta')}: {tr('tutte')}", None),
-                                  (tr("Mostro"), "monster"),
-                                  (tr("Magia"), "spell"),
-                                  (tr("Trappola"), "trap")):
+        for etichetta, valore in ((tr("tutte"), None), (tr("Mostro"), "monster"),
+                                  (tr("Magia"), "spell"), (tr("Trappola"), "trap")):
             self.card_combo.addItem(etichetta, valore)
         self.card_combo.currentIndexChanged.connect(self._on_card_kind)
         riga2.addWidget(self.card_combo, 1)
         self.cat_combo = QComboBox()
         self.cat_combo.setToolTip(
             tr("Categoria del mostro: Normale, Effetto, Rituale, Fusione, "
-               "Synchro, Xyz, Pendulum, Link, Tuner…"))
+               "Synchro, Xyz, Pendulum, Link"))
+        riga2.addWidget(self.cat_combo, 1)
+        riga2.addWidget(self._etichetta(tr("Tipo")))
         self.race_combo = QComboBox()
-        self.attr_combo = QComboBox()
-        self.level_combo = QComboBox()
-        for combo in (self.cat_combo, self.race_combo, self.attr_combo,
-                      self.level_combo):
-            combo.currentIndexChanged.connect(lambda _i: self.run_search())
-            riga2.addWidget(combo, 1)
+        riga2.addWidget(self.race_combo, 1)
+        self.ability_combo = QComboBox()
+        self.ability_combo.setToolTip(
+            tr("Abilità del mostro: Tuner, Flip, Gemini, Spirit, Toon, Union"))
+        riga2.addWidget(self.ability_combo, 1)
         pv.addLayout(riga2)
 
         riga3 = QHBoxLayout()
         riga3.setSpacing(8)
+        riga3.addWidget(self._etichetta(tr("Attributo")))
+        self.attr_combo = QComboBox()
+        riga3.addWidget(self.attr_combo, 1)
+        self.range_widgets: dict = {}
+        for chiave, etichetta in (("level", tr("Livello/Rango")),
+                                  ("atk", "ATK"), ("def", "DEF")):
+            riga3.addWidget(self._etichetta(etichetta))
+            minimo, massimo = self._campo_numero(), self._campo_numero()
+            self.range_widgets[chiave] = (minimo, massimo)
+            riga3.addWidget(minimo)
+            fra = QLabel("–")
+            fra.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+            riga3.addWidget(fra)
+            riga3.addWidget(massimo)
+        riga3.addStretch(1)
+        pv.addLayout(riga3)
+
+        riga4 = QHBoxLayout()
+        riga4.setSpacing(8)
+        riga4.addWidget(self._etichetta(tr("Archetipo")))
         self.arch_combo = QComboBox()
-        self.arch_combo.currentIndexChanged.connect(lambda _i: self.run_search())
-        riga3.addWidget(self.arch_combo, 2)
+        riga4.addWidget(self.arch_combo, 2)
+        riga4.addWidget(self._etichetta(tr("Ban list")))
         self.ban_combo = QComboBox()
-        for etichetta, valore in ((f"{tr('Ban list')}: {tr('tutte')}", None),
+        for etichetta, valore in ((tr("tutte"), None),
                                   (tr("In lista (qualsiasi)"), "any"),
                                   ("TCG", "tcg"), ("OCG", "ocg"), ("Goat", "goat")):
             self.ban_combo.addItem(etichetta, valore)
-        self.ban_combo.currentIndexChanged.connect(lambda _i: self.run_search())
-        riga3.addWidget(self.ban_combo, 1)
-        riga3.addStretch(1)
-        pv.addLayout(riga3)
+        riga4.addWidget(self.ban_combo, 1)
+        riga4.addWidget(self._etichetta(tr("Ordina")))
+        self.order_combo = QComboBox()
+        for etichetta, valore in ((tr("Alfabetico"), "alpha"), ("ATK", "atk"),
+                                  ("DEF", "def"), (tr("Livello/Rango"), "level"),
+                                  (tr("Più recenti"), "recent")):
+            self.order_combo.addItem(etichetta, valore)
+        riga4.addWidget(self.order_combo, 1)
+        riga4.addStretch(1)
+        pv.addLayout(riga4)
+
+        for combo in (self.cat_combo, self.race_combo, self.ability_combo,
+                      self.attr_combo, self.arch_combo, self.ban_combo,
+                      self.order_combo):
+            combo.currentIndexChanged.connect(lambda _i: self.run_search())
 
         self.progress = QProgressBar()
         self.progress.setVisible(False)
@@ -393,9 +439,27 @@ class CardDbWidget(QWidget):
             lambda _v: self._visible_timer.start())
         ev.addWidget(self.table, 1)
 
+        # Barra delle pagine: prima si tagliava a 300 risultati e il resto era
+        # IRRAGGIUNGIBILE. Cercando "Drago" senza altri filtri sono 800.
+        pagine = QHBoxLayout()
+        pagine.setSpacing(8)
         self.status = QLabel("")
         self.status.setObjectName("subtitle")
-        ev.addWidget(self.status)
+        pagine.addWidget(self.status, 1)
+        self.prev_btn = QPushButton("◀")
+        self.prev_btn.setObjectName("ghost")
+        self.prev_btn.setFixedWidth(40)
+        self.prev_btn.clicked.connect(lambda: self._go_page(-1))
+        self.page_label = QLabel("")
+        self.page_label.setObjectName("subtitle")
+        self.next_btn = QPushButton("▶")
+        self.next_btn.setObjectName("ghost")
+        self.next_btn.setFixedWidth(40)
+        self.next_btn.clicked.connect(lambda: self._go_page(+1))
+        pagine.addWidget(self.prev_btn)
+        pagine.addWidget(self.page_label)
+        pagine.addWidget(self.next_btn)
+        ev.addLayout(pagine)
 
         self.pages.addWidget(elenco)
         self.pages.addWidget(self._build_card_page())
@@ -682,6 +746,29 @@ class CardDbWidget(QWidget):
 
     # ------------------------------------------------------------- ricerca
     @staticmethod
+    def _etichetta(testo: str) -> QLabel:
+        eti = QLabel(testo + ":")
+        eti.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+        return eti
+
+    def _campo_numero(self) -> QLineEdit:
+        """Casella per un estremo di intervallo (Livello, ATK, DEF).
+        Accetta solo cifre: un intervallo con dentro una parola non è un
+        intervallo, e un messaggio d'errore per un refuso è fastidio."""
+        campo = QLineEdit()
+        campo.setValidator(QIntValidator(0, 99999, self))
+        campo.setFixedWidth(58)
+        campo.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        campo.textEdited.connect(lambda _t: self._search_timer.start())
+        campo.returnPressed.connect(self.run_search)
+        return campo
+
+    @staticmethod
+    def _numero(campo) -> int | None:
+        testo = campo.text().strip()
+        return int(testo) if testo.isdigit() else None
+
+    @staticmethod
     def _riempi(combo, intestazione: str, valori, tieni=True) -> None:
         """Ricarica una tendina conservando la scelta, se c'è ancora."""
         corrente = combo.currentData() if tieni else None
@@ -703,27 +790,35 @@ class CardDbWidget(QWidget):
         abilità) e non ha senso alfabetico."""
         card = self.card_combo.currentData()
         mostri = card in (None, "monster")
-        self._riempi(self.cat_combo, f"{tr('Categoria')}: {tr('tutte')}",
+        self._riempi(self.cat_combo, tr("categoria"),
                      [(c, tr(c)) for c in self.repo.categories()])
+        self._riempi(self.ability_combo, tr("abilità"),
+                     [(a, tr(a)) for a in self.repo.abilities()])
+        # La stessa tendina è il "Tipo" del mostro o la "Proprietà" della
+        # magia/trappola: cambia il segnaposto insieme alle voci.
         self._riempi(self.race_combo,
-                     (f"{tr('Tipo')}: {tr('tutti')}" if mostri
-                      else f"{tr('Proprietà')}: {tr('tutte')}"),
+                     tr("tutti") if mostri else tr("proprietà"),
                      [(v, v) for v in self.repo.races(card or "")])
-        self._riempi(self.attr_combo, f"{tr('Attributo')}: {tr('tutti')}",
+        self._riempi(self.attr_combo, tr("tutti"),
                      [(v, v) for v in self.repo.distinct("attribute")])
-        self._riempi(self.level_combo, f"{tr('Livello/Rango')}: {tr('tutti')}",
-                     [(v, str(v)) for v in self.repo.levels()])
-        self._riempi(self.arch_combo, f"{tr('Archetipo')}: {tr('tutti')}",
+        self._riempi(self.arch_combo, tr("tutti"),
                      [(v, v) for v in self.repo.distinct("archetype")])
-        # Categoria, Attributo e Livello sono cose da MOSTRI: con Magia o
-        # Trappola selezionata si spengono (e si azzerano, altrimenti
-        # resterebbe attivo un filtro invisibile che dà zero risultati).
-        for combo in (self.cat_combo, self.attr_combo, self.level_combo):
+        # Categoria, abilità, attributo e i numeri sono cose da MOSTRI: con
+        # Magia o Trappola si spengono e si azzerano, altrimenti resterebbe
+        # attivo un filtro invisibile che dà zero risultati senza spiegare.
+        for combo in (self.cat_combo, self.ability_combo, self.attr_combo):
             combo.setEnabled(mostri)
             if not mostri and combo.currentIndex() != 0:
                 combo.blockSignals(True)
                 combo.setCurrentIndex(0)
                 combo.blockSignals(False)
+        for campi in self.range_widgets.values():
+            for campo in campi:
+                campo.setEnabled(mostri)
+                if not mostri:
+                    campo.blockSignals(True)
+                    campo.clear()
+                    campo.blockSignals(False)
 
     def _on_card_kind(self) -> None:
         """Cambiando Mostro/Magia/Trappola cambiano anche le voci possibili
@@ -732,49 +827,65 @@ class CardDbWidget(QWidget):
         self.run_search()
 
     def _combos(self) -> tuple:
-        return (self.card_combo, self.cat_combo, self.race_combo,
-                self.attr_combo, self.level_combo, self.arch_combo,
+        return (self.card_combo, self.cat_combo, self.ability_combo,
+                self.race_combo, self.attr_combo, self.arch_combo,
                 self.ban_combo)
 
     def _current_filters(self) -> dict:
         scelti = {
+            "name": self.search_input.text().strip(),
+            "desc": self.desc_input.text().strip(),
             "card": self.card_combo.currentData(),
             "category": self.cat_combo.currentData(),
+            "ability": self.ability_combo.currentData(),
             "race": self.race_combo.currentData(),
             "attribute": self.attr_combo.currentData(),
-            "level": self.level_combo.currentData(),
             "archetype": self.arch_combo.currentData(),
             "banlist": self.ban_combo.currentData(),
         }
-        return {k: v for k, v in scelti.items() if v is not None}
+        for chiave, (minimo, massimo) in self.range_widgets.items():
+            scelti[f"{chiave}_min"] = self._numero(minimo)
+            scelti[f"{chiave}_max"] = self._numero(massimo)
+        return {k: v for k, v in scelti.items() if v not in (None, "")}
 
     def reset_filters(self) -> None:
         for combo in self._combos():
             combo.blockSignals(True)
             combo.setCurrentIndex(0)
             combo.blockSignals(False)
+        for campi in self.range_widgets.values():
+            for campo in campi:
+                campo.clear()
         self.search_input.clear()
+        self.desc_input.clear()
+        self._page = 0
         self._fill_filter_values()
         self.run_search()
 
-    def run_search(self) -> None:
+    def _go_page(self, passo: int) -> None:
+        self._page = max(0, self._page + passo)
+        self.run_search(reset_page=False)
+        self.table.scrollToTop()
+
+    def run_search(self, reset_page: bool = True) -> None:
         if not self.repo.count_cards():
             self.status.setText(
                 tr("Il database è vuoto: premi «Scarica il database» "
                    "(una richiesta, ~24 MB)."))
+            self.page_label.setText("")
             return
-        testo = self.search_input.text()
+        if reset_page:
+            self._page = 0        # cambiando filtri si riparte dalla prima
         filtri = self._current_filters()
-        righe, totale = self.repo.search_page(testo, filtri, RESULT_LIMIT)
+        ordine = self.order_combo.currentData() or "alpha"
+        pagine = max(1, -(-self.repo.count_matches(filtri) // PAGE_SIZE))
+        self._page = min(self._page, pagine - 1)
+        righe, totale = self.repo.search_page(filtri, ordine, self._page, PAGE_SIZE)
         self._fill_table(righe)
-        if totale > len(righe):
-            # Mai far credere che siano tutte: chi cerca "drago" deve sapere
-            # che ne sta vedendo 300 su 900.
-            self.status.setText(
-                tr("{mostrate} carte mostrate su {totale} trovate — restringi la ricerca.")
-                .format(mostrate=len(righe), totale=totale))
-        else:
-            self.status.setText(tr("{n} carte trovate.").format(n=totale))
+        self.status.setText(tr("{n} carte trovate.").format(n=totale))
+        self.page_label.setText(f"{self._page + 1} / {pagine}")
+        self.prev_btn.setEnabled(self._page > 0)
+        self.next_btn.setEnabled(self._page + 1 < pagine)
 
     def _fill_table(self, righe: list) -> None:
         self.table.setUpdatesEnabled(False)

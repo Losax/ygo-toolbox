@@ -726,6 +726,23 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     che mancano all'appello sono Skill Card e Token, che non sono nessuna
     delle tre); 599 Xyz, 473 Link, 816 Draghi, 571 magie Rapide, 179 trappole
     Counter.
+74. **Ricerca sul modello di DuelingBook (v1.3.0).** Presa la loro maschera
+    come riferimento, mancavano quattro cose:
+    - **Nome e Testo sono due campi separati.** Prima ce n'era uno solo che
+      cercava in entrambi: chi cercava *dragon* si trovava anche le centinaia
+      di carte che *nominano* un drago nel proprio effetto. Ora sono 891
+      contro 1.075, e si possono combinare (nome *dragon* + testo *destroy*:
+      403 carte).
+    - **Categoria e abilità sono due tendine.** Un mostro è Synchro **e**
+      Tuner insieme, non l'uno oppure l'altro: con una tendina sola quella
+      coppia non si poteva cercare (sono 59 carte).
+    - **Intervalli** per Livello/Rango, ATK e DEF, con estremi inclusi e
+      ognuno indipendente: si può dare solo il minimo o solo il massimo.
+    - **Ordinamento** (alfabetico, ATK, DEF, Livello, più recenti) e
+      **pagine**. Prima i risultati si tagliavano a 300 e il resto era
+      **irraggiungibile**; ora si sfoglia con ◀ ▶, cento per pagina.
+    Come prima, i filtri da mostro si spengono con Magia o Trappola
+    selezionata.
 
 ## 4. Note operative importanti
 

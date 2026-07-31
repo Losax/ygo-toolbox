@@ -245,16 +245,12 @@ def parse_card(raw: dict) -> tuple[dict, list]:
     return carta, sets
 
 
-def search_blob(carta: dict) -> str:
-    """Tutto il testo cercabile di una carta in UN campo, minuscolo: nome e
-    testo dell'effetto, in italiano E in inglese.
+def search_blob(carta: dict, campi: tuple) -> str:
+    """Testo cercabile di una carta, minuscolo, unendo i campi richiesti nelle
+    DUE lingue: serve a cercare *"distruggi"* come *"destroy"*.
 
-    Serve a cercare *"distruggi"* come *"destroy"* con **una sola** `LIKE`
-    invece di quattro. Non è però un'ottimizzazione: misurato sul database
-    vero (14.477 carte), la ricerca passa da ~120 ms col solo inglese a
-    ~190 ms con le due lingue — il testo da scorrere raddoppia, e nessun
-    indice aiuta un `LIKE '%…%'`. Il tempo si recupera altrove (vedi
-    `repository.search`: il conteggio totale si fa solo quando serve)."""
-    pezzi = (carta.get("name"), carta.get("name_it"),
-             carta.get("desc"), carta.get("desc_it"))
-    return " ".join(p for p in pezzi if p).lower()
+    Nome e testo dell'effetto stanno in blob SEPARATI (`search_name`,
+    `search_desc`) perché si cercano separatamente, come su DuelingBook:
+    cercando "dragon" nel nome non si vogliono le trecento carte che
+    *nominano* un drago nel proprio effetto."""
+    return " ".join(str(carta.get(c) or "") for c in campi).strip().lower()

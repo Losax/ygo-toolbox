@@ -352,13 +352,20 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             "Search by name or in the card text…",
         "Azzera filtri": "Clear filters",
         # filtri, col vocabolario del gioco
+        "Testo": "Text", "Ordina": "Sort",
+        "nome della carta…": "card name…",
+        "parole nell'effetto…": "words in the card text…",
+        "categoria": "category", "abilità": "ability", "proprietà": "property",
+        "Alfabetico": "Alphabetical", "Più recenti": "Newest",
+        "Categoria del mostro: Normale, Effetto, Rituale, Fusione, "
+        "Synchro, Xyz, Pendulum, Link":
+            "Monster category: Normal, Effect, Ritual, Fusion, Synchro, Xyz, "
+            "Pendulum, Link",
+        "Abilità del mostro: Tuner, Flip, Gemini, Spirit, Toon, Union":
+            "Monster ability: Tuner, Flip, Gemini, Spirit, Toon, Union",
         "Carta": "Card", "Mostro": "Monster", "Magia": "Spell",
         "Trappola": "Trap", "Categoria": "Category", "Proprietà": "Property",
         "Livello/Rango": "Level/Rank",
-        "Categoria del mostro: Normale, Effetto, Rituale, Fusione, "
-        "Synchro, Xyz, Pendulum, Link, Tuner…":
-            "Monster category: Normal, Effect, Ritual, Fusion, Synchro, Xyz, "
-            "Pendulum, Link, Tuner…",
         "Normal": "Normal", "Effect": "Effect", "Ritual": "Ritual",
         "Fusion": "Fusion", "Synchro": "Synchro", "Xyz": "Xyz",
         "Pendulum": "Pendulum", "Link": "Link", "Tuner": "Tuner",

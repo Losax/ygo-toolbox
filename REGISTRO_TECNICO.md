@@ -732,6 +732,26 @@ confini di parola per non pescare "usato").
   Nell'ELENCO invece nessuna traduzione: solo il nome inglese, canonico. La
   ricerca continua a coprire entrambe le lingue (colonna `search`), quindi si
   cerca "cenere" e si trova Ash Blossom anche se in lista si legge l'inglese.
+- **Ricerca sul modello DuelingBook** (v1.3.0). `search`/`count_matches`
+  prendono UN dizionario di filtri (niente più `text` a parte) e tornano
+  pagine, non un taglio secco:
+  - **nome e testo separati** → due colonne `search_name`/`search_desc` e un
+    FTS5 a DUE colonne, interrogato col filtro di colonna
+    (`search_name : ("ash"*)`). Cambiando le colonne dell'indice
+    `_init_fts` se ne accorge (`PRAGMA table_info`) e lo **ricostruisce da
+    sé**: un indice che non corrisponde alle colonne è peggio di nessun
+    indice. I DB già scaricati NON devono risincronizzare 65 MB: le due
+    colonne si riempiono con una `UPDATE` dalle colonne esistenti.
+  - **categoria e abilità sono due filtri** e si SOMMANO (`type LIKE` due
+    volte): un mostro è Synchro *e* Tuner. In una tendina sola quella coppia
+    era incercabile.
+  - **intervalli** `level/atk/def_min|max`, estremi inclusi, ognuno
+    indipendente.
+  - **ordinamento** in `SORT_MODES`, con i senza-dato sempre in fondo
+    (`(atk IS NULL) ASC` prima del verso) — invertendo galleggerebbero in
+    cima e la lista sembrerebbe ordinata per sbaglio.
+  - **paginazione** (`PAGE_SIZE` 100): col vecchio tetto a 300 i risultati
+    successivi erano irraggiungibili, e "Drago" ne ha 891.
 - **GOTCHA 23 — i campi dell'API NON sono il vocabolario del gioco** (v1.2.1).
   I filtri erano stati costruiti sui nomi dei campi YGOPRODeck, e due erano
   inesistenti a Yu-Gi-Oh!. La traduzione giusta sta in cima a

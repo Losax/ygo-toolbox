@@ -1216,7 +1216,10 @@ def main() -> int:
     # parser difensivo: campi mancanti non devono far saltare la copia
     grezza = {
         "id": 14558127, "name": "Ash Blossom & Joyous Spring",
-        "type": "Effect Monster", "frameType": "effect", "desc": "When a card…",
+        # come la carta vera: è insieme Effetto E Tuner, e serve a provare
+        # che categoria e abilità si sommano invece di escludersi
+        "type": "Tuner Effect Monster", "frameType": "effect",
+        "desc": "When a card…",
         "race": "Zombie", "attribute": "FIRE", "atk": 0, "def": 1800, "level": 3,
         "typeline": ["Zombie", "Tuner", "Effect"],
         "humanReadableCardType": "Tuner Effect Monster",
@@ -1248,40 +1251,63 @@ def main() -> int:
     repo_db.replace_all([carta, altra], stampe)
     assert repo_db.count_cards() == 2
 
-    # la ricerca copre nome e testo, in ITALIANO e in inglese: in un'app
-    # italiana cercare "distruggi" non può dare zero risultati
-    assert [r["name"] for r in repo_db.search("distruggi")] == [carta["name"]]
-    assert [r["name"] for r in repo_db.search("draw")] == ["Pot of Greed"]
-    assert [r["name"] for r in repo_db.search("cenere")] == [carta["name"]]
+    # NOME e TESTO si cercano separatamente (come su DuelingBook): chi cerca
+    # "dragon" nel nome non vuole le carte che nominano un drago nell'effetto.
+    assert [r["name"] for r in repo_db.search({"desc": "distruggi"})] == [carta["name"]]
+    assert [r["name"] for r in repo_db.search({"desc": "draw"})] == ["Pot of Greed"]
+    assert [r["name"] for r in repo_db.search({"name": "cenere"})] == [carta["name"]]
+    assert repo_db.search({"name": "distruggi"}) == [], \
+        "'distruggi' è nel TESTO, non nel nome: non deve uscire cercando per nome"
+    # i due campi si sommano
+    assert len(repo_db.search({"name": "ash", "desc": "distruggi"})) == 1
+    assert repo_db.search({"name": "ash", "desc": "draw"}) == []
     # si cerca mentre si digita: il prefisso basta
-    assert repo_db.search("blos"), "il prefisso deve bastare"
+    assert repo_db.search({"name": "blos"}), "il prefisso deve bastare"
     # la punteggiatura da sola non deve far esplodere l'indice full-text
-    assert repo_db.fts_query("-") == "" and repo_db.search("-") is not None
-    assert repo_db.search('pot" OR 1=1') is not None, "gli operatori FTS vanno neutralizzati"
+    assert repo_db.fts_query("-") == "" and repo_db.search({"name": "-"}) is not None
+    assert repo_db.search({"name": 'pot" OR 1=1'}) is not None, \
+        "gli operatori FTS vanno neutralizzati"
 
     # Filtri, col vocabolario del GIOCO: "Carta" = Mostro/Magia/Trappola
     # (dentro la stringa `type` dell'API), "Tipo" = Drago/Guerriero… per i
     # mostri e Proprietà = Normale/Rapida/Counter… per magie e trappole
     # (l'API li mette entrambi in `race`, che il gioco NON chiama "razza").
-    assert len(repo_db.search("", {"card": "monster"})) == 1
-    assert len(repo_db.search("", {"card": "spell"})) == 1
-    assert len(repo_db.search("", {"card": "trap"})) == 0
-    assert len(repo_db.search("", {"card": "monster", "category": "Effect"})) == 1
-    assert len(repo_db.search("", {"card": "monster", "category": "Xyz"})) == 0
-    assert len(repo_db.search("", {"race": "Zombie"})) == 1      # Tipo del mostro
-    assert len(repo_db.search("", {"race": "Normal"})) == 1      # Proprietà della magia
-    assert len(repo_db.search("", {"attribute": "FIRE"})) == 1
-    assert len(repo_db.search("", {"banlist": "tcg"})) == 1
-    assert len(repo_db.search("", {"banlist": "ocg"})) == 0
+    assert len(repo_db.search({"card": "monster"})) == 1
+    assert len(repo_db.search({"card": "spell"})) == 1
+    assert len(repo_db.search({"card": "trap"})) == 0
+    assert len(repo_db.search({"card": "monster", "category": "Effect"})) == 1
+    assert len(repo_db.search({"card": "monster", "category": "Xyz"})) == 0
+    assert len(repo_db.search({"race": "Zombie"})) == 1      # Tipo del mostro
+    assert len(repo_db.search({"race": "Normal"})) == 1      # Proprietà della magia
+    assert len(repo_db.search({"attribute": "FIRE"})) == 1
+    assert len(repo_db.search({"banlist": "tcg"})) == 1
+    assert len(repo_db.search({"banlist": "ocg"})) == 0
     assert repo_db.distinct("attribute") == ["FIRE"]
+    # categoria e abilità sono cose DIVERSE e si sommano: un mostro è
+    # "Effetto" E "Tuner", non l'uno oppure l'altro
+    assert len(repo_db.search({"category": "Effect", "ability": "Tuner"})) == 1
+    assert len(repo_db.search({"category": "Xyz", "ability": "Tuner"})) == 0
+    # INTERVALLI: estremi inclusi, e si può dare solo un capo
+    assert len(repo_db.search({"atk_max": 0})) == 1          # Ash Blossom, ATK 0
+    assert len(repo_db.search({"atk_min": 1})) == 0
+    assert len(repo_db.search({"def_min": 1800, "def_max": 1800})) == 1
+    assert len(repo_db.search({"level_min": 3, "level_max": 3})) == 1
+    assert len(repo_db.search({"level_min": 4})) == 0
+    # ORDINAMENTO: chi non ha il dato va in fondo in ogni caso
+    per_atk = repo_db.search({}, "atk")
+    assert per_atk[-1]["name"] == "Pot of Greed", \
+        "una magia (senza ATK) deve finire in fondo, non in cima"
+    # PAGINE: prima si tagliava a 300 e il resto era irraggiungibile
+    pag0, totale = repo_db.search_page({}, "alpha", 0, 1)
+    pag1, _ = repo_db.search_page({}, "alpha", 1, 1)
+    assert totale == 2 and len(pag0) == 1 and len(pag1) == 1
+    assert pag0[0]["id"] != pag1[0]["id"], "la seconda pagina ripete la prima"
     # le voci di Tipo/Proprietà cambiano con la carta scelta: offrire
     # "Counter" a chi cerca un mostro sarebbe una scelta che dà sempre zero
     assert repo_db.races("monster") == ["Zombie"], repo_db.races("monster")
     assert repo_db.races("spell") == ["Normal"], repo_db.races("spell")
     assert "Effect" in repo_db.categories()
-    # totale e pagina: chi chiama deve sapere quante ne sono state tagliate
-    righe, totale = repo_db.search_page("", {}, 1)
-    assert len(righe) == 1 and totale == 2, (len(righe), totale)
+    assert "Tuner" in repo_db.abilities()
     assert len(repo_db.sets_of(carta["id"])) == 1
     scheda = repo_db.card(carta["id"])
     assert scheda["desc_it"].startswith("Quando")
