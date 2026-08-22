@@ -1100,6 +1100,16 @@ il **clic per coordinate**, perché **UIAutomation non legge i widget Qt** di
 questa app (nessun nome, nessun `InvokePattern`: il ponte di accessibilità di
 Qt non è attivo). Il pulsante del piede sta a client (94, altezza − 64).
 
+**Un giro l'ha fatto anche l'utente, sulla Release vera (v1.4.1).** Su sua
+richiesta, per quel rilascio l'installazione sul PC **non** è stata aggiornata a
+mano: doveva restare indietro (era ferma alla 1.3.9, un numero costruito solo
+per stare sotto la 1.4.0) o non ci sarebbe stato niente da premere. Vale come
+promemoria per la prossima volta che serve la stessa cosa: **la Release va fatta
+comunque** — con commit e tag ma senza Release, `/releases/latest` risponde con
+la vecchia e l'app resta muta, che a schermo somiglia moltissimo a un pulsante
+rotto. E su `dist\YGO Toolbox.exe` non si preme mai il pulsante: `/DIR` nasce da
+`sys.executable`, quindi installerebbe dentro `dist\`.
+
 Chiesto esplicitamente il 2026-07-31: *"come fa l'app desktop di Claude:
 spunta il tasto per aggiornare e una volta cliccato fa tutto da solo, senza
 che l'utente vada sul sito e riscarichi la versione manualmente"*. Due cose
