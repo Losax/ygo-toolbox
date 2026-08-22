@@ -359,6 +359,13 @@ confini di parola per non pescare "usato").
 
 ---
 
+15. **Un'animazione si DEBUGGA in pixel al fotogramma, non a occhio.**
+    62 fps e 0,4 ms di disegno: le prestazioni non c'entravano niente, il
+    difetto era la FORMA del movimento. Descritto per esteso nel §5, sotto
+    "Grafico dello storico → pop-up dalla miniatura".
+16. **L'asse di un grafico deve CONTENERE i dati.** `nice_ticks` si fermava a
+    50 con un massimo di 51 €, e la punta usciva dal riquadro. Per esteso nel
+    §5, sotto "Grafico dello storico".
 17. **`LIKE '%…%'` non è una ricerca: FTS5 sì.** Nel modulo Database la
     ricerca copre nome e testo dell'effetto in DUE lingue, cioè ~20 MB di
     testo. Col `LIKE` costava **~90 ms in inglese e ~190 ms con le due
@@ -397,6 +404,21 @@ confini di parola per non pescare "usato").
     diceva l'opposto (da 120 a 190 ms, perché il testo raddoppia). Il numero
     plausibile in un commento è una trappola per chi legge dopo, esattamente
     come un prezzo plausibile in tabella.
+20. **L'alias di colonna non si usa nell'ORDER BY.** Con un LEFT JOIN,
+    `SELECT COALESCE(i.x,'') AS x … ORDER BY (x='')` lega il nome alla
+    colonna della tabella (NULL), non all'alias: i set senza data finivano in
+    CIMA. Per esteso nel §5, sotto "Modulo Database — ristampe".
+21. **Un thread nuovo va aggiunto a `stop()`.** `SetsWorker` non c'era: i
+    test passavano tutti ma il processo usciva con 0xC0000409, senza un rigo
+    di errore. Si vede solo guardando il CODICE DI USCITA. Per esteso nel §5.
+22. **`takeAt` non stacca il widget dal genitore.** Svuotando un layout i
+    widget restano figli e Qt continua a disegnarli dov'erano (e
+    `deleteLater` non scatta durante un `processEvents`): si vedevano i badge
+    della carta precedente. Cura: `setParent(None)`. Per esteso nel §5.
+23. **I campi di un'API NON sono il vocabolario del dominio.** `race` non è
+    la "razza": è il **Tipo** del mostro o la **Proprietà** di magia/trappola;
+    `type` contiene sia la **Carta** sia la **Categoria**. Per esteso nel §5,
+    sotto "Modulo Database — filtri", e in cima a `card_db/repository.py`.
 
 ---
 
