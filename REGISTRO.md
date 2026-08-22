@@ -781,12 +781,18 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     nessuno, altrimenti Windows ci mette il suo mezzo minuto a chiuderla —
     lo stesso mezzo minuto che ogni aggiornamento manuale ha pagato finora.
     In entrambi i casi a schermo c'è la barra di avanzamento, e l'app torna su.
-76. **Rilascio di prova (v1.4.1).** Non porta funzioni nuove, e lo dice: serve
-    a far premere il pulsante **dall'utente**, sulla sua macchina, verso una
-    Release vera. Fin qui l'aggiornamento era stato collaudato da me — tre giri
-    completi, uno dei quali ha scoperto il difetto dell'app che si riapriva con
-    un errore — ma sempre con le mie mani. Questa è la prima volta che il giro
-    lo fa chi usa l'app.
+76. **Rilascio di prova (v1.4.1) — e l'aggiornamento ha funzionato.** Questa
+    versione non porta funzioni nuove: serviva a far premere il pulsante
+    **dall'utente**, sulla sua macchina, verso una Release vera. Fin qui
+    l'aggiornamento era stato collaudato da me — tre giri completi, uno dei
+    quali ha scoperto il difetto dell'app che si riapriva con un errore — ma
+    sempre con le mie mani.
+    **Fatto il 2026-08-22, dalla 1.3.9 alla 1.4.1: due secondi e otto.** Senza
+    nessuna attesa: l'app ha fatto in tempo a chiudersi da sé, quindi
+    l'installer non ha dovuto aspettare nessuno (nel log manca del tutto la
+    riga in cui Windows chiude i programmi aperti). Poi si è riaperta, ha
+    verificato di essere davvero la versione nuova, e ha cancellato da sola i
+    48 MB scaricati.
     Per questo giro l'installazione sul PC **non** è stata aggiornata a mano:
     doveva restare indietro, altrimenti non ci sarebbe stato niente da premere.
 

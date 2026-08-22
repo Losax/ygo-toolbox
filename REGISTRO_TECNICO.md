@@ -1100,10 +1100,16 @@ il **clic per coordinate**, perché **UIAutomation non legge i widget Qt** di
 questa app (nessun nome, nessun `InvokePattern`: il ponte di accessibilità di
 Qt non è attivo). Il pulsante del piede sta a client (94, altezza − 64).
 
-**Un giro l'ha fatto anche l'utente, sulla Release vera (v1.4.1).** Su sua
-richiesta, per quel rilascio l'installazione sul PC **non** è stata aggiornata a
-mano: doveva restare indietro (era ferma alla 1.3.9, un numero costruito solo
-per stare sotto la 1.4.0) o non ci sarebbe stato niente da premere. Vale come
+**Un giro l'ha fatto anche l'utente, sulla Release vera (v1.4.1), e ha
+funzionato.** Il 2026-08-22, 1.3.9 → 1.4.1: log di Inno aperto alle 13:38:41,7,
+`Installation process succeeded` alle 13:38:44,4, `-- Run entry --` 38 ms dopo.
+**2,8 s in tutto, e nessuna riga `Shutting down applications`**: l'app era già
+uscita quando Setup è arrivato a quel passo — il caso migliore, il terzo su
+quattro giri. `stato.json` consumato, installer cancellato, `log.txt` vuoto.
+Su sua richiesta, per quel rilascio l'installazione sul PC **non** è stata
+aggiornata a mano: doveva restare indietro (era ferma alla 1.3.9, un numero
+costruito solo per stare sotto la 1.4.0) o non ci sarebbe stato niente da
+premere. Vale come
 promemoria per la prossima volta che serve la stessa cosa: **la Release va fatta
 comunque** — con commit e tag ma senza Release, `/releases/latest` risponde con
 la vecchia e l'app resta muta, che a schermo somiglia moltissimo a un pulsante
