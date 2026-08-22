@@ -46,7 +46,20 @@ from pathlib import Path
 
 from core.version import APP_VERSION
 
-LATEST_URL = "https://api.github.com/repos/Losax/ygo-toolbox/releases/latest"
+#: Sorgente del controllo. La variabile d'ambiente `YGO_UPDATE_URL` la
+#: sostituisce, e serve a UNA cosa: **collaudare l'aggiornamento dentro l'exe
+#: installato** puntandolo a un JSON locale (`file:///…/release.json`) che
+#: descrive una versione finta più nuova.
+#:
+#: Perché serve un gancio invece di provare "dal vivo": il pezzo più rischioso
+#: del flusso è il `Popen` con `DEVNULL` fatto da un processo *windowed*
+#: congelato (dove gli handle standard non sono validi e si prende `WinError 6`),
+#: e quello si vede solo dall'exe installato. Senza questa riga, per provarlo
+#: servirebbero due Release pubbliche di fila.
+#: Non allarga la superficie d'attacco: chi può impostare le variabili
+#: d'ambiente di questo utente può già sostituire direttamente l'exe.
+LATEST_URL = (os.environ.get("YGO_UPDATE_URL", "").strip()
+              or "https://api.github.com/repos/Losax/ygo-toolbox/releases/latest")
 TIMEOUT = 8
 #: Tetto a orologio per l'intero download. Il `timeout` di `urlopen` è
 #: PER-LETTURA: un proxy che sgocciola un byte al secondo non lo fa scattare
