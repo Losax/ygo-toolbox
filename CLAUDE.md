@@ -21,6 +21,30 @@ aggiornamento dentro l'app (25 tag e 0 release facevano rispondere 404 all'API).
 E l'utente **usa l'app installata**, non `python main.py`: un exe vecchio
 significa che sta usando qualcosa di diverso da ciò che dicono i registri.
 
+> ### ⚠ ECCEZIONE VALIDA UNA VOLTA SOLA — poi CANCELLARE questo riquadro
+> Chiesta dall'utente il 2026-08-22: **al PROSSIMO rilascio (e solo a quello)
+> NON installare la nuova versione su questa macchina.** Vuole provare da sé
+> il pulsante *Riavvia e aggiorna* della v1.4.0, e per farlo la sua
+> installazione deve restare INDIETRO rispetto a GitHub.
+>
+> Quindi, quella volta: versione nei tre posti, registri, commit e push, exe e
+> installer ricompilati e **Release pubblicata** — tutto normale. Salta **solo**
+> l'installazione dell'installer sulla macchina.
+> La Release va fatta comunque: senza, l'app non vede niente e il test non
+> esiste. La verifica "lancia l'exe e leggi `~/.ygo_toolbox/log.txt`" si fa su
+> `dist\YGO Toolbox.exe` (che è già la versione nuova, quindi non si offre di
+> aggiornarsi) — **non** cliccare mai il pulsante di aggiornamento lì: `/DIR`
+> nasce da `sys.executable` e installerebbe dentro `dist\`.
+>
+> Stato al momento della richiesta: sulla macchina è installata la **1.3.9**,
+> un numero mai esistito pubblicamente, costruito solo per stare sotto la
+> 1.4.0. Se l'utente intanto premesse il pulsante si ritroverebbe alla 1.4.0, e
+> va bene: qualunque rilascio successivo resta più nuovo di entrambe.
+>
+> **Appena questa eccezione è stata usata, cancella il riquadro** e torna alla
+> regola dei cinque passi: l'utente usa l'app installata, e lasciarla indietro
+> più di un giro è esattamente il guaio che l'aggiornamento in-app risolve.
+
 **2. Verificare, non supporre.** In questa sessione ogni volta che ho dato per
 buono qualcosa senza guardare, era sbagliato. Quindi:
 - smoke test dopo OGNI modifica al market_watch;
