@@ -972,6 +972,177 @@ Verifica offscreen della GUI (utile in sviluppo): istanziare `MainWindow` con
 
 ## 7. Idee future / TODO
 
+### ⇒ PRIMO PUNTO DELLA PROSSIMA SESSIONE: aggiornamento in-app (v1.4.0)
+
+Chiesto esplicitamente il 2026-07-31: *"come fa l'app desktop di Claude:
+spunta il tasto per aggiornare e una volta cliccato fa tutto da solo, senza
+che l'utente vada sul sito e riscarichi la versione manualmente"*. Due cose
+insieme: **(1)** l'avviso va dove si vede da qualunque pagina, **(2)** il
+pulsante scarica l'installer, lo esegue, e l'app si riapre da sola.
+Motivo concreto: un amico ha l'app installata, e oggi l'avviso vive
+nell'header del **market_watch** mentre l'app si apre sul **Database** (primo
+in ordine alfabetico) — quindi spesso non lo vede proprio.
+
+**GIÀ MISURATO IL 2026-07-31 — non rifare queste verifiche:**
+- `installer.iss` riga 78: `[Run] … Flags: nowait postinstall skipifsilent`.
+  **`skipifsilent` salta il rilancio in installazione silenziosa**: senza
+  toccarlo, l'app si aggiorna e resta chiusa. È la modifica non negoziabile.
+- `CloseApplications=force` c'è già; `RestartApplications=no`; niente
+  `AppMutex` (e non va aggiunto, vedi sotto).
+- L'API delle release espone l'asset: `assets[].browser_download_url` →
+  `…/releases/download/v1.3.0/YGO-Toolbox-Setup-v1.3.0.exe`, 48.831.018 byte.
+  Scaricato con `urllib`: HTTP 206 col `Range`, redirect a
+  `release-assets.githubusercontent.com`, primi byte `MZ`. `fetch_latest`
+  oggi legge solo `tag_name` e `html_url` e **butta via l'asset**.
+- Un file scritto da Python **non ha il flusso `Zone.Identifier`** (misurato:
+  solo `:$DATA`). È quel marchio, messo dal browser, a far comparire
+  "Windows ha protetto il PC". Paradosso da tenere a mente: l'aggiornamento
+  automatico incontrerà SmartScreen **meno** di quello manuale di oggi.
+  Resta da confermare dal vivo su una macchina pulita: l'assenza del marchio
+  è misurata, l'effetto finale no.
+
+**Il flusso deciso**
+
+1. Il controllo vive nel **core**, non in un modulo: un piede sotto la barra
+   laterale, visibile da ogni pagina. Il chip va tolto dal market_watch.
+2. All'avvio, come oggi: un solo controllo in un `QThread`, e **silenzio** su
+   qualunque errore (è un'operazione che l'utente non ha chiesto).
+3. Asset scelto **per pattern** (nome che contiene `Setup`, estensione `.exe`,
+   `state == "uploaded"`), **mai `assets[0]`**: l'ordine dipende da cosa è
+   stato caricato per primo, e fra `gh release create` e la fine dell'upload
+   c'è una finestra reale.
+4. Il pulsante è attivo **solo se `getattr(sys, "frozen", False)`**: in
+   sviluppo (`python main.py`) installare sopra un'installazione che non è
+   quella in esecuzione è il modo più rapido per non capire più niente. Non
+   congelata → resta il link alla pagina.
+5. Clic → download in `QThread` su `~/.ygo_toolbox/updates/<nome>.part`, a
+   blocchi, annullabile, con **scadenza a orologio** (il `timeout` di
+   `urlopen` è per-lettura: un proxy che sgocciola non lo fa scattare mai).
+   Barra determinata **solo** se c'è `Content-Length`, altrimenti
+   indeterminata: niente percentuali inventate.
+6. A fine download: byte scritti `==` dimensione dichiarata dall'asset, primi
+   due byte `MZ`, poi `os.replace()` sul nome finale. Se non torna, si
+   cancella e lo si **dice** (questa operazione l'utente l'ha chiesta).
+   **Niente resume con `Range`**: riprendere dentro il file di un'altra
+   release costruisce un ibrido che passa il controllo di dimensione.
+7. Se è in corso una sincronizzazione del catalogo o un giro prezzi, si
+   chiede prima: è l'unico momento in cui l'utente può perdere lavoro vero
+   (4-5 minuti). Unico modale ammesso in tutto il flusso.
+8. Lancio con `subprocess.Popen` (lista di argomenti, **mai** `shell=True`,
+   **mai** un `.bat`, `stdin/stdout/stderr=DEVNULL` — in app *windowed* gli
+   handle standard non sono validi e si prende `WinError 6`; `cwd` fuori da
+   `{app}`, che Setup sta per toccare).
+   Riga: `/SILENT /NOCANCEL /NORESTART /SP- /DIR="<dirname(sys.executable)>"
+   /LOG="…/updates/setup-X.Y.Z.log"` più un parametro nostro per il rilancio.
+   - `/SILENT` e **non** `/VERYSILENT`: con l'app chiusa, la barra di Inno è
+     l'unica cosa a schermo che dice che il computer non si è piantato.
+   - **Niente `/SUPPRESSMSGBOXES`**: risponde *Annulla* al box Riprova/Annulla,
+     cioè trasforma un file bloccato per mezzo secondo in un'installazione
+     abortita **con l'exe vecchio già rimosso**.
+   - **Niente `/CURRENTUSER` né `/ALLUSERS`**: con
+     `PrivilegesRequiredOverridesAllowed=dialog` fanno *fallire* il setup.
+   - `/DIR` sempre da `sys.executable`: altrimenti con quel `dialog` si può
+     finire con due installazioni, una per-utente e una per-macchina.
+   - La cartella del `/LOG` va creata **prima** da Python: se il file non si
+     può creare, Setup aborta.
+9. **L'app NON si chiude subito**: aspetta (con un timer, senza bloccare la
+   GUI) che l'installer dia segno di essere partito davvero, con un tetto di
+   ~20 s, controllando in parallelo che il processo non sia già morto. È la
+   sola differenza fra "aggiornamento in corso" e "l'antivirus ha messo in
+   quarantena il file e l'utente resta senza app e senza spiegazione". Se non
+   parte: **non ci si chiude**, e si offre *Apri la cartella* / *Apri la
+   pagina*.
+10. Poi l'app **si chiude da sola** (`on_stop()` dei moduli, `storage.close()`,
+    tray via) invece di farsi ammazzare da `CloseApplications=force`, che
+    resta come rete di sicurezza. Chiudersi bene è ciò che fa ripulire al
+    bootloader onefile la cartella `_MEIxxxxxx` da decine di MB in `%TEMP%` e
+    toglie l'icona fantasma dalla tray. **I processi sono DUE** (padre e
+    figlio onefile): devono sparire entrambi prima che Inno copi.
+11. Inno copia e `[Run]` rilancia l'app. Al riavvio successivo si confronta la
+    versione con quella attesa, salvata prima di chiudersi: se combacia si
+    ripulisce tutto; se **non** combacia lo si dice **una volta sola** e
+    quella versione non si ripropone da sola. Chiude il ciclo
+    chip → aggiorna → chip da 47 MB a giro, che qui è il rischio più concreto
+    (la versione vive in tre posti e può disallinearsi).
+
+**Trappole, in ordine di gravità**
+
+*Possono lasciare l'app non funzionante:*
+1. `skipifsilent` (vedi sopra) — certo, al primo tentativo.
+2. Copia dell'exe interrotta a metà: **Inno non fa rollback**. Mitigazioni:
+   niente `/SUPPRESSMSGBOXES`, `/NOCANCEL`, ed eventualmente una copia di
+   scorta dell'exe attuale (un onefile è portatile: si riapre a doppio clic).
+3. **Antivirus**: onefile PyInstaller non firmato **con UPX attivo**
+   (`ygo_toolbox.spec`: `upx=True`) è il profilo con più falsi positivi in
+   circolazione. Vale la pena provare una build con `upx=False` e confrontare
+   i rilevamenti prima di rilasciare.
+4. App che si fa ammazzare invece di chiudersi: `_MEI*` orfane in `%TEMP%`,
+   icona fantasma nella tray, scritture di `images.py` troncate. Il DB SQLite
+   invece regge (journal di rollback): si perdono minuti di sync, non dati.
+
+*L'aggiornamento non avviene:*
+5. Release marcata **prerelease**: `/releases/latest` la esclude e l'avviso
+   non arriva mai. È una voce di checklist, non codice.
+6. Errori di rete sul download **chiesto** devono parlare, non tacere:
+   `SSLCertVerificationError` (proxy che ispeziona il TLS) è una `OSError` e
+   oggi verrebbe inghiottita dalla regola del silenzio.
+7. Limite dell'API GitHub (60 richieste/ora da IP non autenticato): un solo
+   controllo per avvio, nessun ritentativo automatico.
+
+*Confusione:*
+8. **Due avvisi gemelli**: il chip dell'app e quello del database delle carte
+   sono gialli e dicono entrambi "aggiornamento". Vanno distinti da luogo
+   (piede vs header del modulo), forma (pulsante vs etichetta), icona
+   (`↑` programma / `↻` dati) e parole (versioni vs carte e date).
+
+**Cosa NON fare**
+- **Non aggiungere `AppMutex`** all'`.iss`: stallo perfetto — Setup rifiuta di
+  partire perché l'app è aperta, e l'app aspetta che Setup parta per chiudersi.
+- **Non usare `os.startfile()`** per lanciare il setup: passa da
+  `ShellExecute` e quindi da SmartScreen. `Popen` usa `CreateProcess` e no.
+- **Non usare `/RESTARTAPPLICATIONS`** né il Restart Manager per riaprire
+  l'app: rilancia solo i processi che è riuscito a chiudere lui, quando
+  decide lui. Il rilancio è `[Run]`.
+- **Niente `QMessageBox` per gli errori** di aggiornamento (solo per il
+  conflitto "operazione in corso"): un modale per un aggiornamento fallito
+  trasforma un contrattempo in un incidente.
+- **Non togliere mai *Apri la pagina***: è il comportamento che funziona oggi
+  e deve restare la via d'uscita di ogni errore.
+- **Non toccare `is_newer`**: confronto `>` stretto. Inno non impedisce i
+  downgrade.
+- **La cartella di download è solo `~/.ygo_toolbox/updates/`**: non
+  `sys._MEIPASS` (il bootloader la cancella all'uscita), non `{app}` (Setup la
+  sta manipolando), non la `{tmp}` di Inno (cancellata a fine installazione).
+
+**Ordine di lavoro**
+1. `installer.iss` e **collaudo a mano della riga di comando prima di
+   scrivere una riga di Python**: se lì compare un dialogo, cambia tutto il
+   resto. In particolare va guardato lo schermo per mezzo minuto con l'app
+   aperta, per escludere il dialogo "installa per tutti / solo per me".
+2. `core/updates.py`: `fetch_latest` restituisce anche url, dimensione e nome
+   dell'asset; selezione per pattern. Riscrivere la docstring, che oggi dice
+   "niente scaricamento automatico".
+3. Il worker di download e la logica di stato/esito al riavvio.
+4. Il piede in `core/app.py` e rimozione del chip dal market_watch.
+5. Rilascio completo (tre posti per la versione, due registri, push, exe,
+   installer, Release **non** prerelease).
+6. **Il collaudo vero si fa solo dopo il rilascio**: si installa la versione
+   precedente, si lascia la nuova su GitHub e si preme il pulsante. Prima
+   della Release non c'è niente verso cui aggiornarsi.
+
+**Una decisione ancora aperta**: uno o due clic. L'analisi propone
+*Scarica* → *Installa e riavvia* (il download resta reversibile). La richiesta
+dice "un clic e fa tutto". Claude Desktop in realtà scarica **da solo** in
+sottofondo e poi offre un solo pulsante *Riavvia*: è la via più vicina a
+quanto chiesto, al prezzo di 47 MB scaricati senza chiedere. Da decidere a
+inizio sessione — cambia solo quando parte il download, non il resto.
+
+*(Piano nato da tre analisi indipendenti — Windows/Inno Setup, modi di
+rottura, esperienza utente — più una sintesi, il 2026-07-31. Alcune proposte
+sono state tagliate perché sovradimensionate per un'app usata da due persone:
+copia di rollback obbligatoria a ogni giro, tre moduli nuovi nel core,
+protocollo `busy_reason()` su tutti i widget.)*
+
 - **Compatibilità macOS: ACCANTONATA il 2026-07-30** (decisione dell'utente:
   nessun Mac disponibile, riprendere quando ce n'è uno — e *niente lavoro
   preparatorio* nel frattempo). Analisi già fatta, non rifarla:

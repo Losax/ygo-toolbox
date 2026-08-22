@@ -153,6 +153,16 @@ come **installer** (`dist\YGO-Toolbox-Setup-vX.Y.Z.exe`, per-utente, senza UAC)
 allegato a una **Release**. Lo zip portatile non si produce più.
 
 ## Idee future già impostate
+
+**⇒ PRIMO PUNTO DELLA PROSSIMA SESSIONE — aggiornamento in-app (v1.4.0).**
+Chiesto il 2026-07-31: un pulsante che scarica e installa da solo, come fa
+l'app desktop di Claude, più l'avviso spostato dove si vede da ogni pagina
+(oggi sta nell'header del market_watch, ma l'app si apre sul Database).
+**Piano completo, misure già fatte e trappole: `REGISTRO_TECNICO.md` §7, in
+cima.** Non riprogettarlo da zero e non rifare le misure: leggerlo e partire
+dal punto 1 dell'ordine di lavoro (`installer.iss`, dove `skipifsilent`
+impedisce il rilancio dopo un'installazione silenziosa).
+
 - ~~Grafico dello storico prezzi~~ — **fatto (v1.0.26)**: `history_chart.py`,
   doppio clic sulla riga. Linea a gradini, solo la corsa attuale dei filtri.
   Il grafico del totale di una **base** invece NON si può fare senza inventare
