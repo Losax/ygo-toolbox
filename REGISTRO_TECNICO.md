@@ -455,6 +455,33 @@ confini di parola per non pescare "usato").
     Regola generale: se due pezzi di stato (l'etichetta e il comportamento)
     vanno cambiati insieme, devono passare **dalla stessa funzione**. Qui
     `_mostra` è l'unico punto che tocca il riquadro, e prende anche lo stato.
+26. **Un exe onefile che lancia un processo deve ripulirgli l'ambiente, o
+    l'aggiornamento installa bene e riapre un'app rotta.** Il difetto più
+    grave trovato in questa sessione, e visibile **solo** collaudando il giro
+    intero dall'app installata: aggiornamento riuscito, versione nuova sul
+    disco, e al rilancio un cartello rosso
+    *"Failed to load Python DLL '…\\_MEI238602\\python310.dll'"*.
+    - **Catena:** il bootloader onefile tiene in `_PYI_APPLICATION_HOME_DIR` la
+      propria cartella di estrazione (`%TEMP%\\_MEI<pid>2`) e in
+      `_PYI_PARENT_PROCESS_LEVEL` il fatto di essere il processo figlio.
+      `Popen` senza `env` passa **tutto** l'ambiente a Setup → Setup lo passa
+      all'app che rilancia con `[Run]` → quel bootloader crede di essere figlio
+      di un padre che ha già scompattato, **salta l'estrazione** e cerca Python
+      nella cartella del processo che nel frattempo è morto e l'ha cancellata.
+      Il numero nel messaggio lo conferma: `_MEI238602` = pid **23860**, cioè
+      l'app di *prima* dell'aggiornamento.
+    - **Riprodotto a comando** (e quindi capito, non indovinato): basta lanciare
+      l'exe installato con `_PYI_APPLICATION_HOME_DIR` su una cartella
+      inesistente **e** `_PYI_PARENT_PROCESS_LEVEL` impostata → cartello di
+      errore, un processo solo. Togliendo il solo livello → parte regolarmente.
+    - **Cura:** `updates.ambiente_per_setup()`, cioè `Popen(..., env=…)` con
+      ogni chiave che inizia per `_PYI` o `_MEI` rimossa. Vale per **qualunque**
+      processo lanciato da un exe congelato, non solo per Setup.
+    - **La lezione oltre il bug:** questo anello non si vede in nessun test
+      headless, in nessuna schermata e in nessun collaudo dell'installer preso
+      da solo. Si vede solo mettendo in fila *app installata → clic → Setup →
+      rilancio*. Se un flusso ha quattro anelli, il collaudo deve averne
+      quattro.
 
 ---
 
@@ -1011,9 +1038,12 @@ Le cose che qui non sono ovvie, tutte con un motivo misurato:
   sottofondo e invisibile. È il rischio più concreto di tutto il meccanismo.
 - **un installer già valido non si riscarica** (`verifica_file` all'inizio di
   `scarica`).
-- **chiudersi da soli vale 31 secondi.** Non è pulizia: `CloseApplications=force`
-  è un *timeout* che Inno aspetta perché l'exe onefile non risponde al Restart
-  Manager. Misurato due volte, 31,4 s; la copia vera dei file è 1,2 s.
+- **chiudersi da soli è una corsa, non una garanzia.** `CloseApplications=force`
+  è un *timeout* (~30 s) che Inno aspetta perché l'exe onefile non risponde al
+  Restart Manager; Inno fotografa i processi 190 ms dopo essere partito, quindi
+  chiudersi serve solo se si fa in tempo. Tre giri veri: 4 s, 34 s, 4 s. Non
+  ci si chiude *prima* di aver visto partire Setup, e quella scelta vale i 30 s
+  del caso peggiore (vedi il punto 3 del blocco "COLLAUDATO DAL VIVO").
 - **`/DIR` va virgolettato** e la riga costruita con `Popen(lista)`: GOTCHA 24,
   costò un'installazione fantasma con exit code 0 e "succeeded" nel log.
 - **percentuale solo con `Content-Length`**, altrimenti si scrivono i MB fatti:
@@ -1055,14 +1085,20 @@ in-app"** — quella è la parte da leggere per lavorarci. Quello che segue è i
 le trappole. Si conserva perché ogni riga è costata una prova, e perché il
 collaudo finale non è ancora chiuso (vedi in fondo).
 
-**Resta da fare: il collaudo del giro completo su una macchina.** Serve una
-versione *precedente* installata e una *nuova* su GitHub, cioè due Release: con
-la v1.4.0 appena pubblicata basterà installarla e attendere la v1.4.1. Provato
-dal vivo finora: fetch → scelta dell'asset → download → verifica → pulsante,
-con una release finta servita da `file://` in una finestra vera (i tre stati e
-l'esito al riavvio sono coperti dallo smoke test). **Non** ancora provato: il
-lancio di Setup dal pulsante e il rilancio dell'app dopo l'installazione, che
-richiedono l'app congelata e installata.
+**Il collaudo del giro completo è FATTO, e senza pubblicare due Release.** Il
+piano diceva che serviva una versione precedente installata e una nuova su
+GitHub; invece basta il gancio `YGO_UPDATE_URL` (vedi in cima a `updates.py`):
+si punta l'app installata a un `release.json` locale che descrive una 1.4.1
+finta, con un installer 1.4.1 **vero** compilato in locale con
+`ISCC /DAppVersion=1.4.1 /O<cartella>`. Tre giri completi da app installata:
+piede acceso → download da solo → clic → Setup → app chiusa → installata →
+riaperta sana → `stato.json` consumato → i 48 MB cancellati.
+**Ed è servito:** il difetto del GOTCHA 26 (app riaperta con "Failed to load
+Python DLL") non si vede in nessun altro modo. Ricetta, per rifarlo: script
+`collaudo_giro.ps1` + `foto_e_clic.ps1` nello scratchpad di sessione — e serve
+il **clic per coordinate**, perché **UIAutomation non legge i widget Qt** di
+questa app (nessun nome, nessun `InvokePattern`: il ponte di accessibilità di
+Qt non è attivo). Il pulsante del piede sta a client (94, altezza − 64).
 
 Chiesto esplicitamente il 2026-07-31: *"come fa l'app desktop di Claude:
 spunta il tasto per aggiornare e una volta cliccato fa tutto da solo, senza
@@ -1105,16 +1141,31 @@ Esito, in ordine di importanza:
    Dopo averlo tolto da `[Run]` e ricompilato: `-- Run entry --` nel log,
    l'app torna a galla in ~5 s, due processi vivi. La riga in `installer.iss`
    ora ha un commento che spiega perché il flag NON c'è.
-3. **`CloseApplications=force` costa 31 secondi fissi**, e non è lavoro: è un
-   *timeout*. Nel log, `Shutting down applications using our files. (forced)`
-   → riga successiva: **31,4 s** in un giro, **31,4 s** nell'altro. La copia
-   vera dei file, le icone e il registro sono **1,2 s**. L'exe onefile di
-   PyInstaller non risponde alla richiesta del Restart Manager, quindi Inno
+3. **`CloseApplications=force` costa ~30 secondi, ed è un *timeout*, non
+   lavoro.** Nel log, `Shutting down applications using our files. (forced)` →
+   riga successiva: **31,4 s** e **31,4 s** nei due giri senza autochiusura.
+   La copia vera dei file, le icone e il registro sono **1,2 s**. L'exe onefile
+   di PyInstaller non risponde alla richiesta del Restart Manager, quindi Inno
    aspetta il suo mezzo minuto e poi lo ammazza.
-   ⇒ **Il punto 10 del flusso non è pulizia formale, è la differenza fra un
-   aggiornamento da ~33 s e uno da ~2 s.** Se l'app si chiude da sola (tutti e
-   DUE i processi), Inno non ha niente da attendere. È anche il pedaggio che
-   ogni aggiornamento manuale ha pagato finora senza che si sapesse.
+   ⇒ **Il punto 10 del flusso (l'app si chiude da sola) serve a evitare quel
+   mezzo minuto — ma non lo garantisce**, e vale la pena essere precisi perché
+   il numero è facile da raccontare male. Inno fotografa la lista dei processi
+   **190 ms** dopo essere partito: se in quell'istante siamo ancora vivi, RM
+   ci chiede di chiudere, non gli rispondiamo (stiamo già uscendo) e la sua
+   attesa parte comunque. Chiudersi da soli fa *vincere la corsa*, non
+   scomparire dalla lista.
+   **Tre giri completi misurati dall'app installata:** `Shutting down` = 0,47 s,
+   **30,2 s**, 0,47 s; aggiornamento intero (clic → app riaperta) = **4 s,
+   34 s, 4 s**. Il giro lento è quello in cui si è premuto il pulsante ~40 s
+   dopo l'avvio, con il lavoro d'avvio ancora in volo; i due veloci con l'app
+   già a regime.
+   ⇒ **Non "si risparmiano 31 secondi": si passa da 30 s sempre a 30 s a
+   volte.** E il compromesso è deliberato: chiudersi *appena lanciato* Setup
+   ci farebbe sparire prima della fotografia, ma butterebbe via il punto 9 —
+   l'app non deve chiudersi finché Setup non ha dato prova di essere partito,
+   altrimenti un file in quarantena lascia l'utente senza app e senza
+   spiegazione. Trenta secondi con la barra di Inno a schermo sono un
+   contrattempo; zero app è un incidente.
 4. **Il segnale che Setup è partito davvero è la comparsa del file di
    `/LOG`**, non una finestra. Misurato: il log appare a **t+2 s** con
    l'installer già in cache, la finestra a **t+8 s** a freddo (il bootloader
@@ -1267,11 +1318,10 @@ Esito, in ordine di importanza:
    pulsanti affiancati in 190 px si leggevano "ia e agg" (ora sono impilati, e
    il QSS del piede ha un padding suo), e il GOTCHA 25.
 5. ~~Rilascio completo.~~ **FATTO** (v1.4.0).
-6. **Il collaudo vero si fa solo dopo il rilascio** — **ANCORA APERTO**: si
-   installa la versione precedente, si lascia la nuova su GitHub e si preme il
-   pulsante. Con la v1.4.0 pubblicata, il banco di prova esiste: serve la
-   v1.4.1 (anche solo con una correzione minima) per premere il pulsante
-   davvero.
+6. ~~Il collaudo vero si fa solo dopo il rilascio.~~ **FATTO, e prima del
+   rilascio** — non servivano due Release: `YGO_UPDATE_URL` + un installer
+   1.4.1 compilato in locale. Tre giri interi, e uno ha scoperto il GOTCHA 26.
+   Vedi il blocco in cima a questa sezione.
 
 **Decisione presa il 2026-08-22 — download automatico in sottofondo.** Era
 l'unico punto rimasto aperto (uno o due clic). Si fa come Claude Desktop:

@@ -872,6 +872,12 @@ def main() -> int:
     solo_link = updates.fetch_latest(senza.as_uri())
     assert solo_link is not None and not solo_link.installabile, \
         "release senza installer: si avvisa comunque, ma senza pulsante"
+    # un JSON col BOM (su Windows lo mette quasi ogni strumento) deve passare:
+    # con decode("utf-8") json.loads solleva, e la regola del silenzio lo
+    # nasconde — nessun avviso e niente da cui capire il perché
+    con_bom = tmp / "con_bom.json"
+    con_bom.write_bytes(b"\xef\xbb\xbf" + rel_json.read_bytes())
+    assert updates.fetch_latest(con_bom.as_uri()) == rel, "il BOM non deve fermare nulla"
 
     # --- verifica del file: dimensione E firma MZ, entrambe ---
     assert updates.verifica_file(finto_exe, 4242)
@@ -927,6 +933,24 @@ def main() -> int:
     assert "/DIR=C:\\Programs\\YGO Toolbox" not in scritta.replace(
         '"/DIR=C:\\Programs\\YGO Toolbox"', ""), \
         "senza virgolette Inno legge …\\YGO e installa in una cartella fantasma"
+
+    # --- l'ambiente di Setup NON deve portarsi dietro le variabili di
+    #     PyInstaller: altrimenti l'app rilanciata da [Run] cerca python310.dll
+    #     nella cartella di estrazione del processo appena morto e si apre con
+    #     "Failed to load Python DLL" (GOTCHA 26, riprodotto a comando)
+    import os as _os
+    _salva = dict(_os.environ)
+    _os.environ["_PYI_APPLICATION_HOME_DIR"] = r"C:\Temp\_MEI999992"
+    _os.environ["_PYI_PARENT_PROCESS_LEVEL"] = "0"
+    _os.environ["_MEIPASS2"] = r"C:\Temp\_MEI999992"
+    _os.environ["YGO_CANARINO"] = "resto"
+    pulito = updates.ambiente_per_setup()
+    assert not [k for k in pulito if k.startswith(("_PYI", "_MEI"))], \
+        "l'app rilanciata erediterebbe la cartella di estrazione di un morto"
+    assert pulito.get("YGO_CANARINO") == "resto", \
+        "si toglie solo cio' che riguarda PyInstaller, non tutto l'ambiente"
+    _os.environ.clear()
+    _os.environ.update(_salva)
 
     # --- il segnale "Setup è partito" è il file di log, non il processo ---
     finto_log = updates.log_path("9.9.9")

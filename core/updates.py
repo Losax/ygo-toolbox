@@ -157,7 +157,14 @@ def fetch_latest(url: str = "") -> Release | None:
     try:
         req = urllib.request.Request(url or LATEST_URL, headers={"User-Agent": _UA})
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
+            # "utf-8-sig", non "utf-8": toglie il BOM se c'è e per il resto è
+            # identico. GitHub non lo manda, ma la sorgente può essere un JSON
+            # scritto a mano — e su Windows quasi ogni strumento ci mette il BOM
+            # (PowerShell 5.1 `Out-File -Encoding utf8` lo fa). Con "utf-8"
+            # `json.loads` solleva ValueError, che qui viene inghiottito dalla
+            # regola del silenzio: nessun avviso, nessun aggiornamento, e niente
+            # da cui capire il perché. Costato mezz'ora in collaudo.
+            data = json.loads(resp.read().decode("utf-8-sig"))
     except (urllib.error.URLError, OSError, ValueError, TimeoutError):
         return None
     if not isinstance(data, dict):
@@ -334,6 +341,32 @@ def install_command(installer: Path, cartella: Path, log: Path) -> list[str]:
     ]
 
 
+def ambiente_per_setup() -> dict:
+    """L'ambiente da dare a Setup: il nostro, MENO le variabili interne di
+    PyInstaller.
+
+    Senza questa pulizia l'aggiornamento **installa bene e poi riapre un'app
+    rotta**, con un cartello "Failed to load Python DLL". Catena:
+    l'exe onefile tiene in `_PYI_APPLICATION_HOME_DIR` la propria cartella di
+    estrazione (`%TEMP%\\_MEI<pid>2`) e in `_PYI_PARENT_PROCESS_LEVEL` il fatto
+    di essere un processo figlio → `Popen` le passa a Setup → Setup le passa
+    all'app che rilancia con `[Run]` → quel bootloader crede di essere il figlio
+    di un padre che ha già scompattato, **salta l'estrazione** e cerca
+    `python310.dll` nella cartella del processo che nel frattempo è morto e l'ha
+    cancellata.
+
+    Riprodotto a comando il 2026-08-22: basta lanciare l'exe con
+    `_PYI_APPLICATION_HOME_DIR` su una cartella inesistente **e**
+    `_PYI_PARENT_PROCESS_LEVEL` impostata. Togliendo solo il livello, parte.
+    Per esteso: GOTCHA 26.
+    """
+    env = dict(os.environ)
+    for chiave in list(env):
+        if chiave.startswith(("_PYI", "_MEI")):
+            env.pop(chiave, None)
+    return env
+
+
 def lancia_installer(installer: Path, cartella: Path | None = None,
                      log: Path | None = None) -> subprocess.Popen:
     """Avvia Setup e restituisce il processo. Non attende: chi chiama controlla
@@ -344,7 +377,11 @@ def lancia_installer(installer: Path, cartella: Path | None = None,
       sono validi e senza questo si prende `WinError 6`;
     - `cwd` fuori da `{app}`, che Setup sta per toccare;
     - **non `os.startfile()`**: passa da `ShellExecute`, quindi da SmartScreen.
-      `Popen` usa `CreateProcess` e no.
+      `Popen` usa `CreateProcess` e no;
+    - **`env` ripulito** dalle variabili di PyInstaller: senza, l'app rilanciata
+      da `[Run]` si apre con un cartello "Failed to load Python DLL" — vedi
+      `ambiente_per_setup` e il GOTCHA 26. È l'ultimo anello della catena, e
+      l'unico che non si vede se non si collauda il giro intero.
     """
     cartella = cartella or install_dir()
     log = log or log_path("x")
@@ -352,6 +389,7 @@ def lancia_installer(installer: Path, cartella: Path | None = None,
     return subprocess.Popen(
         install_command(installer, cartella, log),
         cwd=str(Path.home()),
+        env=ambiente_per_setup(),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

@@ -774,9 +774,13 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       nuova**. Se non lo è lo dice **una volta sola**, e quella versione non
       si riscarica più da sola — altrimenti sarebbero 48 MB a ogni avvio;
     - un installer già scaricato e verificato **non si riscarica**.
-    Aggiornare è anche diventato **più veloce**: l'app si chiude da sé invece
-    di farsi chiudere dall'installer, e questo da solo toglie **31 secondi** di
-    attesa (misurati) che ogni aggiornamento manuale ha pagato finora.
+    Quanto dura: **quattro secondi** nei due giri in cui l'app era a regime,
+    **trentaquattro** in quello in cui il pulsante è stato premuto quaranta
+    secondi dopo l'avvio. La differenza non è l'installazione (un secondo) ma
+    l'attesa dell'installer: se l'app fa in tempo a chiudersi da sé non aspetta
+    nessuno, altrimenti Windows ci mette il suo mezzo minuto a chiuderla —
+    lo stesso mezzo minuto che ogni aggiornamento manuale ha pagato finora.
+    In entrambi i casi a schermo c'è la barra di avanzamento, e l'app torna su.
 
 ## 4. Note operative importanti
 

@@ -37,7 +37,7 @@ come artefatto: due volte era un difetto vero (GOTCHA 14).
   numerata**: i punti nuovi si aggiungono **IN FONDO, in ordine crescente**
   (inserendoli in cima la cronologia si legge al rovescio: è già capitato e ho
   dovuto riordinarla).
-- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 25
+- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 26
   **GOTCHAS** e le decisioni col loro *perché*. Quando scopri una trappola,
   scrivila lì con il sintomo, la causa e la cura — è la parte più utile del
   documento.
@@ -82,9 +82,10 @@ le tabelle esistenti).
 - `core/` = motore: finestra (`app.py`), contratto moduli (`module_base.py`),
   scoperta automatica (`module_loader.py`), servizi condivisi (`context.py`:
   storage + notifier), SQLite (`storage.py`), tema (`theme.py`), animazioni
-  (`anim.py`), traduzioni (`i18n.py`), controllo aggiornamenti (`updates.py`).
+  (`anim.py`), traduzioni (`i18n.py`), aggiornamento dell'app (`updates.py` =
+  motore senza Qt, `update_widget.py` = thread + piede sotto il menu).
 - Dettagli, decisioni e trappole stanno in **`REGISTRO_TECNICO.md`**: leggerlo
-  prima di mettere le mani su market_watch, ha 25 GOTCHAS che spiegano *perché*
+  prima di mettere le mani su market_watch, ha 26 GOTCHAS che spiegano *perché*
   il codice è com'è.
 - `modules/<nome>/module.py` = punto di aggancio: una sottoclasse di
   `ToolModule` con `id`, `title`, `create_widget()`. Viene scoperta da sola al
@@ -154,22 +155,21 @@ allegato a una **Release**. Lo zip portatile non si produce più.
 
 ## Idee future già impostate
 
-**⇒ PRIMO PUNTO DELLA PROSSIMA SESSIONE — chiudere il collaudo
-dell'aggiornamento in-app.** La funzione è **fatta e rilasciata (v1.4.0,
-2026-08-22)**: l'app scarica da sola in sottofondo e un pulsante nel piede
-sotto il menu chiude, installa e riapre. Come funziona:
-`REGISTRO_TECNICO.md` §5, "Aggiornamento in-app"; materiale di lavorazione,
-misure e trappole in §7.
-Manca **solo l'ultimo pezzo di collaudo**, che non si poteva fare prima del
-rilascio: premere il pulsante per davvero. Serve la v1.4.0 **installata** e una
-v1.4.1 su GitHub verso cui aggiornarsi — quindi al prossimo rilascio, qualunque
-sia, **la prima cosa è guardare se l'aggiornamento automatico funziona**:
-piede acceso, download da solo, pulsante, app che si richiude e si riapre alla
-versione nuova. Non provato finora: il lancio di Setup dal pulsante e il
-rilancio via `[Run]` (servono l'app congelata e installata).
-Attenzione ai due punti che possono lasciare l'app non funzionante: l'antivirus
-sull'exe onefile non firmato (`upx=True` nello spec è il profilo con più falsi
-positivi) e una copia interrotta a metà, perché **Inno non fa rollback**.
+**Aggiornamento in-app: FATTO e collaudato (v1.4.0, 2026-08-22).** L'app
+scarica da sola in sottofondo e un pulsante nel piede sotto il menu chiude,
+installa e riapre. Come funziona: `REGISTRO_TECNICO.md` §5, "Aggiornamento
+in-app"; misure, trappole e ricetta del collaudo in §7.
+**Per ricollaudarlo dopo averci messo le mani** (e va ricollaudato: il difetto
+peggiore — GOTCHA 26 — si vedeva SOLO facendo il giro intero dall'app
+installata): non servono due Release. Si punta l'app installata a un
+`release.json` locale con `YGO_UPDATE_URL`, si compila un installer finto più
+nuovo con `ISCC /DAppVersion=X.Y.Z /O<cartella>`, e si preme il pulsante **per
+coordinate** — UIAutomation non legge i widget Qt di questa app. Gli script
+`collaudo_giro.ps1` / `foto_e_clic.ps1` sono descritti in §7.
+Due punti ancora aperti che possono lasciare l'app non funzionante, entrambi
+fuori dal nostro codice: l'antivirus sull'exe onefile non firmato (`upx=True`
+nello spec è il profilo con più falsi positivi in circolazione) e una copia
+interrotta a metà, perché **Inno non fa rollback**.
 
 - ~~Grafico dello storico prezzi~~ — **fatto (v1.0.26)**: `history_chart.py`,
   doppio clic sulla riga. Linea a gradini, solo la corsa attuale dei filtri.
