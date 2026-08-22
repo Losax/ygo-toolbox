@@ -1243,6 +1243,18 @@ class CardDbWidget(QWidget):
         # l'altezza la dà il layout; l'immagine si ri-adatta da sola
         self.art.setFixedWidth(round(ART.width() * scale))
 
+    def busy_reason(self) -> str:
+        """Una frase se c'è un lavoro lungo in corso, altrimenti "".
+
+        La chiede il piede dell'aggiornamento prima di chiudere l'app per
+        installare: la sincronizzazione delle carte sono quattro richieste e
+        qualche minuto, e interromperla a metà significa rifarla. Gli altri due
+        thread (versione remota, date dei set) durano un attimo e non si
+        contano: fermarli non costa niente all'utente."""
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            return tr("la sincronizzazione del database delle carte")
+        return ""
+
     def stop(self) -> None:
         # TUTTI i thread, `_sets_worker` compreso: uno lasciato in corsa
         # sopravvive al widget e fa cadere il processo alla chiusura

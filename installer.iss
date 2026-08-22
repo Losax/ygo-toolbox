@@ -12,8 +12,10 @@
 ; - I dati (token, watchlist, catalogo) stanno in %UserProfile%\.ygo_toolbox e
 ;   NON si toccano: né installando né disinstallando. Aggiornare non deve
 ;   costare la watchlist.
-; - Nessun download automatico dell'aggiornamento: l'app avvisa e apre la
-;   pagina, il file lo prende l'utente.
+; - L'app si aggiorna da sé (v1.4.0): scarica questo installer in sottofondo e
+;   lo lancia con /SILENT. Perciò la voce [Run] in fondo NON ha più
+;   `skipifsilent` — vedi il commento lì, è la riga che decide se l'utente si
+;   ritrova l'app riaperta o il desktop vuoto.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -75,7 +77,16 @@ Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
+; NIENTE `skipifsilent`, e non è una dimenticanza: è quel flag che salta il
+; rilancio nelle installazioni silenziose. Con l'aggiornamento automatico
+; l'app si chiude da sola, lancia Setup con /SILENT e conta su questa riga per
+; tornare a galla; con `skipifsilent` l'utente premeva "aggiorna" e si
+; ritrovava il desktop vuoto (verificato dal vivo il 2026-08-22: l'app non si
+; riapriva).
+; `postinstall` da solo non basta a mostrare una spunta in silenzio — in
+; /SILENT non c'è pagina finale, la voce viene semplicemente eseguita — quindi
+; resta per l'installazione a mano, dove la spunta ha senso.
+Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall
 
 [UninstallRun]
 ; CloseApplications=force chiude l'app quando si INSTALLA, ma sulla

@@ -1,5 +1,5 @@
 =====================================================================
-  YGO TOOLBOX v1.3.0 — prezzi delle carte Yu-Gi-Oh! su CardTrader
+  YGO TOOLBOX v1.4.0 — prezzi delle carte Yu-Gi-Oh! su CardTrader
 =====================================================================
 
 Cosa fa
@@ -46,12 +46,21 @@ Primo avvio
 
 Aggiornamenti
 -------------
-All'avvio l'app controlla se ne è uscita una nuova e, se sì, mostra
-un'etichetta "Aggiornamento" in alto: cliccala per aprire la pagina
-di download. Non scarica né installa niente da sola.
+Da sola. All'avvio l'app guarda se ne è uscita una nuova e, se sì, la
+SCARICA in sottofondo senza chiedere niente. Quando è pronta compare
+in basso a sinistra — sotto il menu, quindi la vedi da qualunque
+pagina — la scritta "Versione X.Y.Z pronta" con un pulsante "Riavvia
+e aggiorna".
 
-Per aggiornare basta lanciare il nuovo installer sopra il vecchio:
-se l'app è aperta la chiude lui, e la tua watchlist NON si perde.
+Quel pulsante fa tutto: chiude l'app, installa, la riapre. Ci vuole
+meno di un minuto e vedi solo la barra di avanzamento
+dell'installazione. La tua watchlist, il token e il catalogo NON si
+toccano.
+
+Se il download non riesce (rete assente, proxy, ...) non compare
+nessun errore: resta l'avviso con "Apri la pagina", che è il modo di
+prima — scarichi l'installer dal browser e lo lanci sopra il vecchio.
+Funziona ancora, e resta la via d'uscita se qualcosa va storto.
 
 Consigli d'uso
 --------------

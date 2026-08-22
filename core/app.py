@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QStackedWidget,
     QStyle,
     QSystemTrayIcon,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -27,6 +28,7 @@ from core import anim, theme
 from core.context import AppContext, Notifier
 from core.module_loader import discover_modules
 from core.storage import Storage
+from core.update_widget import UpdateFooter
 from core.version import APP_VERSION
 
 APP_DIR = Path.home() / ".ygo_toolbox"
@@ -78,11 +80,26 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         self.sidebar = QListWidget()
-        self.sidebar.setFixedWidth(190)
         self.sidebar.setObjectName("sidebar")
         self.stack = QStackedWidget()
 
-        layout.addWidget(self.sidebar)
+        # Colonna di sinistra: le voci in alto, il piede dell'aggiornamento in
+        # basso. La larghezza fissa sta sulla COLONNA e non più sulla lista,
+        # così i due pezzi restano allineati quando la finestra si riscala.
+        self.left_column = QWidget()
+        self.left_column.setFixedWidth(190)
+        colonna = QVBoxLayout(self.left_column)
+        colonna.setContentsMargins(0, 0, 0, 0)
+        colonna.setSpacing(0)
+        colonna.addWidget(self.sidebar, 1)
+        self.update_footer = UpdateFooter(
+            self.left_column,
+            occupato=self._lavoro_in_corso,
+            chiudi=self._chiudi_per_aggiornamento,
+        )
+        colonna.addWidget(self.update_footer)
+
+        layout.addWidget(self.left_column)
         layout.addWidget(self.stack, 1)
         self.setCentralWidget(central)
         self.sidebar.currentRowChanged.connect(self.stack.setCurrentIndex)
@@ -91,6 +108,12 @@ class MainWindow(QMainWindow):
         self.modules = []
         self.context.open_module = self._open_module
         self._load_modules()
+
+        # Aggiornamenti: com'è finito il tentativo precedente (una volta sola,
+        # subito), poi UN controllo in un thread. Il ritardo lascia finire
+        # l'avvio dei moduli, che è la parte che l'utente sta guardando.
+        self.update_footer.controlla_esito_precedente()
+        QTimer.singleShot(6000, self.update_footer.avvia_controllo)
 
     def _open_module(self, module_id: str, payload=None) -> bool:
         """Porta in primo piano il modulo `module_id` e gli consegna un
@@ -130,6 +153,43 @@ class MainWindow(QMainWindow):
         if page is not None:
             anim.fade_in(page, duration=200)
 
+    # ------------------------------------------------------- aggiornamento
+
+    def _lavoro_in_corso(self) -> str:
+        """La prima frase che descrive un lavoro lungo in corso, o "".
+
+        Chiede ai widget che sanno rispondere (`busy_reason`), con la stessa
+        convenzione a papera di `apply_scale` e `handle_request`: nessun
+        protocollo da implementare per chi non ha niente da dire."""
+        for widget in self._module_widgets:
+            motivo = getattr(widget, "busy_reason", None)
+            if motivo is None:
+                continue
+            try:
+                testo = motivo()
+            except Exception:
+                continue
+            if testo:
+                return str(testo)
+        return ""
+
+    def _chiudi_per_aggiornamento(self) -> None:
+        """Chiusura ORDINATA prima che Setup copra i file.
+
+        Non è pulizia formale: se ci facciamo ammazzare da
+        `CloseApplications=force`, Inno aspetta il suo timeout — **31 secondi
+        misurati** — prima di poter copiare. Chiudendoci da soli sono ~2.
+        E chiudersi bene è anche ciò che fa ripulire al bootloader onefile la
+        cartella `_MEIxxxxxx` da decine di MB in %TEMP% e toglie l'icona
+        fantasma dalla tray."""
+        self.close()
+        app = QApplication.instance()
+        if app is not None:
+            # I processi sono DUE (padre e figlio onefile) e devono sparire
+            # entrambi prima che Inno copi: non ci si affida alla sola
+            # chiusura della finestra.
+            QTimer.singleShot(0, app.quit)
+
     def resizeEvent(self, event) -> None:  # noqa: N802 (firma Qt)
         super().resizeEvent(event)
         self._update_ui_scale()
@@ -160,13 +220,18 @@ class MainWindow(QMainWindow):
         app = QApplication.instance()
         if app is not None:
             theme.apply_scale(app, scale)
-        self.sidebar.setFixedWidth(round(190 * scale))
+        self.left_column.setFixedWidth(round(190 * scale))
         for widget in self._module_widgets:
             if hasattr(widget, "apply_scale"):
                 widget.apply_scale(scale)
 
     def closeEvent(self, event) -> None:  # noqa: N802 (firma Qt)
+        self.update_footer.stop()
         for mod in self.modules:
             mod.on_stop()
         self.context.storage.close()
+        # Via l'icona dalla tray a mano: se il processo viene sostituito da un
+        # aggiornamento resta l'icona fantasma, che sparisce solo passandoci
+        # sopra col mouse.
+        self.tray.hide()
         super().closeEvent(event)

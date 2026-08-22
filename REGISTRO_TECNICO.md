@@ -19,7 +19,8 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `storage.py` | Wrapper SQLite (solo thread GUI). |
 | `theme.py` | Tema: Fusion + `QPalette` scura + QSS. Costanti colore (ACCENT, POSITIVE, …) e `FONT_FAMILY` ("Inter", incorporato in `assets/fonts`, caricato con `QFontDatabase` in `apply_theme`; hinting `PreferNoHinting` per testo morbido; fallback Segoe UI). `build_qss(scale)` genera il QSS con le misure in px scalate; `apply_scale(app, scale)` lo ri-applica al volo. |
 | `anim.py` | Effetti: `fade_in`, `drop_shadow`, `hover_glow`/`hover_lift` (event filter), `pulse_item`, `animate_collapse` (fisarmonica pannello). Flag globale `ENABLED` (`set_enabled`/`is_enabled`, da Opzioni → chiave `animations` nel dict display): con False gli helper saltano allo stato finale; le animazioni custom (cartelle, arrivo riga, smooth wheel, ToggleSwitch, AnimatedCombo, CardDialog) controllano `anim.is_enabled()` da sole. |
-| `updates.py` | Controllo aggiornamenti. `LATEST_URL` = API release di GitHub: risponde solo se il repo è pubblico **e c'è almeno una Release pubblicata** (i tag non contano); altrimenti 404 e il controllo tace (è la regola: **silenzio su qualunque problema** — un errore per un controllo che l'utente non ha chiesto è solo fastidio). In alternativa basta un JSON pubblico con `tag_name`/`html_url`. `is_newer` confronta per NUMERI, non alfabeticamente: "1.0.9" < "1.0.23", che alfabeticamente sarebbe il contrario. Mai scaricamento automatico: si avvisa e si apre la pagina. `check_async` gira in un thread daemon; il risultato torna alla GUI via **segnale Qt** (`MarketWatchWidget._update_found`), mai chiamando la UI dal thread. |
+| `updates.py` | **Motore** dell'aggiornamento, senza Qt (quindi provabile headless). `LATEST_URL` = API release di GitHub: risponde solo se il repo è pubblico **e c'è almeno una Release pubblicata** (i tag non contano); altrimenti 404 e il controllo tace (**silenzio su qualunque problema**: né il controllo né il download li ha chiesti l'utente). `is_newer` confronta per NUMERI, non alfabeticamente: "1.0.9" < "1.0.23", che alfabeticamente sarebbe il contrario; `>` stretto, perché Inno non impedisce i downgrade. `fetch_latest` → `Release` (versione, pagina, url/nome/**dimensione** dell'asset) con `_pick_asset` che scegli per **pattern** (nome con "setup", `.exe`, `state == "uploaded"`), **mai `assets[0]`**: fra `gh release create` e la fine dell'upload la lista è incompleta. `scarica` a blocchi, annullabile, con **scadenza a orologio** (il `timeout` di `urlopen` è per-lettura: un proxy che sgocciola non lo fa scattare mai), su `<nome>.part` poi `os.replace`; **niente `Range`/ripresa**, riprendere dentro il file di un'altra release costruisce un ibrido che passa il controllo di dimensione. `verifica_file` = peso dichiarato **e** firma `MZ` (il peso da solo non smaschera la pagina d'errore di un proxy). `install_command`/`lancia_installer` (GOTCHA 24), `installer_partito` (il segnale è **la comparsa del file di `/LOG`**), e lo stato fra due avvii in `updates/stato.json` — `segna_attesa` prima di chiudersi, `esito_precedente` al riavvio: è l'**unica** prova che l'installazione sia avvenuta. |
+| `update_widget.py` | **Interfaccia** dell'aggiornamento: `UpdateWorker` (QThread: un giro solo, controlla e scarica) e `UpdateFooter`, il riquadro **sotto il menu laterale** — lì perché nell'header del market_watch non lo vedeva nessuno (l'app si apre sul Database: l'installazione di prova era rimasta 9 release indietro con l'avviso attivo). Stati: nascosto → *trovata* → *preparo* → *pronta* → *avvio* → *non partita*, più l'esito al riavvio. Il pulsante primario ha **un solo slot che dispaccia su `self._stato`** (GOTCHA 25). Riceve dalla `MainWindow` due funzioni invece di conoscerla: `occupato()` (→ `busy_reason()` dei widget) e `chiudi()`. |
 | `badges.py` | Pillole condivise: `pill(testo, altezza, ink, bg)` e `set_pill(codice)` (fondo scuro, sigla teal). Stavano nel market_watch; dalla v1.1.5 sono nel core perché le usa anche il Database — e i moduli **non si importano fra loro**. Un vocabolario visivo comune va in un posto comune. |
 | `rarity.py` | Badge rarità (sigla community UR/ScR/QCSR… + colori foil), `rarity_rank` per l'ordinamento e **`is_rarity`** (v1.1.7): YGOPRODeck mette a volte altro in quel campo — 192 stampe su 44.190 con "2", "3", "New", "European debut", "force-SMW". Il filtro NON è una lista nera (invecchierebbe al primo refuso nuovo): passa ciò che la scala conosce **o** che contiene una parola da rarità (`rare`, `common`, `short print`, `duel terminal`), così una rarità inventata domani resta visibile. Verificato su tutti i 48 valori distinti del DB: scartati gli 8 sbagliati, zero rarità vere perse. Spostato da `modules/market_watch/` al core nella v1.1.5, stesso motivo. Match per SOTTOSTRINGA dal più specifico al più generico ("rare" per ultimo!). |
 | `i18n.py` | Traduzioni leggere: ITALIANO = chiave e fallback (chiavi non mappate restano in italiano), dict `en` completo. `load_language()` all'avvio (PRIMA della UI, da main), scelta in `~/.ygo_toolbox/language.txt`, `tr("…")` ovunque nelle stringhe visibili; template con `.format()`. La lingua si applica al RIAVVIO (la UI si costruisce una volta). |
@@ -419,6 +420,41 @@ confini di parola per non pescare "usato").
     la "razza": è il **Tipo** del mostro o la **Proprietà** di magia/trappola;
     `type` contiene sia la **Carta** sia la **Categoria**. Per esteso nel §5,
     sotto "Modulo Database — filtri", e in cima a `card_db/repository.py`.
+24. **`/DIR` senza virgolette tronca allo spazio, e Setup risponde
+    "riuscito".** La riga `/DIR=C:\…\Programs\YGO Toolbox` passata **senza
+    virgolette** fa leggere a Inno `C:\…\Programs\YGO`: installa in una
+    cartella **nuova**, si prende la chiave di disinstallazione e le
+    scorciatoie del menu Start della vera installazione — che resta sul disco
+    **orfana** — e scrive nel log *"Installation process succeeded"* uscendo
+    con **codice 0** in tre secondi. Un disastro che si presenta come un
+    successo (accaduto dal vivo il 2026-08-22, e ripulito disinstallando il
+    fantasma).
+    - **Cura:** costruire la riga di comando **solo** con
+      `subprocess.Popen(lista)`, mai concatenando stringhe.
+      `subprocess.list2cmdline` produce `"/DIR=C:\…\YGO Toolbox"` (virgolette
+      attorno all'**intero** argomento) e **Inno la accetta** — verificato dal
+      vivo, il log riporta la cartella giusta.
+    - **La trappola vera è a monte:** `Start-Process -ArgumentList` di
+      PowerShell 5.1 **non** aggiunge le virgolette. Chi collauda a mano da
+      PowerShell riproduce il guasto e non il caso reale.
+    - **Corollario che vale per tutto il flusso:** *codice di uscita 0 e
+      "succeeded" nel log NON dimostrano che l'aggiornamento sia avvenuto.*
+      L'unica prova è la **versione dell'exe installato**, riletta dopo. Ed è
+      il `/LOG` — 40 righe — ad aver reso il guasto diagnosticabile in mezzo
+      minuto: non togliamolo mai.
+25. **Un pulsante che cambia testo deve cambiare anche slot — e non
+    ricollegando `clicked`.** Nel piede dell'aggiornamento il pulsante
+    primario passa da *"Riavvia e aggiorna"* a *"Apri la cartella"*: la prima
+    versione faceva `clicked.disconnect()` + `connect(altro)` dentro
+    `_non_partita`. Basta che dopo arrivi un download riuscito e il pulsante
+    dice *"Riavvia e aggiorna"* mentre apre la cartella — il testo lo cambia
+    `_mostra`, il collegamento no.
+    **Cura:** UN solo slot, collegato in `__init__` e mai più toccato, che
+    dispaccia su una variabile di stato (`self._stato`). Un pulsante ha un
+    collegamento per tutta la vita; è lo *stato* a decidere cosa fa.
+    Regola generale: se due pezzi di stato (l'etichetta e il comportamento)
+    vanno cambiati insieme, devono passare **dalla stessa funzione**. Qui
+    `_mostra` è l'unico punto che tocca il riquadro, e prende anche lo stato.
 
 ---
 
@@ -947,6 +983,42 @@ confini di parola per non pescare "usato").
   **scroll animato** (`_smooth_wheel`: easing 150 ms, scatti accumulabili;
   i touchpad con pixelDelta restano al nativo).
 
+### Aggiornamento in-app (v1.4.0)
+
+`MainWindow.__init__` → `update_footer.controlla_esito_precedente()` (subito) e
+`QTimer.singleShot(6000, avvia_controllo)` → `UpdateWorker` (QThread) →
+`fetch_latest` → se `is_newer`: segnale `trovata` → il piede si accende. Se
+siamo **congelati**, l'asset c'è e la versione non è fra le `scartate`, lo
+stesso thread **scarica** (`avanzamento` → *"La sto preparando… 37%"*) e a
+verifica passata emette `pronta` → pulsante *Riavvia e aggiorna*.
+
+Clic → `busy_reason()` dei widget (unico `QMessageBox` del flusso) →
+`segna_attesa(versione)` → cancella l'eventuale log vecchio (**altrimenti
+`installer_partito` dice sì al primo colpo**) → `lancia_installer` →
+`QTimer` da 500 ms: appena il file di log compare, `chiudi()` (moduli fermati,
+DB chiuso, tray nascosta, `app.quit()`); se il processo muore prima o passano
+30 s → stato *non partita*, **e l'app resta aperta**. Poi Inno copia e la voce
+`[Run]` la rilancia; al giro dopo `esito_precedente()` confronta.
+
+Le cose che qui non sono ovvie, tutte con un motivo misurato:
+
+- **il download è silenzioso su tutto** perché non l'ha chiesto nessuno. Un
+  errore visibile per un'operazione spontanea è solo fastidio: `fallita` finisce
+  in `~/.ygo_toolbox/log.txt` e il piede torna a mostrare il link. L'unica cosa
+  che parla è l'esito *chiesto* che non è andato a buon fine, e una volta sola.
+- **una versione che ha fallito finisce in `scartate`**: senza, il ciclo
+  avviso → aggiorna → avviso ricomincia a ogni avvio, 48 MB a giro, in
+  sottofondo e invisibile. È il rischio più concreto di tutto il meccanismo.
+- **un installer già valido non si riscarica** (`verifica_file` all'inizio di
+  `scarica`).
+- **chiudersi da soli vale 31 secondi.** Non è pulizia: `CloseApplications=force`
+  è un *timeout* che Inno aspetta perché l'exe onefile non risponde al Restart
+  Manager. Misurato due volte, 31,4 s; la copia vera dei file è 1,2 s.
+- **`/DIR` va virgolettato** e la riga costruita con `Popen(lista)`: GOTCHA 24,
+  costò un'installazione fantasma con exit code 0 e "succeeded" nel log.
+- **percentuale solo con `Content-Length`**, altrimenti si scrivono i MB fatti:
+  su un totale ignoto una percentuale è un numero inventato.
+
 ---
 
 ## 6. Build / test
@@ -972,7 +1044,25 @@ Verifica offscreen della GUI (utile in sviluppo): istanziare `MainWindow` con
 
 ## 7. Idee future / TODO
 
-### ⇒ PRIMO PUNTO DELLA PROSSIMA SESSIONE: aggiornamento in-app (v1.4.0)
+### ✔ FATTO — aggiornamento in-app (v1.4.0, 2026-08-22)
+
+**Il codice è scritto e rilasciato**: `core/updates.py` (motore),
+`core/update_widget.py` (thread + piede), piede agganciato in `core/app.py`,
+chip rimosso dal market_watch, `busy_reason()` sui due widget che possono
+essere occupati. Il flusso vero e le decisioni stanno nel **§5, "Aggiornamento
+in-app"** — quella è la parte da leggere per lavorarci. Quello che segue è il
+*materiale di lavorazione*: la richiesta originale, le misure fatte dal vivo e
+le trappole. Si conserva perché ogni riga è costata una prova, e perché il
+collaudo finale non è ancora chiuso (vedi in fondo).
+
+**Resta da fare: il collaudo del giro completo su una macchina.** Serve una
+versione *precedente* installata e una *nuova* su GitHub, cioè due Release: con
+la v1.4.0 appena pubblicata basterà installarla e attendere la v1.4.1. Provato
+dal vivo finora: fetch → scelta dell'asset → download → verifica → pulsante,
+con una release finta servita da `file://` in una finestra vera (i tre stati e
+l'esito al riavvio sono coperti dallo smoke test). **Non** ancora provato: il
+lancio di Setup dal pulsante e il rilancio dell'app dopo l'installazione, che
+richiedono l'app congelata e installata.
 
 Chiesto esplicitamente il 2026-07-31: *"come fa l'app desktop di Claude:
 spunta il tasto per aggiornare e una volta cliccato fa tutto da solo, senza
@@ -1000,6 +1090,54 @@ in ordine alfabetico) — quindi spesso non lo vede proprio.
   automatico incontrerà SmartScreen **meno** di quello manuale di oggi.
   Resta da confermare dal vivo su una macchina pulita: l'assenza del marchio
   è misurata, l'effetto finale no.
+
+**COLLAUDATO DAL VIVO IL 2026-08-22 — punto 1 dell'ordine di lavoro FATTO.**
+Tre installazioni vere su questa macchina, con l'app aperta, log di Inno alla
+mano ed enumerazione delle finestre visibili per intercettare i dialoghi.
+Esito, in ordine di importanza:
+
+1. **Nessun dialogo.** `PrivilegesRequiredOverridesAllowed=dialog` **non**
+   apre il cartello "installa per tutti / solo per me" in `/SILENT`
+   (`User privileges: None`, `Administrative install mode: No`). A schermo
+   compare **solo** la `TWizardForm`, cioè la barra di avanzamento. Era il
+   dubbio che teneva bloccato tutto il resto: sciolto.
+2. **`skipifsilent` confermato, e già tolto.** Prima: l'app non si riapriva.
+   Dopo averlo tolto da `[Run]` e ricompilato: `-- Run entry --` nel log,
+   l'app torna a galla in ~5 s, due processi vivi. La riga in `installer.iss`
+   ora ha un commento che spiega perché il flag NON c'è.
+3. **`CloseApplications=force` costa 31 secondi fissi**, e non è lavoro: è un
+   *timeout*. Nel log, `Shutting down applications using our files. (forced)`
+   → riga successiva: **31,4 s** in un giro, **31,4 s** nell'altro. La copia
+   vera dei file, le icone e il registro sono **1,2 s**. L'exe onefile di
+   PyInstaller non risponde alla richiesta del Restart Manager, quindi Inno
+   aspetta il suo mezzo minuto e poi lo ammazza.
+   ⇒ **Il punto 10 del flusso non è pulizia formale, è la differenza fra un
+   aggiornamento da ~33 s e uno da ~2 s.** Se l'app si chiude da sola (tutti e
+   DUE i processi), Inno non ha niente da attendere. È anche il pedaggio che
+   ogni aggiornamento manuale ha pagato finora senza che si sapesse.
+4. **Il segnale che Setup è partito davvero è la comparsa del file di
+   `/LOG`**, non una finestra. Misurato: il log appare a **t+2 s** con
+   l'installer già in cache, la finestra a **t+8 s** a freddo (il bootloader
+   onefile deve prima scompattare 47 MB). Un file che compare è controllabile
+   con `Path.exists()` in due righe, non serve enumerare finestre.
+   ⇒ **Correzione al punto 9:** il tetto di ~20 s regge sulle misure viste, ma
+   il margine a freddo (8 s) è più sottile di quanto sembrasse. Meglio
+   **30 s**, e comunque il criterio è *il log è comparso*, non *il processo è
+   vivo*: con `/DIR` troncato il processo usciva **0** in tre secondi.
+5. **La cartella dell'installer non va cercata in `dist\`.** Per collaudare
+   senza sovrascrivere l'artefatto rilasciato: `ISCC /O"<cartella>"` scrive
+   altrove lasciando `dist\` intatto (`OutputDir=dist` nell'`.iss` è solo il
+   valore di riposo).
+6. **Una nota su `[Tasks]`:** `desktopicon` non ha il flag `unchecked`, quindi
+   in `/SILENT` **senza** installazione precedente il collegamento sul desktop
+   viene creato. Nell'aggiornamento normale non succede: la chiave di registro
+   c'è e `UsePreviousTasks` (sì, per difetto) riusa la scelta dell'utente.
+   Se un giorno si vedesse ricomparire un'icona cancellata, la causa è questa.
+7. **Lo script del collaudo è riutilizzabile** e sta nello scratchpad di
+   sessione (`collaudo_setup.py <installer.exe> <nome-log>`): apre l'app,
+   lancia Setup con `Popen(lista)`, campiona le finestre visibili ogni 2 s,
+   aspetta il rilancio e rilegge la versione installata. Se serve ricollaudare
+   dopo una modifica all'`.iss`, si riparte da lì.
 
 **Il flusso deciso**
 
@@ -1115,27 +1253,45 @@ in ordine alfabetico) — quindi spesso non lo vede proprio.
   sta manipolando), non la `{tmp}` di Inno (cancellata a fine installazione).
 
 **Ordine di lavoro**
-1. `installer.iss` e **collaudo a mano della riga di comando prima di
-   scrivere una riga di Python**: se lì compare un dialogo, cambia tutto il
-   resto. In particolare va guardato lo schermo per mezzo minuto con l'app
-   aperta, per escludere il dialogo "installa per tutti / solo per me".
-2. `core/updates.py`: `fetch_latest` restituisce anche url, dimensione e nome
-   dell'asset; selezione per pattern. Riscrivere la docstring, che oggi dice
-   "niente scaricamento automatico".
-3. Il worker di download e la logica di stato/esito al riavvio.
-4. Il piede in `core/app.py` e rimozione del chip dal market_watch.
-5. Rilascio completo (tre posti per la versione, due registri, push, exe,
-   installer, Release **non** prerelease).
-6. **Il collaudo vero si fa solo dopo il rilascio**: si installa la versione
-   precedente, si lascia la nuova su GitHub e si preme il pulsante. Prima
-   della Release non c'è niente verso cui aggiornarsi.
+1. ~~`installer.iss` e collaudo a mano della riga di comando prima di scrivere
+   una riga di Python.~~ **FATTO il 2026-08-22** — nessun dialogo,
+   `skipifsilent` tolto e rilancio verificato. Esiti e numeri nel blocco
+   "COLLAUDATO DAL VIVO" qui sopra; la trappola scoperta strada facendo è il
+   **GOTCHA 24** (`/DIR` senza virgolette).
+2. ~~`core/updates.py`: `fetch_latest` restituisce anche url, dimensione e nome
+   dell'asset; selezione per pattern.~~ **FATTO.**
+3. ~~Il worker di download e la logica di stato/esito al riavvio.~~ **FATTO**
+   (`UpdateWorker`, `stato.json`, `esito_precedente`).
+4. ~~Il piede in `core/app.py` e rimozione del chip dal market_watch.~~
+   **FATTO**, con una schermata coi font veri che ha trovato due difetti: i due
+   pulsanti affiancati in 190 px si leggevano "ia e agg" (ora sono impilati, e
+   il QSS del piede ha un padding suo), e il GOTCHA 25.
+5. ~~Rilascio completo.~~ **FATTO** (v1.4.0).
+6. **Il collaudo vero si fa solo dopo il rilascio** — **ANCORA APERTO**: si
+   installa la versione precedente, si lascia la nuova su GitHub e si preme il
+   pulsante. Con la v1.4.0 pubblicata, il banco di prova esiste: serve la
+   v1.4.1 (anche solo con una correzione minima) per premere il pulsante
+   davvero.
 
-**Una decisione ancora aperta**: uno o due clic. L'analisi propone
-*Scarica* → *Installa e riavvia* (il download resta reversibile). La richiesta
-dice "un clic e fa tutto". Claude Desktop in realtà scarica **da solo** in
-sottofondo e poi offre un solo pulsante *Riavvia*: è la via più vicina a
-quanto chiesto, al prezzo di 47 MB scaricati senza chiedere. Da decidere a
-inizio sessione — cambia solo quando parte il download, non il resto.
+**Decisione presa il 2026-08-22 — download automatico in sottofondo.** Era
+l'unico punto rimasto aperto (uno o due clic). Si fa come Claude Desktop:
+trovata la versione nuova, l'app **scarica da sola** senza chiedere e solo a
+file pronto e verificato mostra **un** pulsante *Riavvia e aggiorna*. È la via
+più vicina a "un clic e fa tutto"; il prezzo è 47 MB scaricati non richiesti.
+Conseguenze da tenere presenti mentre si scrive il codice:
+- il download **non** è più un'operazione chiesta dall'utente, quindi ricade
+  sotto la regola del silenzio: se fallisce, il chip resta quello di prima
+  ("c'è la versione X, apri la pagina") e **non** compare nessun errore. La
+  deroga del punto 6 delle trappole vale solo per un download ri-tentato a
+  mano dall'utente;
+- niente barra di avanzamento invadente: il chip cambia stato
+  (*disponibile* → *in preparazione* → *pronta*), non chiede attenzione;
+- il punto di non ritorno è il clic su *Riavvia e aggiorna*, non il download:
+  il `.part` scaricato per sbaglio si cancella senza che nessuno se ne accorga;
+- la scelta di scaricare da soli va **fatta una volta per versione**: se il
+  file c'è già e passa i controlli (dimensione + `MZ`), non si riscarica.
+  Senza questo, il ciclo chip → 47 MB a ogni avvio diventa automatico e
+  invisibile, che è peggio della versione a due clic.
 
 *(Piano nato da tre analisi indipendenti — Windows/Inno Setup, modi di
 rottura, esperienza utente — più una sintesi, il 2026-07-31. Alcune proposte

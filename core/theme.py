@@ -148,6 +148,28 @@ QListWidget#sidebar::item {{
 QListWidget#sidebar::item:hover {{ background: #1f242d; color: #eef1f6; }}
 QListWidget#sidebar::item:selected {{ background: #2a313c; color: #ffffff; }}
 
+/* ---- piede dell'aggiornamento (sotto il menu laterale, quindi visibile da
+   OGNI pagina). Prosegue la colonna del menu — stesso fondo e stesso bordo a
+   destra — con un filo sopra a separarlo dalle voci. Resta invisibile finché
+   non c'è nulla da dire, così non costa spazio. ---- */
+QWidget#updatefoot {{
+    background: #10131a;
+    border: none;
+    border-right: 1px solid #2f3744;
+    border-top: 1px solid #2f3744;
+}}
+QLabel#updatetext {{ color: #fbbf24; font-size: {s(12)}px; }}
+/* "calmo" = non c'è niente da fare, è una constatazione (esito mancato,
+   sviluppo): grigio, non giallo. Il giallo chiama, e chiamare per qualcosa su
+   cui l'utente non può agire è solo fastidio. */
+QLabel#updatetext[state="calmo"] {{ color: #94a1b2; }}
+QLabel#updatesub {{ color: #586273; font-size: {s(11)}px; }}
+/* pulsanti più stretti dei soliti: la colonna è 190px e il testo pieno
+   ("Riavvia e aggiorna") con il padding normale non ci stava */
+QWidget#updatefoot QPushButton {{
+    padding: {s(7)}px {s(8)}px; border-radius: {s(10)}px; font-size: {s(12)}px;
+}}
+
 /* ---- card / pannelli ---- */
 QFrame#card {{
     background: #1f242d;

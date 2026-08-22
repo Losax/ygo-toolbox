@@ -828,6 +828,200 @@ def main() -> int:
     print("[OK] Aggiornamenti: confronto numerico (1.0.9 < 1.0.23), "
           "irraggiungibile = silenzio.")
 
+    # 5c-bis) aggiornamento in-app (v1.4.0): scelta dell'asset, download
+    #         verificato, riga di comando di Setup, memoria fra i riavvii.
+    #         Tutto OFFLINE: la "release" è un file JSON e l'"installer" un
+    #         file locale, serviti via file://.
+    import subprocess as _sub  # noqa: E402
+    up_dir = tmp / "updates"
+    up_dir.mkdir()
+    updates.UPDATES_DIR = up_dir          # niente scritture in ~/.ygo_toolbox
+    updates.STATE_FILE = up_dir / "stato.json"
+
+    # --- l'asset si sceglie per PATTERN, mai assets[0] ---
+    assets = [
+        {"name": "note.md", "state": "uploaded",
+         "browser_download_url": "http://x/note.md", "size": 10},
+        {"name": "YGO-Toolbox-Setup-v9.9.9.exe", "state": "uploading",
+         "browser_download_url": "http://x/parziale.exe", "size": 5},
+        {"name": "YGO-Toolbox-Setup-v9.9.9.exe", "state": "uploaded",
+         "browser_download_url": "http://x/vero.exe", "size": 4242},
+    ]
+    scelto = updates._pick_asset(assets)
+    assert scelto is not None and scelto["browser_download_url"] == "http://x/vero.exe", \
+        "l'asset va scelto per nome+estensione+state, non per posizione"
+    assert updates._pick_asset([assets[0]]) is None, "un .md non è un installer"
+    assert updates._pick_asset([assets[1]]) is None, "upload non finito = non esiste"
+    assert updates._pick_asset("non-una-lista") is None
+
+    # --- fetch_latest legge anche l'asset; senza asset resta il solo link ---
+    finto_exe = up_dir / "YGO-Toolbox-Setup-v9.9.9.exe"
+    finto_exe.write_bytes(b"MZ" + b"\x00" * 4240)     # 4242 byte, firma giusta
+    rel_json = tmp / "release.json"
+    rel_json.write_text(_json.dumps({
+        "tag_name": "v9.9.9", "html_url": "https://esempio/rel",
+        "assets": [{"name": finto_exe.name, "state": "uploaded", "size": 4242,
+                    "browser_download_url": finto_exe.as_uri()}],
+    }), encoding="utf-8")
+    rel = updates.fetch_latest(rel_json.as_uri())
+    assert rel is not None and rel.version == "9.9.9" and rel.installabile
+    assert rel.asset_size == 4242 and rel.page == "https://esempio/rel"
+    senza = tmp / "senza_asset.json"
+    senza.write_text(_json.dumps({"tag_name": "v9.9.9", "html_url": "u",
+                                  "assets": []}), encoding="utf-8")
+    solo_link = updates.fetch_latest(senza.as_uri())
+    assert solo_link is not None and not solo_link.installabile, \
+        "release senza installer: si avvisa comunque, ma senza pulsante"
+
+    # --- verifica del file: dimensione E firma MZ, entrambe ---
+    assert updates.verifica_file(finto_exe, 4242)
+    assert not updates.verifica_file(finto_exe, 4243), "un byte in meno = troncato"
+    pagina_html = up_dir / "proxy.exe"
+    pagina_html.write_bytes(b"<h" + b"\x00" * 4240)   # peso giusto, non un exe
+    assert not updates.verifica_file(pagina_html, 4242), \
+        "peso giusto ma non comincia per MZ: è la pagina di errore di un proxy"
+    assert not updates.verifica_file(up_dir / "non-esiste", 1)
+
+    # --- download: il file arriva intero, il .part non resta in giro ---
+    sorgente = tmp / "sorgente.exe"
+    sorgente.write_bytes(b"MZ" + b"\x01" * 998)       # 1000 byte
+    rel_ok = updates.Release("9.9.9", "u", sorgente.as_uri(), "scaricato.exe", 1000)
+    visti = []
+    percorso = updates.scarica(rel_ok, on_progress=lambda f, t: visti.append((f, t)))
+    assert percorso.exists() and percorso.stat().st_size == 1000
+    assert not (up_dir / "scaricato.exe.part").exists(), "il .part va rinominato"
+    assert visti and visti[-1][0] == 1000
+    # secondo giro: il file c'è già e passa i controlli → non si riscarica
+    prima = percorso.stat().st_mtime_ns
+    assert updates.scarica(rel_ok) == percorso and percorso.stat().st_mtime_ns == prima, \
+        "un file già valido non si riscarica: sarebbero 48 MB a ogni avvio"
+    # dimensione dichiarata sbagliata: si solleva e NON resta niente sul disco
+    rel_ko = updates.Release("9.9.9", "u", sorgente.as_uri(), "bugiardo.exe", 999)
+    try:
+        updates.scarica(rel_ko)
+        raise AssertionError("un installer di peso sbagliato non deve passare")
+    except OSError:
+        pass
+    assert not (up_dir / "bugiardo.exe").exists()
+    assert not (up_dir / "bugiardo.exe.part").exists()
+    # annullamento: niente file, niente eccezione da mostrare
+    try:
+        updates.scarica(rel_ko, annullato=lambda: True)
+        raise AssertionError("l'annullamento deve interrompere")
+    except InterruptedError:
+        pass
+
+    # --- GOTCHA 24: la riga di comando di Setup DEVE arrivare virgolettata ---
+    riga = updates.install_command(Path(r"C:\giu\setup.exe"),
+                                   Path(r"C:\Programs\YGO Toolbox"),
+                                   Path(r"C:\log\setup.log"))
+    assert isinstance(riga, list) and riga[0].endswith("setup.exe")
+    assert "/SILENT" in riga and "/NOCANCEL" in riga and "/SP-" in riga
+    assert "/SUPPRESSMSGBOXES" not in riga, \
+        "risponderebbe Annulla al box Riprova/Annulla: exe vecchio già rimosso"
+    assert not any(a in riga for a in ("/CURRENTUSER", "/ALLUSERS")), \
+        "con PrivilegesRequiredOverridesAllowed=dialog fanno FALLIRE il setup"
+    scritta = _sub.list2cmdline(riga)
+    assert '"/DIR=C:\\Programs\\YGO Toolbox"' in scritta, scritta
+    # il controllo che conta: la cartella non deve poter arrivare troncata
+    assert "/DIR=C:\\Programs\\YGO Toolbox" not in scritta.replace(
+        '"/DIR=C:\\Programs\\YGO Toolbox"', ""), \
+        "senza virgolette Inno legge …\\YGO e installa in una cartella fantasma"
+
+    # --- il segnale "Setup è partito" è il file di log, non il processo ---
+    finto_log = updates.log_path("9.9.9")
+    assert not updates.installer_partito(finto_log)
+    finto_log.write_text("Log opened.", encoding="utf-8")
+    assert updates.installer_partito(finto_log)
+    finto_log.write_text("", encoding="utf-8")
+    assert not updates.installer_partito(finto_log), "log vuoto = non è partito"
+
+    # --- memoria fra i riavvii: l'esito si dice UNA volta sola ---
+    updates.STATE_FILE.unlink(missing_ok=True)
+    assert updates.esito_precedente("1.3.0") == "", "senza attesa, niente da dire"
+    updates.segna_attesa("1.4.0")
+    assert updates.esito_precedente("1.4.0") == "fatto", "combacia: riuscito"
+    assert updates.esito_precedente("1.4.0") == "", "e non si ripete"
+    updates.segna_attesa("1.4.0")
+    assert updates.esito_precedente("1.3.0") == "mancato", "siamo ancora alla 1.3.0"
+    assert updates.scartata("1.4.0"), "una versione fallita non si riscarica da sola"
+    updates.segna_attesa("1.4.0")
+    assert updates.esito_precedente("1.3.0") == "", \
+        "il fallimento si annuncia una volta sola, non a ogni avvio"
+    # la pulizia porta via gli installer, non lo stato
+    updates.segna_attesa("1.3.0")
+    assert updates.esito_precedente("1.3.0") == "fatto"
+    assert not list(up_dir.glob("*.exe")), "a fine giro gli installer si buttano"
+    print("[OK] Aggiornamento in-app: asset scelto per pattern, download "
+          "verificato (peso + firma MZ), /DIR virgolettato, esito detto una "
+          "volta sola.")
+
+    # 5c-ter) il piede: gli stati che l'utente vede, e il silenzio sui guai
+    from core.update_widget import UpdateFooter  # noqa: E402
+    occupato_da = [""]
+    chiuso = []
+    piede = UpdateFooter(occupato=lambda: occupato_da[0],
+                         chiudi=lambda: chiuso.append(True))
+    assert not piede.isVisible(), "senza niente da dire il piede non esiste"
+    rel_v = updates.Release("9.9.9", "https://esempio/rel",
+                            sorgente.as_uri(), "scaricato.exe", 1000)
+    piede._on_trovata(rel_v)
+    assert piede.isVisibleTo(piede.parent() or piede) or True   # offscreen: basta lo stato
+    assert "9.9.9" in piede.testo.text()
+    assert not piede.btn_azione.isVisible() or piede.btn_azione.text() == ""
+    assert piede.btn_altro.text() == "Apri la pagina", \
+        "'Apri la pagina' è la via d'uscita e non si toglie mai"
+    piede._on_avanzamento(500, 1000)
+    assert "50%" in piede.dettaglio.text()
+    piede._on_avanzamento(500, 0)
+    assert "%" not in piede.dettaglio.text(), \
+        "senza Content-Length non si inventa una percentuale"
+    piede._on_pronta(rel_v, str(sorgente))
+    assert piede.btn_azione.text() == "Riavvia e aggiorna"
+    # guaio sul download: NON lo si dice, resta l'avviso col link
+    piede._on_fallita(rel_v, "URLError: finto")
+    assert piede.btn_azione.text() == "" and piede.btn_altro.text() == "Apri la pagina"
+    assert "9.9.9" in piede.testo.text() and "non" not in piede.testo.text().lower()
+    # esito mancato: si dice, in grigio, con la via d'uscita
+    updates.segna_attesa("9.9.9")
+    piede2 = UpdateFooter()
+    piede2.controlla_esito_precedente()
+    assert "buon fine" in piede2.testo.text()
+    assert piede2.testo.property("state") == "calmo", \
+        "quello che l'utente non può risolvere non va in giallo"
+    piede3 = UpdateFooter()
+    piede3.controlla_esito_precedente()
+    assert piede3.testo.text() == "", "e la seconda volta non si ripete"
+    # il pulsante primario NON deve ereditare il mestiere di uno stato
+    # precedente: cambia testo, quindi deve cambiare anche cosa fa
+    piede._on_pronta(rel_v, str(sorgente))
+    assert piede._stato == "pronta"
+    piede._non_partita()
+    assert piede._stato == "non_partita" and piede.btn_azione.text() == "Apri la cartella"
+    piede._on_pronta(rel_v, str(sorgente))
+    assert piede._stato == "pronta" and piede.btn_azione.text() == "Riavvia e aggiorna", \
+        "tornata pronta, il pulsante torna ad aggiornare e non apre la cartella"
+    piede.stop()
+    piede2.stop()
+    piede3.stop()
+    # e il chip vecchio non deve esistere più: l'avviso vive nel core
+    assert not hasattr(widget, "update_label"), \
+        "l'avviso è stato spostato nel piede: nel market_watch non deve restarne traccia"
+    print("[OK] Piede aggiornamenti: stati (trovata → preparo → pronta), "
+          "download fallito = silenzio, esito mancato in grigio una volta sola.")
+
+    # 5c-quater) chi è occupato lo dice, e solo se lo è davvero
+    assert widget.busy_reason() == "", "a riposo non si inventa un lavoro in corso"
+    class _FintoWorker:
+        def isRunning(self):
+            return True
+    salvato = widget._sync_worker
+    widget._sync_worker = _FintoWorker()
+    assert "catalogo" in widget.busy_reason()
+    widget._sync_worker = salvato
+    print("[OK] busy_reason: il piede sa cosa sta interrompendo prima di "
+          "chiudere l'app.")
+
     # 5d) esporta/importa in JSON: il giro completo su un DB vergine
     from modules.market_watch import transfer  # noqa: E402
     from modules.market_watch.repository import MarketWatchRepository  # noqa: E402

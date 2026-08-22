@@ -129,10 +129,33 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "{st} punti di storico.":
             "Imported: {agg} new, {upd} updated, {cart} folders, "
             "{st} history points.",
-        # aggiornamenti
-        "↑ Aggiornamento {v}": "↑ Update {v}",
-        "Hai la {corrente}, è disponibile la {nuova}. Clic per aprire la pagina di download.":
-            "You have {corrente}, {nuova} is available. Click to open the download page.",
+        # aggiornamenti — il piede sotto il menu laterale (core/update_widget.py)
+        "↑ Versione {v}": "↑ Version {v}",
+        "↑ Versione {v} pronta": "↑ Version {v} ready",
+        "La sto preparando…": "Getting it ready…",
+        "La sto preparando… {p}%": "Getting it ready… {p}%",
+        "La sto preparando… {mb} MB": "Getting it ready… {mb} MB",
+        "Hai la {v}.": "You have {v}.",
+        "Riavvia e aggiorna": "Restart and update",
+        "Chiude l'app, installa la {v} e la riapre. Meno di un minuto.":
+            "Closes the app, installs {v} and reopens it. Under a minute.",
+        "Apri la pagina": "Open the page",
+        "Apri la cartella": "Open the folder",
+        "Avvio dell'installazione…": "Starting the installer…",
+        "L'installazione non è partita.": "The installer did not start.",
+        "Il file scaricato è in .ygo_toolbox\\updates.":
+            "The downloaded file is in .ygo_toolbox\\updates.",
+        "L'aggiornamento non è andato a buon fine.": "The update did not go through.",
+        "Sei ancora alla {v}.": "You are still on {v}.",
+        "✓ Aggiornata alla {v}": "✓ Updated to {v}",
+        "Aggiornare adesso?": "Update now?",
+        "È in corso {cosa}. Aggiornando adesso si interrompe.\n\n"
+        "Aggiornare comunque?":
+            "{cosa} is running. Updating now will interrupt it.\n\n"
+            "Update anyway?",
+        "la sincronizzazione del catalogo": "the catalog sync",
+        "il controllo dei prezzi": "the price check",
+        "la sincronizzazione del database delle carte": "the card database sync",
         # ordinamento della watchlist
         "Ordina per": "Sort by",
         "Manuale": "Manual", "Rarità": "Rarity", "Prezzo": "Price", "Var.": "Chg.",

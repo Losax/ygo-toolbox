@@ -68,7 +68,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.context import AppContext
-from core import anim, badges, i18n, theme, updates
+from core import anim, badges, i18n, theme
 from core.rarity import rarity_pixmap, rarity_rank
 from core.version import APP_VERSION
 from core.i18n import tr
@@ -703,9 +703,10 @@ def _make_pro_badge(height: int) -> QPixmap:
 
 
 class MarketWatchWidget(QWidget):
-    # il controllo aggiornamenti gira in un thread: il risultato torna sul
-    # thread GUI passando da un segnale, non chiamando direttamente la UI
-    _update_found = Signal(str, str)
+    # L'avviso di aggiornamento dell'APP non sta più qui: viveva in questo
+    # header, ma l'app si apre sul Database e per nove versioni di fila nessuno
+    # l'ha visto. Ora è un piede sotto il menu laterale, visibile da ogni
+    # pagina, e sa anche scaricare e installare (`core/update_widget.py`).
 
     def __init__(self, context: AppContext) -> None:
         super().__init__()
@@ -815,9 +816,6 @@ class MarketWatchWidget(QWidget):
         # essere vecchi di ore/giorni, così si vede subito la variazione reale
         # del mercato (oltre al timer periodico impostato dall'utente).
         QTimer.singleShot(2500, self._startup_check)
-        # Aggiornamenti: dopo il controllo prezzi, per non contendere l'avvio.
-        self._update_found.connect(self._on_update_found)
-        QTimer.singleShot(6000, self._start_update_check)
         # Benvenuto al primo avvio (solo utenti non ancora configurati).
         QTimer.singleShot(600, self._maybe_welcome)
 
@@ -869,14 +867,6 @@ class MarketWatchWidget(QWidget):
         self.token_label.setObjectName("chip")
         self.catalog_label = QLabel()
         self.catalog_label.setObjectName("chip")
-        # Chip dell'aggiornamento: nascosto finché non se ne trova uno. Sta
-        # qui, fra gli altri chip di stato, perché è la stessa cosa — una
-        # informazione sullo stato dell'app, non un'azione.
-        self.update_label = QLabel()
-        self.update_label.setObjectName("chip")
-        self.update_label.setVisible(False)
-        self.update_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.update_label.setOpenExternalLinks(True)
         # Azioni "ovvie" come pulsanti-ICONA quadrati (tooltip al posto del
         # testo): header più pulito. Le icone sono disegnate a runtime.
         self.token_btn = QPushButton()
@@ -909,7 +899,6 @@ class MarketWatchWidget(QWidget):
                                 self.defaults_btn, self.options_btn, self.overview_btn)
         header.addWidget(self.token_label)
         header.addWidget(self.catalog_label)
-        header.addWidget(self.update_label)
         header.addWidget(self.token_btn)
         header.addWidget(self.sync_btn)
         header.addWidget(self.defaults_btn)
@@ -1476,26 +1465,21 @@ class MarketWatchWidget(QWidget):
             else tr("Sincronizza prima il catalogo per cercare le carte")
         )
 
-    # --- controllo aggiornamenti ---
-    def _start_update_check(self) -> None:
-        """Un solo controllo per avvio, in un thread, DOPO l'avvio: qualunque
-        cosa vada storta resta silenziosa (vedi `core/updates.py`)."""
-        updates.check_async(self._update_found.emit)
+    # --- lavori lunghi in corso ---
+    def busy_reason(self) -> str:
+        """Una frase se c'è un lavoro che non va interrotto a cuor leggero,
+        altrimenti "".
 
-    def _on_update_found(self, version: str, page: str) -> None:
-        """Arriva dal thread via segnale, quindi qui siamo sul thread GUI."""
-        testo = tr("↑ Aggiornamento {v}").format(v=version.lstrip("vV"))
-        if page:
-            self.update_label.setText(f'<a href="{page}" style="color:inherit;'
-                                      f'text-decoration:none;">{testo}</a>')
-        else:
-            self.update_label.setText(testo)
-        self.update_label.setToolTip(tr("Hai la {corrente}, è disponibile la {nuova}. "
-                                        "Clic per aprire la pagina di download.")
-                                     .format(corrente=APP_VERSION,
-                                             nuova=version.lstrip("vV")))
-        self._set_chip(self.update_label, self.update_label.text(), "warn")
-        self.update_label.setVisible(True)
+        La chiede il piede dell'aggiornamento prima di chiudere l'app: una
+        sincronizzazione del catalogo sono 4-5 minuti, ed è l'unico momento in
+        cui l'utente può perdere lavoro vero. Convenzione a papera, come
+        `apply_scale`: nessun protocollo, chi non ha niente da dire non
+        implementa il metodo."""
+        if self._sync_worker is not None and self._sync_worker.isRunning():
+            return tr("la sincronizzazione del catalogo")
+        if self._price_worker is not None and self._price_worker.isRunning():
+            return tr("il controllo dei prezzi")
+        return ""
 
     @staticmethod
     def _set_chip(label: QLabel, text: str, state: str) -> None:

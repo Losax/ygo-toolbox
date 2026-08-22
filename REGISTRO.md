@@ -1,6 +1,6 @@
 # Registro — YGO Toolbox (per l'utente)
 
-_Aggiornato: 2026-07-30_
+_Aggiornato: 2026-08-22_
 
 App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 **CardTrader**. Tema scuro con accento teal.
@@ -15,10 +15,13 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
   Si installa **solo per l'utente** in
   `%LocalAppData%\Programs\YGO Toolbox`, **senza chiedere l'amministratore**,
   mette la voce nel menu Start e si rimuove dalle App di Windows.
-  Aggiornare = lanciare il nuovo installer sopra il vecchio: se l'app è aperta
-  la chiude lui, e **watchlist, catalogo e token non si toccano**.
-  SmartScreen avvisa **una volta sull'installer** (app non firmata), non
-  sull'app installata.
+  Aggiornare **non richiede più di scaricare niente a mano**: dalla v1.4.0
+  l'app scarica da sola e basta premere *Riavvia e aggiorna* nel piede sotto il
+  menu (vedi la tabella). A mano funziona ancora: si lancia il nuovo installer
+  sopra il vecchio, e in entrambi i casi **watchlist, catalogo e token non si
+  toccano**. SmartScreen avvisa **una volta sull'installer** scaricato dal
+  browser (app non firmata), non sull'app installata — e non sull'aggiornamento
+  automatico, che non passa dal browser.
 - **Eseguibile nudo:** `dist\YGO Toolbox.exe` — è l'ingrediente da cui si
   costruisce l'installer, non l'artefatto da distribuire. Funziona col doppio
   clic (non serve Python). Icona: testa di *Primite Dragon Ether Beryl*.
@@ -64,6 +67,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Filtri della carta che stai aggiungendo** | Pulsante **sliders accanto alla barra di ricerca**: dopo aver scelto una carta e **prima** di premere *Aggiungi*, puoi darle filtri suoi. Il pulsante si **accende in teal** quando quella carta ha filtri propri; con nessuna carta selezionata è spento. I filtri nascono insieme alla carta, quindi già il primo controllo del prezzo li rispetta. |
 | **Opzioni (visualizzazione)** | Pulsante *Opzioni* (sliders) nell'header: preferenze di **visualizzazione** della watchlist (rarità come badge, set come codice), **animazioni dell'interfaccia** on/off (effetto immediato) e **lingua dell'app** (Italiano/English, si applica al riavvio). |
 | **Finestre "in-app"** | Le impostazioni non si aprono più come finestre di Windows: sono **card del tema** senza cornice, con ombra e dissolvenza, posizionate accanto al pulsante che le apre. **Clic fuori dalla card = chiudi e applica** (come un menu; per scartare c'è *Annulla*). |
+| **Si aggiorna da sola** | All'avvio l'app guarda se è uscita una versione nuova e, se sì, **la scarica in sottofondo senza chiedere**. Quando è pronta, **in basso a sinistra sotto il menu** (quindi visibile da qualunque pagina) compare *"Versione X.Y.Z pronta"* e un pulsante **Riavvia e aggiorna**: chiude l'app, installa, la riapre. Meno di un minuto. Watchlist, token e catalogo non si toccano. Se il download non riesce **non compare nessun errore**, resta *Apri la pagina* (il modo manuale di prima); se l'installazione non parte, **l'app non si chiude** e lo dice. Con una sincronizzazione o un controllo prezzi in corso, chiede prima. |
 
 ### Filtri disponibili (Opzioni)
 - **Lingua** (es. Italiano, Inglese, …)
@@ -743,6 +747,36 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
       **irraggiungibile**; ora si sfoglia con ◀ ▶, cento per pagina.
     Come prima, i filtri da mostro si spengono con Magia o Trappola
     selezionata.
+75. **L'app si aggiorna da sola (v1.4.0).** Prima l'avviso c'era: un'etichetta
+    gialla nell'header del Market Watch. Solo che l'app si apre sul
+    **Database** (primo in ordine alfabetico), quindi stava nella pagina che
+    non si guarda — e infatti l'installazione su questo PC era rimasta alla
+    **1.0.24**, nove release indietro, con l'avviso attivo e la Release
+    pubblicata. Un avviso che nessuno vede non è un avviso.
+    Ora:
+    - **l'avviso è un piede sotto il menu laterale**, quindi si vede da
+      qualunque pagina;
+    - **il download parte da solo**, in sottofondo, senza chiedere niente. Non
+      c'è una barra invadente: la scritta passa da *"La sto preparando…"* a
+      *"Versione X.Y.Z pronta"*;
+    - **un pulsante, "Riavvia e aggiorna", fa tutto**: chiude l'app, installa,
+      la riapre. Meno di un minuto, e a schermo si vede solo la barra di
+      avanzamento dell'installazione.
+    Cose che si notano solo se vanno male, e sono state fatte per quello:
+    - **se il download non riesce non compare nessun errore** — non l'aveva
+      chiesto nessuno. Resta l'avviso con *Apri la pagina*, che è il modo
+      manuale di sempre e non è stato toccato;
+    - **se l'installazione non parte** (antivirus, file in quarantena) **l'app
+      non si chiude**: lo dice e offre *Apri la cartella* / *Apri la pagina*;
+    - se è in corso una sincronizzazione o un giro prezzi, **chiede prima**:
+      è l'unico momento in cui si possono perdere quattro minuti di lavoro;
+    - al riavvio l'app **controlla di essere diventata davvero la versione
+      nuova**. Se non lo è lo dice **una volta sola**, e quella versione non
+      si riscarica più da sola — altrimenti sarebbero 48 MB a ogni avvio;
+    - un installer già scaricato e verificato **non si riscarica**.
+    Aggiornare è anche diventato **più veloce**: l'app si chiude da sé invece
+    di farsi chiudere dall'installer, e questo da solo toglie **31 secondi** di
+    attesa (misurati) che ogni aggiornamento manuale ha pagato finora.
 
 ## 4. Note operative importanti
 
