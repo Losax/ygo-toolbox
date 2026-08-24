@@ -938,10 +938,23 @@ confini di parola per non pescare "usato").
   interrogazione dentro `AppContext` è più architettura di quanta ne giustifichi
   una funzione sola (`open_module` **naviga**, non risponde con dei dati).
   Regole di questa eccezione: **sola lettura, mai scrittura**, tutto dentro
-  `MarketWatchRepository` (`has_card_catalog`, `cards_by_passcode`) e
-  **difensivo** — chi non ha mai aperto il Database non ha la tabella e riceve
-  un dizionario vuoto, non un errore SQL; l'interfaccia glielo dice e lo manda
-  a sincronizzare. Limite noto: le **arti alternative** hanno un passcode
+  `MarketWatchRepository` (`card_catalog_status`, `has_card_catalog`,
+  `cards_by_passcode`).
+  **Difensivo NON vuol dire muto** (v1.5.2). La prima stesura incartava ogni
+  problema nello stesso `return {}`: tabella assente e query fallita davano
+  all'utente lo stesso invito a sincronizzare. Per la prima è la cura giusta,
+  per la seconda è un giro a vuoto — **la sincronizzazione riscrive le RIGHE,
+  non la FORMA della tabella**. Il difetto è saltato fuori nello smoke test,
+  dove una `cdb_cards` finta senza `image_small_url` produceva un placido
+  "nessuna carta". Ora `card_catalog_status()` torna `(stato, dettaglio)` con
+  quattro stati distinti: `assente` e `vuota` (**normali**: si torna un
+  dizionario vuoto e si invita a sincronizzare), `incompleta` (il dettaglio
+  **elenca le colonne mancanti**) e `illeggibile` (il dettaglio è il messaggio
+  di SQLite). Gli ultimi due sollevano `CardCatalogError`, che porta con sé
+  stato e dettaglio, e l'interfaccia dice il problema per nome **senza**
+  consigliare la sincronizzazione. Regola generale: un `except` che trasforma
+  un difetto in un dato vuoto manda l'utente dalla parte sbagliata, ed è
+  peggio di un errore parlante. Limite noto: le **arti alternative** hanno un passcode
   proprio che `cdb_cards` non indicizza (tiene un id per carta), quindi un
   `.ydk` che le usa lascia righe non riconosciute — mostrate, non ingoiate.
   Nel mazzo di prova 39 codici su 40; il quarantesimo (`27204312`) non esiste

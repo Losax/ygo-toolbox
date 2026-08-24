@@ -504,5 +504,11 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             'Import',
         'Importa un mazzo da file .ydk':
             'Import a deck from a .ydk file',
+        'Il catalogo delle carte ha una forma diversa da quella attesa: mancano le colonne {dettaglio}.':
+            'The card catalog has a different shape than expected: the columns {dettaglio} are missing.',
+        'Il catalogo delle carte non si riesce a leggere: {dettaglio}.':
+            'The card catalog cannot be read: {dettaglio}.',
+        "Sincronizzare il Database NON risolve: riscrive le righe, non la forma della tabella. Esporta la watchlist (tasto destro → Esporta tutto…), chiudi l'app, cancella ~/.ygo_toolbox/ygo_toolbox.db e risincronizza.":
+            'Syncing the Database will NOT fix it: it rewrites the rows, not the shape of the table. Export your watchlist (right click → Export everything…), close the app, delete ~/.ygo_toolbox/ygo_toolbox.db and sync again.',
     },
 }

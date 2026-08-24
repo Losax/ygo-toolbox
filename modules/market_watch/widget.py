@@ -83,7 +83,7 @@ from .history_chart import HistoryDialog, Run, split_runs
 from .providers import cardtrader
 from .providers.base import CardRef, ListingFilters, PriceQuote
 from .providers.cardtrader import CardTraderClient, CardTraderProvider
-from .repository import MarketWatchRepository
+from .repository import CardCatalogError, MarketWatchRepository
 from .search_model import (
     ThumbDelegate,
     _make_empty_frame,
@@ -2804,13 +2804,21 @@ class MarketWatchWidget(QWidget):
         nomi richiede il catalogo del Database, e la stampa la sceglie
         l'utente nel dialogo (vedi `ydk_dialog`).
         """
-        if not self.repo.has_card_catalog():
+        stato, dettaglio = self.repo.card_catalog_status()
+        if stato in ("assente", "vuota"):
+            # non l'ha mai sincronizzato: la cura è sincronizzare
             QMessageBox.information(
                 self, tr("Importa mazzo (.ydk)"),
                 tr("Serve prima il catalogo delle carte. Apri il modulo "
                    "Database e sincronizzalo: in un file .ydk ci sono solo i "
                    "codici delle carte, e senza catalogo non si possono "
                    "tradurre in nomi."))
+            return
+        if stato != "ok":
+            # la tabella c'è ma non si legge: mandarlo a sincronizzare sarebbe
+            # un giro a vuoto — la sincronizzazione riscrive le righe, non la
+            # forma della tabella
+            self._say_catalog_broken(stato, dettaglio)
             return
         path, _ = QFileDialog.getOpenFileName(
             self, tr("Importa un mazzo"), str(Path.home()),
@@ -2827,7 +2835,11 @@ class MarketWatchWidget(QWidget):
                 self, tr("Importa mazzo (.ydk)"),
                 tr("Nel file non c'è nessuna carta."))
             return
-        voci, sconosciuti = self._resolve_ydk(deck)
+        try:
+            voci, sconosciuti = self._resolve_ydk(deck)
+        except CardCatalogError as exc:
+            self._say_catalog_broken(exc.stato, exc.dettaglio)
+            return
         if not voci:
             QMessageBox.information(
                 self, tr("Importa mazzo (.ydk)"),
@@ -2842,6 +2854,26 @@ class MarketWatchWidget(QWidget):
             return
         self._save_deck(None, dlg.result_name(), dlg.result_filters_json(),
                         dlg.result_cards())
+
+    def _say_catalog_broken(self, stato: str, dettaglio: str) -> None:
+        """Il catalogo c'è ma non si legge: si dice COSA e cosa farci.
+
+        Sincronizzare non serve (riscrive le righe, non la forma della
+        tabella), quindi non lo si consiglia: si dice il problema per nome.
+        """
+        if stato == "incompleta":
+            testo = tr("Il catalogo delle carte ha una forma diversa da quella "
+                       "attesa: mancano le colonne {dettaglio}.")
+        else:
+            testo = tr("Il catalogo delle carte non si riesce a leggere: "
+                       "{dettaglio}.")
+        QMessageBox.warning(
+            self, tr("Importa mazzo (.ydk)"),
+            testo.format(dettaglio=dettaglio or "?") + "\n\n"
+            + tr("Sincronizzare il Database NON risolve: riscrive le righe, "
+                 "non la forma della tabella. Esporta la watchlist (tasto "
+                 "destro → Esporta tutto…), chiudi l'app, cancella "
+                 "~/.ygo_toolbox/ygo_toolbox.db e risincronizza."))
 
     def _resolve_ydk(self, deck) -> tuple[list, list]:
         """passcode → carta + tutte le sue stampe. Chi non si traduce esce a

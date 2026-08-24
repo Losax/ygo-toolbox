@@ -1737,6 +1737,7 @@ def main() -> int:
     # 7c) importazione .ydk: il file porta passcode e QUANTITÀ, non rarità
     from modules.market_watch import ydk as _ydk  # noqa: E402
     from modules.market_watch.repository import (  # noqa: E402
+        CardCatalogError as _CatalogError,
         MarketWatchRepository as _MWRepo,
     )
     from modules.market_watch.widget import PROVIDER as _PROV  # noqa: E402
@@ -1766,13 +1767,40 @@ def main() -> int:
     assert _ydk.parse("00014558127\n").cards[0].passcode == 14558127
     assert _ydk.parse("").cards == []
 
-    # -- il ponte verso il catalogo carte è DIFENSIVO: chi non ha mai aperto
-    #    il Database non ha la tabella, e deve avere un vuoto, non un errore
+    # -- "tabella assente" e "query fallita" NON sono la stessa cosa --
+    # Chi non ha mai aperto il Database non ha la tabella: stato NORMALE, e
+    # riceve un vuoto. La cura è sincronizzare.
     st_senza = Storage(tmp / "senza_catalogo.db")
     repo_senza = _MWRepo(st_senza)
+    assert repo_senza.card_catalog_status() == ("assente", "")
     assert not repo_senza.has_card_catalog()
     assert repo_senza.cards_by_passcode([14558127]) == {}
+    # tabella creata ma ancora senza righe: sempre "sincronizza"
+    st_senza.execute(
+        "CREATE TABLE cdb_cards (id INTEGER PRIMARY KEY, name TEXT, "
+        "name_it TEXT, image_url TEXT, image_small_url TEXT)")
+    assert repo_senza.card_catalog_status() == ("vuota", "")
+    assert repo_senza.cards_by_passcode([14558127]) == {}
     st_senza.close()
+
+    # La tabella c'è ma le manca una colonna: NON deve diventare "nessuna
+    # carta". Sarebbe lo stesso messaggio del caso sopra, e manderebbe
+    # l'utente a sincronizzare — che riscrive le RIGHE, non la FORMA.
+    st_rotto = Storage(tmp / "catalogo_rotto.db")
+    repo_rotto = _MWRepo(st_rotto)
+    st_rotto.execute("CREATE TABLE cdb_cards (id INTEGER PRIMARY KEY, name TEXT)")
+    st_rotto.execute("INSERT INTO cdb_cards VALUES (14558127, 'Ash Blossom')")
+    stato_rotto, mancanti_rotto = repo_rotto.card_catalog_status()
+    assert stato_rotto == "incompleta", stato_rotto
+    assert "image_small_url" in mancanti_rotto, mancanti_rotto
+    assert not repo_rotto.has_card_catalog()
+    try:
+        repo_rotto.cards_by_passcode([14558127])
+        raise AssertionError("una tabella illeggibile deve farsi sentire")
+    except _CatalogError as exc:
+        assert exc.stato == "incompleta", exc.stato
+        assert "name_it" in exc.dettaglio, exc.dettaglio
+    st_rotto.close()
 
     # -- col catalogo, i passcode diventano nomi (quelli ignoti restano fuori) --
     # le colonne sono quelle VERE di cdb_cards: se la finta ne perde una, la
@@ -1833,7 +1861,8 @@ def main() -> int:
     assert "27204312" in dlg_ydk.summary.text(), dlg_ydk.summary.text()
     dlg_ydk.deleteLater()
     print("[OK] Importa .ydk: sezioni sommate, righe sporche mostrate, ponte "
-          "difensivo al catalogo carte, mazzo in GRIGLIA con le immagini dalla "
+          "catalogo carte che distingue 'assente' da 'illeggibile', mazzo in "
+          "GRIGLIA con le immagini dalla "
           "cache su disco, e NIENTE preselezionato (la stampa la sceglie l'utente).")
 
     widget.stop()

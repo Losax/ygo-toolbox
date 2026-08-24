@@ -22,6 +22,22 @@ import sqlite3
 from core.storage import Storage
 
 
+class CardCatalogError(RuntimeError):
+    """Il catalogo carte del Database c'è, ma non si riesce a leggerlo.
+
+    Si solleva **solo** quando la tabella esiste: non averla mai sincronizzata
+    è uno stato normale, non un errore, e chi chiama riceve un dizionario
+    vuoto. Porta con sé `stato` e `dettaglio` (le colonne mancanti, o il
+    messaggio di SQLite) perché l'interfaccia possa dire cosa fare davvero
+    invece di consigliare a caso.
+    """
+
+    def __init__(self, stato: str, dettaglio: str = "") -> None:
+        super().__init__(f"{stato}: {dettaglio}" if dettaglio else stato)
+        self.stato = stato
+        self.dettaglio = dettaglio
+
+
 class MarketWatchRepository:
     def __init__(self, storage: Storage) -> None:
         self.storage = storage
@@ -543,17 +559,43 @@ class MarketWatchRepository:
     # Quindi: lettura, MAI scrittura, e tutto difensivo — chi non ha mai aperto
     # il Database non ha la tabella, e deve ricevere un messaggio chiaro, non
     # un errore SQL.
-    def has_card_catalog(self) -> bool:
-        """C'è il catalogo carte del Database, ed è pieno?"""
+    #: colonne che ci servono da `cdb_cards`. Se una manca, la query fallisce
+    #: TUTTA: meglio dirlo per nome che restituire "nessuna carta".
+    CARD_COLUMNS = ("id", "name", "name_it", "image_url", "image_small_url")
+
+    def card_catalog_status(self) -> tuple[str, str]:
+        """Stato del catalogo carte: `(stato, dettaglio)`.
+
+        Stati: `assente` (mai sincronizzato), `vuota` (tabella senza righe),
+        `incompleta` (mancano colonne — il dettaglio le elenca), `illeggibile`
+        (SQLite si lamenta; il dettaglio è il suo messaggio), `ok`.
+
+        **Perché non basta un booleano.** Prima "tabella assente" e "query
+        fallita" finivano nello stesso `return {}`, quindi l'utente riceveva
+        sempre lo stesso invito a sincronizzare. Per il primo caso è la cura
+        giusta; per il secondo è un giro a vuoto — sincronizzare riscrive le
+        RIGHE, non la FORMA della tabella. Un difetto che non si vede e manda
+        l'utente dalla parte sbagliata è peggio di un errore parlante.
+        """
         try:
-            rows = self.storage.query(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='cdb_cards'")
-            if not rows:
-                return False
-            return bool(self.storage.query(
-                "SELECT 1 AS uno FROM cdb_cards LIMIT 1"))
-        except sqlite3.Error:
-            return False
+            if not self.storage.query(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='table' AND name='cdb_cards'"):
+                return "assente", ""
+            presenti = {r["name"] for r in
+                        self.storage.query("PRAGMA table_info(cdb_cards)")}
+            mancanti = [c for c in self.CARD_COLUMNS if c not in presenti]
+            if mancanti:
+                return "incompleta", ", ".join(mancanti)
+            if not self.storage.query("SELECT 1 AS uno FROM cdb_cards LIMIT 1"):
+                return "vuota", ""
+            return "ok", ""
+        except sqlite3.Error as exc:
+            return "illeggibile", str(exc)
+
+    def has_card_catalog(self) -> bool:
+        """C'è il catalogo carte del Database, ed è utilizzabile?"""
+        return self.card_catalog_status()[0] == "ok"
 
     def cards_by_passcode(self, codes) -> dict:
         """passcode → riga del catalogo carte, per i codici trovati.
@@ -566,8 +608,14 @@ class MarketWatchRepository:
         qualche riga non riconosciuta.
         """
         codici = [int(c) for c in codes]
-        if not codici or not self.has_card_catalog():
+        if not codici:
             return {}
+        stato, dettaglio = self.card_catalog_status()
+        if stato in ("assente", "vuota"):
+            return {}      # stati NORMALI: non c'è ancora niente da leggere
+        if stato != "ok":
+            # la tabella c'è ma non si legge: è un difetto, e va detto
+            raise CardCatalogError(stato, dettaglio)
         out: dict[int, sqlite3.Row] = {}
         # SQLite ha un tetto ai parametri di una query: si va a blocchi
         for i in range(0, len(codici), 400):
@@ -578,8 +626,8 @@ class MarketWatchRepository:
                     f"SELECT id, name, name_it, image_url, "
                     f"image_small_url FROM cdb_cards "
                     f"WHERE id IN ({segni})", tuple(blocco))
-            except sqlite3.Error:
-                return {}
+            except sqlite3.Error as exc:
+                raise CardCatalogError("illeggibile", str(exc)) from exc
             for r in righe:
                 out[int(r["id"])] = r
         return out

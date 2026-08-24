@@ -839,6 +839,23 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     davanti; e con le celle larghe 132 pixel stavano solo 4 carte per riga,
     contro le 6 di adesso.
 
+79. **Un errore che diceva la bugia comoda (v1.5.2).** L'importazione `.ydk`
+    ha bisogno del catalogo del Database per tradurre i codici delle carte in
+    nomi. Se qualcosa andava storto in quella lettura, il codice si limitava a
+    rispondere "nessuna carta" — e l'app diceva sempre la stessa cosa:
+    *sincronizza il Database*.
+    Per chi non l'ha mai sincronizzato è il consiglio giusto. Ma se la tabella
+    c'è e ha una forma sbagliata, sincronizzare **non serve a niente**:
+    riscrive le righe, non la forma. L'utente avrebbe aspettato quattro minuti
+    di sincronizzazione per ritrovarsi allo stesso punto, senza capire perché.
+    Il difetto l'ha fatto emergere il collaudo automatico, dove una tabella di
+    prova a cui mancava una colonna produceva un placido "nessuna carta"
+    invece di lamentarsi. Ora i casi sono quattro e distinti: catalogo mai
+    scaricato, catalogo vuoto, tabella con **colonne mancanti** (l'app le
+    elenca per nome) e tabella illeggibile (l'app riporta l'errore). Solo nei
+    primi due l'app consiglia di sincronizzare; negli altri dice cosa c'è che
+    non va e come rimediare davvero.
+
 ## 4. Note operative importanti
 
 - **Non fare raffiche di richieste** verso CardTrader: è dietro Cloudflare e può
