@@ -441,5 +441,60 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "Sincronizzazione non riuscita: {err}": "Sync failed: {err}",
         "Cerca «{nome}»: scegli la stampa da seguire.":
             "Searching “{nome}”: pick the printing to track.",
+        # importazione .ydk (mazzi)
+        'Importa mazzo (.ydk)':
+            'Import deck (.ydk)',
+        'Importa mazzo (.ydk)…':
+            'Import deck (.ydk)…',
+        'Importa un mazzo':
+            'Import a deck',
+        'Mazzi Yu-Gi-Oh! (*.ydk)':
+            'Yu-Gi-Oh! decks (*.ydk)',
+        'Basi (mazzi): creane una a mano o importa un file .ydk':
+            'Bases (decks): build one by hand or import a .ydk file',
+        "In un file .ydk non c'è la rarità: apri una carta e scegli quale stampa seguire. Le carte lasciate senza stampa non entrano nella base.":
+            'A .ydk file carries no rarity: open a card and pick which printing to track. Cards left without a printing are not added to the base.',
+        'Nome della base':
+            'Base name',
+        'Crea la base':
+            'Create the base',
+        'Carta / stampa':
+            'Card / printing',
+        'Scelta':
+            'Choice',
+        '— scegli una stampa':
+            '— pick a printing',
+        'nessuna stampa nel catalogo':
+            'no printing in the catalog',
+        '(senza dettaglio)':
+            '(no detail)',
+        'Nessuna stampa scelta: apri una carta e scegline una fra le {t} in elenco.':
+            'No printing chosen yet: open a card and pick one of the {t} listed.',
+        '{s} carta su {t} con una stampa scelta · {c} copie':
+            '{s} of {t} cards has a printing chosen · {c} copies',
+        '{s} carte su {t} con una stampa scelta · {c} copie':
+            '{s} of {t} cards have a printing chosen · {c} copies',
+        '1 carta senza stampa: non entrerà nella base':
+            '1 card without a printing: it will not be added',
+        '{n} carte senza stampa: non entreranno nella base':
+            '{n} cards without a printing: they will not be added',
+        '1 carta senza stampe nel catalogo':
+            '1 card with no printings in the catalog',
+        '{n} carte senza stampe nel catalogo':
+            '{n} cards with no printings in the catalog',
+        '1 passcode non riconosciuto: {codici}':
+            '1 unrecognized passcode: {codici}',
+        '{n} passcode non riconosciuti: {codici}':
+            '{n} unrecognized passcodes: {codici}',
+        '1 riga del file non capita':
+            '1 line of the file not understood',
+        '{n} righe del file non capite':
+            '{n} lines of the file not understood',
+        'Serve prima il catalogo delle carte. Apri il modulo Database e sincronizzalo: in un file .ydk ci sono solo i codici delle carte, e senza catalogo non si possono tradurre in nomi.':
+            'The card catalog is needed first. Open the Database module and sync it: a .ydk file only holds card codes, and without the catalog they cannot be turned into names.',
+        "Nel file non c'è nessuna carta.":
+            'There is no card in the file.',
+        'Nessuno dei {n} codici del file è nel catalogo delle carte. Se il Database è vecchio, sincronizzalo.':
+            'None of the {n} codes in the file is in the card catalog. If the Database is out of date, sync it.',
     },
 }

@@ -75,6 +75,7 @@ from core.i18n import tr
 
 from . import config
 from . import transfer
+from . import ydk
 from .deck_dialog import DeckDialog
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
@@ -93,6 +94,7 @@ from .search_model import (
     sweep_orphan_cell_widgets,
 )
 from .workers import CatalogSyncWorker, ImageFetchWorker, PriceFetchWorker
+from .ydk_dialog import YdkImportDialog, sort_printings
 
 PROVIDER = "cardtrader"
 # Le miniature si scaricano/cachano grandi (ROW_THUMB) e vengono rimpicciolite
@@ -940,8 +942,19 @@ class MarketWatchWidget(QWidget):
         # base è un gesto di ricerca, non un'impostazione dell'app.
         self.deck_btn = QPushButton()
         self.deck_btn.setIcon(_make_deck_icon())
-        self.deck_btn.setToolTip(tr("Nuova base: un mazzo di carte in più copie, con filtri comuni"))
-        self.deck_btn.clicked.connect(lambda: self.open_deck())
+        self.deck_btn.setToolTip(tr("Basi (mazzi): creane una a mano o importa un file .ydk"))
+        # Due modi di fare la stessa cosa — comporla carta per carta o partire
+        # da un file — quindi stanno sotto lo stesso pulsante, non sparsi.
+        deck_menu = QMenu(self.deck_btn)
+        deck_menu.addAction(tr("Nuova base…"), lambda: self.open_deck())
+        deck_menu.addAction(tr("Importa mazzo (.ydk)…"), self.import_ydk)
+        self.deck_btn.setMenu(deck_menu)
+        # `setMenu` aggiunge una freccetta che, in un quadrato da 38px, spinge
+        # il ventaglio a sinistra e lo schiaccia: accanto all'icona pulita dei
+        # filtri si vedeva la differenza. Si toglie l'indicatore — il menu si
+        # apre lo stesso al clic — e il pulsante resta come gli altri.
+        self.deck_btn.setStyleSheet(
+            "QPushButton::menu-indicator { image: none; width: 0px; }")
         search_row.addWidget(self.deck_btn)
         self._update_card_filters_btn()
         pv.addLayout(search_row)
@@ -2522,6 +2535,7 @@ class MarketWatchWidget(QWidget):
                            lambda folder=f: self._delete_folder(folder))
         menu.addSeparator()
         menu.addAction(tr("Nuova base…"), lambda: self.open_deck())
+        menu.addAction(tr("Importa mazzo (.ydk)…"), self.import_ydk)
         menu.addAction(tr("Nuova cartella…"), lambda: self._new_folder())
         menu.addSeparator()
         menu.addAction(tr("Esporta tutto…"), lambda: self.export_watchlist())
@@ -2784,6 +2798,75 @@ class MarketWatchWidget(QWidget):
         """Basta l'id del blueprint: il sito reindirizza alla pagina giusta
         (verificato dal vivo, /cards/382653 → /it/cards/382653-dominus-purge-…)."""
         QDesktopServices.openUrl(QUrl(self.CARD_PAGE.format(ref_id=ref_id)))
+
+    # ------------------------------------------------------- importa un .ydk
+    def import_ydk(self) -> None:
+        """Un mazzo `.ydk` diventa una base, scegliendo le stampe.
+
+        Il file porta *passcode* e quantità, niente rarità: la traduzione in
+        nomi richiede il catalogo del Database, e la stampa la sceglie
+        l'utente nel dialogo (vedi `ydk_dialog`).
+        """
+        if not self.repo.has_card_catalog():
+            QMessageBox.information(
+                self, tr("Importa mazzo (.ydk)"),
+                tr("Serve prima il catalogo delle carte. Apri il modulo "
+                   "Database e sincronizzalo: in un file .ydk ci sono solo i "
+                   "codici delle carte, e senza catalogo non si possono "
+                   "tradurre in nomi."))
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("Importa un mazzo"), str(Path.home()),
+            tr("Mazzi Yu-Gi-Oh! (*.ydk)"))
+        if not path:
+            return
+        try:
+            deck = ydk.parse_file(path)
+        except OSError as exc:
+            QMessageBox.warning(self, tr("Importa mazzo (.ydk)"), str(exc))
+            return
+        if not deck.cards:
+            QMessageBox.information(
+                self, tr("Importa mazzo (.ydk)"),
+                tr("Nel file non c'è nessuna carta."))
+            return
+        voci, sconosciuti = self._resolve_ydk(deck)
+        if not voci:
+            QMessageBox.information(
+                self, tr("Importa mazzo (.ydk)"),
+                tr("Nessuno dei {n} codici del file è nel catalogo delle "
+                   "carte. Se il Database è vecchio, sincronizzalo.").format(
+                       n=len(deck.cards)))
+            return
+        dlg = YdkImportDialog(voci, unknown=sconosciuti, ignored=deck.ignored,
+                              default_name=Path(path).stem,
+                              filters_editor=self._edit_deck_filters, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._save_deck(None, dlg.result_name(), dlg.result_filters_json(),
+                        dlg.result_cards())
+
+    def _resolve_ydk(self, deck) -> tuple[list, list]:
+        """passcode → carta + tutte le sue stampe. Chi non si traduce esce a
+        parte, per essere mostrato: un codice ignoto è un dato mancante."""
+        righe = self.repo.cards_by_passcode([c.passcode for c in deck.cards])
+        voci, sconosciuti = [], []
+        for carta in deck.cards:
+            riga = righe.get(carta.passcode)
+            if riga is None:
+                sconosciuti.append(carta.passcode)
+                continue
+            nome = riga["name"]
+            voci.append({
+                "passcode": carta.passcode,
+                "name": nome,
+                "name_it": riga["name_it"] or "",
+                "copies": carta.total,
+                # si spiega il totale solo quando viene da più sezioni
+                "sections": carta.sections_label() if carta.split else "",
+                "printings": sort_printings(self.repo.printings(PROVIDER, nome)),
+            })
+        return voci, sconosciuti
 
     # ------------------------------------------------- esporta / importa (JSON)
     def export_watchlist(self, folder=None) -> None:

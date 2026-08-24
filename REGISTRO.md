@@ -57,6 +57,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Apri su CardTrader** | Icona **freccia in uscita** sulla riga, accanto ai filtri e al cestino: apre la pagina della carta sul sito. Basta l'id: CardTrader reindirizza alla pagina giusta. **I filtri non viaggiano nel link** — il sito non li accetta nell'indirizzo (li applica internamente) — perciò il tooltip elenca quelli in vigore, così si rimettono in due secondi. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
+| **Importa un mazzo (.ydk)** | Pulsante **carte a ventaglio** → *Importa mazzo (.ydk)…* (o tasto destro sulla watchlist). Il `.ydk` è il formato con cui i mazzi si scambiano fra siti e programmi: dentro ci sono i **codici delle carte** e **quante copie**, ma **non la rarità** — e la stessa carta può avere decine di stampe a prezzi diversissimi. Quindi l'app apre una griglia: **una riga per carta** e, aprendola, **tutte le sue stampe** (dalla più comune alla più ricercata) fra cui scegliere. **Main, Extra e Side si sommano**: se una carta sta 2 volte nel main e 1 nel side, la base ne chiede 3, e la riga lo spiega. Niente è scelto al posto tuo: le carte che lasci senza stampa **non entrano nella base**, e il riepilogo in basso lo dice. I codici che il catalogo non conosce vengono **mostrati**, non ingoiati. Serve il catalogo del **Database** sincronizzato (è lui a sapere che codice corrisponde a che carta). |
 | **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
 | **Ordina per** | Riga di pulsantini sopra la tabella: **Manuale** (l'ordine che hai dato trascinando), **Rarità**, **Prezzo**, **Var.**. Il criterio attivo è **teal** con una freccetta; **cliccandolo di nuovo si inverte** il verso. L'ordinamento agisce **dentro ogni cartella/base** e fra le carte sciolte: i gruppi restano gruppi. Le carte senza il dato (prezzo mai visto, variazione non calcolabile) stanno **sempre in fondo**, in entrambi i versi. Il criterio si ricorda alla riapertura. |
 | **Grafico dello storico** | **Doppio clic** su una carta in watchlist (o tasto destro → *Storico prezzi…*): si apre una finestra col grafico dei prezzi rilevati, il prezzo attuale, il minimo, il massimo, la variazione dal primo prezzo e da quanti giorni si segue la carta. Passando il mouse si legge il prezzo in vigore a quella data. Mostra solo i prezzi presi **con i filtri di adesso**; se ce ne sono di più vecchi, presi con altri filtri, un interruttore in basso li aggiunge smorzati e separati da una linea tratteggiata. |
@@ -795,6 +796,28 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     48 MB scaricati.
     Per questo giro l'installazione sul PC **non** è stata aggiornata a mano:
     doveva restare indietro, altrimenti non ci sarebbe stato niente da premere.
+
+77. **Importare un mazzo da file `.ydk` (v1.5.0).** Il `.ydk` è il formato con
+    cui i mazzi girano fra siti e programmi: righe di numeri, una per copia,
+    divise in `#main`, `#extra` e `!side`. Da questa versione si trascina —
+    anzi, si sceglie dal pulsante a ventaglio — e diventa una **base**.
+    Il punto delicato è che **in un `.ydk` la rarità non c'è**: dice "tre Ash
+    Blossom", non *quali* tre. E nel catalogo prezzi Ash Blossom ha **36
+    stampe**, da pochi centesimi a parecchi euro. Sceglierne una al posto tuo
+    sarebbe inventare un dato — la stessa ragione per cui, dal Database, il
+    pulsante "cerca nel Market Watch" passa il nome e ti fa scegliere la
+    stampa. Quindi si apre una griglia: una riga per carta, e aprendola tutte
+    le sue stampe, ordinate **dalla più comune alla più ricercata**.
+    **Le tre sezioni si sommano**, perché una base serve a sapere quante copie
+    *possedere*: nel mazzo di prova *Mulcharmy Purulia* sta 2 volte nel main e
+    1 nel side, e la base ne chiede 3 (la riga lo scrive: "2 main + 1 side").
+    Quello che non torna si **vede**, non sparisce: i codici che il catalogo
+    non conosce sono elencati nel riepilogo, e le carte lasciate senza stampa
+    restano fuori dalla base, detto a chiare lettere. Nel mazzo di prova, 39
+    codici su 40 si sono risolti; il quarantesimo non esiste **nemmeno su
+    YGOPRODeck**, quindi non è un buco nostro.
+    Misurato sul mazzo vero (40 carte, 70 copie): 409 stampe da mostrare, base
+    creata in 0,6 secondi con 39 carte e 68 copie, e nessuna copia sbagliata.
 
 ## 4. Note operative importanti
 

@@ -517,6 +517,72 @@ class MarketWatchRepository:
             (provider, f"%{query}%", limit),
         )
 
+    def printings(self, provider, name) -> list:
+        """Tutte le stampe di una carta, per NOME esatto.
+
+        Una carta ha decine di stampe (Ash Blossom: 36 nel catalogo vero) e
+        ognuna ha un prezzo suo: è il motivo per cui l'importazione di un
+        `.ydk` deve far scegliere, non scegliere. Ordinate per espansione, così
+        le stampe dello stesso set stanno vicine mentre si cerca la propria.
+        """
+        return self.storage.query(
+            "SELECT ref_id, name, detail, image_url, set_code FROM mw_catalog "
+            "WHERE provider = ? AND name = ? ORDER BY set_code, detail",
+            (provider, name),
+        )
+
+    # --- ponte verso il catalogo del modulo Database (sola lettura) ---
+    # I moduli non si importano fra loro, ma il database SQLite è uno solo, e
+    # per un `.ydk` non c'è alternativa: il file porta *passcode*, il catalogo
+    # prezzi conosce solo NOMI. La traduzione passcode → nome esiste solo in
+    # `cdb_cards`, che è del modulo Database.
+    # Le altre strade sono peggiori: duplicare 14.000 righe dentro `mw_`
+    # significherebbe una seconda sincronizzazione da tenere allineata, e un
+    # servizio di interrogazione dentro `AppContext` è più architettura di
+    # quanta ne giustifichi una funzione sola.
+    # Quindi: lettura, MAI scrittura, e tutto difensivo — chi non ha mai aperto
+    # il Database non ha la tabella, e deve ricevere un messaggio chiaro, non
+    # un errore SQL.
+    def has_card_catalog(self) -> bool:
+        """C'è il catalogo carte del Database, ed è pieno?"""
+        try:
+            rows = self.storage.query(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='cdb_cards'")
+            if not rows:
+                return False
+            return bool(self.storage.query(
+                "SELECT 1 AS uno FROM cdb_cards LIMIT 1"))
+        except sqlite3.Error:
+            return False
+
+    def cards_by_passcode(self, codes) -> dict:
+        """passcode → riga del catalogo carte, per i codici trovati.
+
+        I codici assenti semplicemente non compaiono nel risultato: è un dato
+        mancante, e chi chiama lo mostra come tale invece di inventare una
+        carta. Non tutti i passcode sono in `cdb_cards`: le **arti
+        alternative** hanno un passcode proprio che lì non è indicizzato (la
+        tabella tiene un id per carta), quindi un `.ydk` che le usa lascia
+        qualche riga non riconosciuta.
+        """
+        codici = [int(c) for c in codes]
+        if not codici or not self.has_card_catalog():
+            return {}
+        out: dict[int, sqlite3.Row] = {}
+        # SQLite ha un tetto ai parametri di una query: si va a blocchi
+        for i in range(0, len(codici), 400):
+            blocco = codici[i:i + 400]
+            segni = ",".join("?" * len(blocco))
+            try:
+                righe = self.storage.query(
+                    f"SELECT id, name, name_it, image_url FROM cdb_cards "
+                    f"WHERE id IN ({segni})", tuple(blocco))
+            except sqlite3.Error:
+                return {}
+            for r in righe:
+                out[int(r["id"])] = r
+        return out
+
     # --- impostazioni (chiave/valore) ---
     def get_setting(self, key, default=None):
         rows = self.storage.query("SELECT value FROM mw_settings WHERE key = ?", (key,))

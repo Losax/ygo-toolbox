@@ -1734,6 +1734,101 @@ def main() -> int:
         "senza finestra principale la navigazione dice di no, non esplode"
     print("[OK] Ponte fra moduli: la carta arriva alla ricerca del Market Watch.")
 
+    # 7c) importazione .ydk: il file porta passcode e QUANTITÀ, non rarità
+    from modules.market_watch import ydk as _ydk  # noqa: E402
+    from modules.market_watch.repository import (  # noqa: E402
+        MarketWatchRepository as _MWRepo,
+    )
+    from modules.market_watch.widget import PROVIDER as _PROV  # noqa: E402
+    from modules.market_watch.ydk_dialog import (  # noqa: E402
+        YdkImportDialog,
+        sort_printings,
+    )
+
+    # -- il parser: sezioni, quantità, righe sporche --
+    testo_ydk = ("#created by tester\n#main\n14558127\n14558127\n14558127\n"
+                 "84192580\n84192580\n#extra\n27572350\n!side\n84192580\n"
+                 "rumore\n")
+    mazzo = _ydk.parse(testo_ydk)
+    per_codice = {c.passcode: c for c in mazzo.cards}
+    assert len(mazzo.cards) == 3, mazzo.cards
+    assert per_codice[14558127].total == 3
+    # la stessa carta in main E side: le copie si SOMMANO, perché per giocare
+    # quel mazzo bisogna possederle tutte
+    assert per_codice[84192580].total == 3, per_codice[84192580]
+    assert per_codice[84192580].split
+    assert per_codice[84192580].sections_label() == "2 main + 1 side"
+    assert not per_codice[27572350].split, "una sola sezione: niente spiegazione"
+    assert mazzo.total_copies == 7
+    # quello che non si capisce si mostra, non si butta via in silenzio
+    assert mazzo.ignored == [(12, "rumore")], mazzo.ignored
+    # senza intestazione le copie non si perdono, e gli zeri davanti non contano
+    assert _ydk.parse("00014558127\n").cards[0].passcode == 14558127
+    assert _ydk.parse("").cards == []
+
+    # -- il ponte verso il catalogo carte è DIFENSIVO: chi non ha mai aperto
+    #    il Database non ha la tabella, e deve avere un vuoto, non un errore
+    st_senza = Storage(tmp / "senza_catalogo.db")
+    repo_senza = _MWRepo(st_senza)
+    assert not repo_senza.has_card_catalog()
+    assert repo_senza.cards_by_passcode([14558127]) == {}
+    st_senza.close()
+
+    # -- col catalogo, i passcode diventano nomi (quelli ignoti restano fuori) --
+    storage.execute(
+        "CREATE TABLE IF NOT EXISTS cdb_cards (id INTEGER PRIMARY KEY, "
+        "name TEXT, name_it TEXT, image_url TEXT)")
+    storage.execute(
+        "INSERT OR REPLACE INTO cdb_cards (id, name, name_it, image_url) "
+        "VALUES (?, ?, ?, ?)",
+        (14558127, "Ash Blossom & Joyous Spring", "Fioritura di Cenere", ""))
+    assert widget.repo.has_card_catalog()
+    trovate = widget.repo.cards_by_passcode([14558127, 27204312])
+    assert set(trovate) == {14558127}, trovate
+
+    # -- le stampe: dalla più comune alla più ricercata --
+    for _ref, _det, _code in (("bp-secret", "Secret Rare · Maximum Crisis", "MACR"),
+                              ("bp-com-1", "Common · Structure Deck", "SDSB"),
+                              ("bp-com-2", "Common · Structure Deck", "SDSB")):
+        storage.execute(
+            "INSERT OR REPLACE INTO mw_catalog (provider, ref_id, name, detail, "
+            "image_url, set_code) VALUES (?, ?, ?, ?, ?, ?)",
+            (_PROV, _ref, "Ash Blossom & Joyous Spring", _det, "", _code))
+    stampe = sort_printings(widget.repo.printings(_PROV, "Ash Blossom & Joyous Spring"))
+    assert len(stampe) == 3
+    assert stampe[0]["ref_id"].startswith("bp-com"), [s["ref_id"] for s in stampe]
+    assert stampe[-1]["ref_id"] == "bp-secret", [s["ref_id"] for s in stampe]
+
+    # -- il dialogo: NIENTE è preselezionato (sceglierlo sarebbe inventare) --
+    voci_ydk = [{"passcode": 14558127, "name": "Ash Blossom & Joyous Spring",
+                 "name_it": "Fioritura di Cenere", "copies": 3,
+                 "sections": "2 main + 1 side", "printings": stampe}]
+    dlg_ydk = YdkImportDialog(voci_ydk, unknown=[27204312], ignored=[(12, "rumore")],
+                              default_name="Prova")
+    assert not dlg_ydk._ok_btn.isEnabled(), "senza scelte non si crea la base"
+    assert dlg_ydk.result_cards() == []
+    padre_ydk = dlg_ydk.tree.topLevelItem(0)
+    assert padre_ydk.childCount() == 3
+    # due stampe con rarità ed espansione identiche restano DUE voci distinte:
+    # sono blueprint diversi, con prezzi diversi. Si distinguono col numero.
+    etichette = [padre_ydk.child(i).text(0) for i in range(3)]
+    assert sum("#bp-com" in e for e in etichette) == 2, etichette
+    # scegliere una stampa abilita il pulsante e porta con sé le copie
+    dlg_ydk._on_click(padre_ydk.child(0), 0)
+    assert dlg_ydk._ok_btn.isEnabled()
+    scelte_ydk = dlg_ydk.result_cards()
+    assert len(scelte_ydk) == 1 and scelte_ydk[0][1] == 3, scelte_ydk
+    assert scelte_ydk[0][0].name == "Ash Blossom & Joyous Spring"
+    # ri-clic sulla stessa = ci ho ripensato
+    dlg_ydk._on_click(padre_ydk.child(0), 0)
+    assert not dlg_ydk._ok_btn.isEnabled() and dlg_ydk.result_cards() == []
+    # i codici non riconosciuti si vedono, non spariscono
+    assert "27204312" in dlg_ydk.summary.text(), dlg_ydk.summary.text()
+    dlg_ydk.deleteLater()
+    print("[OK] Importa .ydk: sezioni sommate, righe sporche mostrate, ponte "
+          "difensivo al catalogo carte, stampe dalla più comune, e NIENTE "
+          "preselezionato (la stampa la sceglie l'utente).")
+
     widget.stop()
     storage.close()
     print("\nTutti i controlli superati.")
