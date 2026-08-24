@@ -1,0 +1,4 @@
+# Roba che le sonde si creano girando: non va nel repo
+cm_profilo/
+*.sqlite
+*.html

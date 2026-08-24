@@ -1410,7 +1410,60 @@ protocollo `busy_reason()` su tutti i widget.)*
 - Colonne Panoramica trascinabili/personalizzabili; nascondere colonne sotto una
   certa larghezza (oggi la Panoramica dà il meglio a schermo intero).
 - Filtro per paese venditore; altre parole chiave per l'euristica "americana".
-- Provider CardMarket (nuova classe in `providers/`).
+- **Provider CardMarket — STUDIATO DAL VIVO il 2026-08-24, non deciso.** Non
+  c'è API aperta come CardTrader: il sito sta dietro una **sfida gestita di
+  Cloudflare**, quindi la domanda non è "come si scrive la classe" ma "come si
+  entra". Misurato, non stimato: le sonde stanno in
+  **`docs/ricerca_cardmarket/`** (`prova_webengine_cf.py` = passa la sfida e
+  salva il profilo, `prova_webengine_ritmo.py` = quanto costa la 2ª e la 3ª
+  pagina, `prova_curl_cffi.py` = **la ricetta che funziona**, con le tre varianti
+  che invece cadono, `prova_riuso_cookie.py` = la prova che `requests` non entra):
+  - **`requests` non entra**, e non è questione di cookie: con un `cf_clearance`
+    nato **due minuti prima**, stesso IP e lo stesso User-Agent del motore →
+    **403 `cf-mitigated: challenge`**. Cambia solo chi stringe la mano TLS.
+    Cloudflare guarda l'**impronta dell'handshake** (JA3/JA4), non il biscotto.
+  - **QtWebEngine entra**: la pagina vera arriva con 50 righe di offerte
+    (`article-row`, `seller-name`, `product-attributes` per riga; prezzi come
+    "0,20 €"). A profilo caldo **0,80–3,70s** per pagina.
+  - **Ma il primo giro è caro e può fallire:** con profilo di due giorni la
+    prima pagina è **SCADUTA a 40s** dopo 6 giri di sfida; le due successive
+    0,80s e 3,70s. Quindi serve una fase di riscaldamento che sappia ritentare,
+    non un timeout secco.
+  - **Incorporare il motore costa caro:** eseguibile **44,6 → 207,2 MB**, avvio
+    **2,31 → 7,61s** (**+5,3s a OGNI apertura**), e l'onefile scompatta
+    **548 MB** in `%TEMP%` ogni volta invece di 107,8. Se si prendesse questa
+    strada, valutare **onedir** al posto di onefile — ma tocca installer e
+    aggiornamento in-app, appena collaudati (GOTCHA 26).
+  - **La via che regge senza pagare il motore a ogni prezzo:** `cf_clearance`
+    **da solo basta** (scadenza a **un anno**; togliendolo → 403), e le
+    richieste successive si fanno con **`curl_cffi`** (`impersonate="chrome"`)
+    → **200 in 0,64s**. Il cookie è legato **a DUE cose insieme**: lo
+    User-Agent *esatto* che l'ha ottenuto **e** il profilo TLS. Sbagliarne uno
+    basta: UA di curl_cffi → 403; profilo `chrome131` invece di `chrome` → 403.
+    La sessione poi si rinnova da sola (`__cf_bm` lo riemette il server: tre
+    richieste di fila, tutte 200). Peso aggiunto: **~1,8 MB**
+    (curl_cffi 863K + cffi 728K + `_cffi_backend` 176K) contro 163.
+  - **Resta aperto il punto vero:** chi coni il `cf_clearance` una volta
+    l'anno. Tre strade, nessuna provata: (a) incorporare il motore solo per
+    quello — automatico ma è il conto da 163 MB; (b) pilotare l'**Edge di
+    sistema** (c'è su ogni Windows) — zero MB incorporati, ma serve CDP e i
+    cookie di Edge sono cifrati con DPAPI; (c) farlo incollare all'utente dal
+    suo browser — zero costo, ma un amico non smanettone non lo fa.
+  - **Cosa è lecito:** il `robots.txt` per un agente generico dice `Allow: /`
+    **senza nessun `Disallow`** (Content-Signal `search=yes,ai-train=no,
+    use=reference` — non ci riguarda, non addestriamo modelli). Da verificare
+    **prima** di scrivere codice: l'API ufficiale CardMarket e i loro Termini,
+    perché azzeccare l'impronta TLS per superare un controllo anti-bot è cosa
+    diversa dall'usare una porta aperta. **Non l'ho verificato**, non è nel
+    registro come fatto.
+  - **Fragilità da mettere in conto:** è una rincorsa. UA e profilo TLS vanno
+    tenuti appaiati (cambiare versione di PySide6 cambia l'UA del motore e
+    invalida il cookie), e se Cloudflare stringe, si rompe tutto in silenzio.
+    Vale la regola di sempre: **mai raffiche**, e gli errori si ricordano.
+  - Filtri: il modulo della pagina è un **POST con token CSRF** (`cmtkn`).
+    Nomi utili già letti: `idProduct`, `isSingle`, `minCondition` (1=Mint …
+    7=Poor), `sellerCountry[N]`, `sellerType[N]`. Se passino anche in GET
+    **non è verificato**.
 - Quando un ref esce da "Nessuna copia", la variazione % è calcolata sull'ultimo
   prezzo storico (che può essere pre-filtri): eventualmente gestire il caso.
 
