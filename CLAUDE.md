@@ -111,6 +111,29 @@ le tabelle esistenti).
   dietro Cloudflare: 429 e 403). Esistono già due freni, non aggirarli:
   `providers/cardtrader.LIMITER` per l'API e `search_model._img_slot` per le
   immagini. Gli URL che falliscono si ricordano, non si ritentano in loop.
+- **MAI il pannello Browser dell'app (`mcp__Claude_Browser__*`) su un sito
+  dietro Cloudflare — cardmarket.com e TUTTI i suoi sotto-domini** (`www.`,
+  `help.`, `api.`: è lo stesso muro, non tre siti diversi). L'interstiziale
+  "Ci siamo quasi…" ha ucciso il processo GPU di Claude Desktop
+  (`GPU process isn't usable. Goodbye.`, eccezione 0x80000003) un secondo dopo
+  la navigazione; la prima volta è servito reinstallare l'app.
+  **È capitato DUE volte il 24/08/2026, con la stessa sequenza identica:**
+  `preview_start` su `help.cardmarket.com` — che non dà challenge e quindi
+  rassicura — poi `navigate` su `www.cardmarket.com`, e un secondo dopo morto.
+  Non è una sfortuna singola: è un rastrello su cui si ripassa.
+  - Per leggere pagine si usa **`WebFetch`** (gira fuori dal processo
+    dell'app) e `WebSearch` per trovarle.
+  - **Un `WebFetch` che fallisce NON è il permesso di aprire il pannello.**
+    Un 410, un 403 o una challenge dicono l'opposto: quel sito va letto da un
+    **processo separato**, non dal Chromium che disegna la finestra in cui stai
+    lavorando. È esattamente la scorciatoia che ha causato il secondo crash —
+    "WebFetch non ce la fa, provo col browser" è il pensiero da fermare.
+  - Per il motore vero si usano gli script di `docs/ricerca_cardmarket/` come
+    processi separati, così la challenge la mangia il loro processo.
+  - Se l'app muore comunque: lanciare **subito** `Desktop\claude-sblocca.ps1`
+    *prima* di riaprirla — i processi orfani bloccano la riparazione
+    automatica di Windows e sono quelli che costringono a reinstallare.
+    Cronaca, minidump e prove in `RIPRESA-2026-08-24.md`.
 - **Non confrontare prezzi presi con filtri diversi.** Ogni punto di
   `mw_price_history` porta la sua `filters_key`, e il confronto vive dentro il
   "tratto" corrente (`_run_start`): cambiare filtri = altro prodotto, non un
