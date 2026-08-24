@@ -1483,10 +1483,25 @@ protocollo `busy_reason()` su tutti i widget.)*
       dichiarano nero su bianco, e questo progetto ha sempre rispettato le
       regole delle fonti (YGOPRODeck, CardTrader). Le vie aperte, in ordine:
       (1) **scrivere a CardMarket** e chiedere l'accordo scritto / l'accesso
-      all'API — costa una mail e può dire no; (2) restare su **CardTrader**,
-      che ha un'API ufficiale e permissiva, già usata come si deve;
-      (3) cercare una terza fonte con API aperta. La decisione è dell'utente,
-      ma senza il punto (1) andato a buon fine **non si scrive il codice**.
+      all'API; (2) restare su **CardTrader**, che ha un'API ufficiale e
+      permissiva, già usata come si deve; (3) cercare una terza fonte con API
+      aperta. **Senza il punto (1) andato a buon fine non si scrive il codice.**
+    - **MAIL MANDATA il 2026-08-24** a `contact@cardmarket.com` (l'indirizzo
+      del loro Impressum, §1 dei GTC; il telefono dice "not for customer
+      support"). Oggetto: richiesta di accordo scritto ai sensi del §9.
+      Dichiarato per iscritto, e va rispettato se rispondono sì: solo le carte
+      che l'utente mette in lista, qualche decina di letture al giorno mai a
+      raffica, dati **solo in locale** sul PC di chi usa l'app, nessuna
+      ridistribuzione né aggregazione, e disponibilità ad accettare condizioni
+      loro (limite di richieste, citazione in interfaccia, durata massima della
+      cache, endpoint specifici). Detto anche, per non farsi trovare in
+      contraddizione col repo pubblico: gli installer sono scaricabili da
+      GitHub, quindi il numero di utenti non è garantito a due, ma l'app non è
+      pubblicizzata, né venduta, né distribuita commercialmente.
+      **In attesa di risposta.** Se arriva un no, o non arriva nulla, la voce
+      resta com'è e il provider non si scrive. Testo integrale di quel che è
+      stato mandato: non è nel repo (contiene i contatti), sta nello scratchpad
+      di sessione come `mail_inviata.txt`.
   - **Fragilità da mettere in conto:** è una rincorsa. UA e profilo TLS vanno
     tenuti appaiati (cambiare versione di PySide6 cambia l'UA del motore e
     invalida il cookie), e se Cloudflare stringe, si rompe tutto in silenzio.
