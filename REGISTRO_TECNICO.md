@@ -1410,7 +1410,10 @@ protocollo `busy_reason()` su tutti i widget.)*
 - Colonne Panoramica trascinabili/personalizzabili; nascondere colonne sotto una
   certa larghezza (oggi la Panoramica dà il meglio a schermo intero).
 - Filtro per paese venditore; altre parole chiave per l'euristica "americana".
-- **Provider CardMarket — STUDIATO DAL VIVO il 2026-08-24, non deciso.** Non
+- **Provider CardMarket — STUDIATO DAL VIVO il 2026-08-24: tecnicamente
+  possibile, ma NON si fa.** I loro Termini lo vietano senza accordo scritto
+  (§9, verificato lo stesso giorno: vedi in fondo a questa voce). Quanto
+  segue resta perché la misura è buona e serve se un giorno l'accordo c'è. Non
   c'è API aperta come CardTrader: il sito sta dietro una **sfida gestita di
   Cloudflare**, quindi la domanda non è "come si scrive la classe" ma "come si
   entra". Misurato, non stimato: le sonde stanno in
@@ -1449,13 +1452,41 @@ protocollo `busy_reason()` su tutti i widget.)*
     sistema** (c'è su ogni Windows) — zero MB incorporati, ma serve CDP e i
     cookie di Edge sono cifrati con DPAPI; (c) farlo incollare all'utente dal
     suo browser — zero costo, ma un amico non smanettone non lo fa.
-  - **Cosa è lecito:** il `robots.txt` per un agente generico dice `Allow: /`
-    **senza nessun `Disallow`** (Content-Signal `search=yes,ai-train=no,
-    use=reference` — non ci riguarda, non addestriamo modelli). Da verificare
-    **prima** di scrivere codice: l'API ufficiale CardMarket e i loro Termini,
-    perché azzeccare l'impronta TLS per superare un controllo anti-bot è cosa
-    diversa dall'usare una porta aperta. **Non l'ho verificato**, non è nel
-    registro come fatto.
+  - **COSA È LECITO — VERIFICATO il 2026-08-24, ed è il punto che chiude la
+    questione.** Letto da processo separato (`leggi_termini.py`: `WebFetch` dà
+    403 sui Termini, e il pannello Browser su quel dominio è vietato, vedi
+    CLAUDE.md).
+    - **L'API ufficiale esiste ma è chiusa.** `help.cardmarket.com/en/
+      cardmarket-api` dice a chiare lettere che **non accettano richieste di
+      accesso**. E la documentazione risponde **410 Gone** — sia
+      `/ws/documentation` sia `API_2.0:Main_Page` — verificato con impronta di
+      browser vero, quindi è una rimozione deliberata, non un blocco anti-bot.
+    - **I Termini (§9 "API use") vietano proprio il nostro caso d'uso.** L'API
+      si può usare **solo per gestire i propri contenuti**; presentare le carte
+      e i loro prezzi *"require our prior written agreement"* (GTC CardMarket
+      §9); e l'uso dell'API o dei dati per **qualunque altro scopo** è
+      proibito, con riserva di tagliare l'accesso a chi ne abusa. Noi
+      vorremmo leggere le offerte **di altri venditori** e mostrare prezzi:
+      non è "gestire i propri contenuti", ed è esattamente ciò che richiede
+      l'accordo scritto.
+    - Altre clausole nella stessa direzione: §2 — l'uso della piattaforma è
+      consentito **solo** nei limiti dei GTC; e più avanti il divieto di
+      diffondere o riprodurre pubblicamente i contenuti della piattaforma.
+    - **Il `robots.txt` non ci salva.** Per un agente generico dice `Allow: /`
+      senza `Disallow` (Content-Signal `search=yes,ai-train=no,
+      use=reference`), ma è una direttiva per i motori di ricerca: non è un
+      permesso contrattuale, e i GTC valgono di più. Che le parole
+      "scraping/crawler/bot" non compaiano nei Termini **non è un permesso**:
+      è un silenzio, e §2 dice che è consentito solo quel che i GTC prevedono.
+    - **Conclusione: la classe non si scrive.** Raccogliere i prezzi per vie
+      tecniche superando il loro controllo anti-bot va contro quel che
+      dichiarano nero su bianco, e questo progetto ha sempre rispettato le
+      regole delle fonti (YGOPRODeck, CardTrader). Le vie aperte, in ordine:
+      (1) **scrivere a CardMarket** e chiedere l'accordo scritto / l'accesso
+      all'API — costa una mail e può dire no; (2) restare su **CardTrader**,
+      che ha un'API ufficiale e permissiva, già usata come si deve;
+      (3) cercare una terza fonte con API aperta. La decisione è dell'utente,
+      ma senza il punto (1) andato a buon fine **non si scrive il codice**.
   - **Fragilità da mettere in conto:** è una rincorsa. UA e profilo TLS vanno
     tenuti appaiati (cambiare versione di PySide6 cambia l'UA del motore e
     invalida il cookie), e se Cloudflare stringe, si rompe tutto in silenzio.
