@@ -1,5 +1,12 @@
 """Immagini delle carte: scaricate UNA volta e tenute su DISCO.
 
+Sta nel `core` — e non dentro un modulo — perché la usano in due: il Database
+(elenco e pagina della carta) e il Market Watch (griglia dell'importazione
+`.ydk`). I moduli **non si importano fra loro**, quindi ciò che serve a due
+posti va in un posto comune: la stessa strada già fatta da `badges.py` e
+`rarity.py`. La cache su disco è una sola, quindi un'immagine scaricata da un
+modulo è già pronta per l'altro.
+
 È la regola più stringente di YGOPRODeck, e va citata per intero perché è il
 motivo per cui questo file esiste invece di una semplice cache in memoria:
 
@@ -27,7 +34,13 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QRunnable, Signal
 from PySide6.QtGui import QImage
 
-from .api import SESSION
+import requests
+
+# Sessione propria: questo file non può dipendere da un modulo (sarebbe il
+# `core` a importare `modules`, cioè il contrario di come sta in piedi
+# l'applicazione). Lo User-Agent resta quello dichiarato a YGOPRODeck.
+SESSION = requests.Session()
+SESSION.headers["User-Agent"] = "YGO-Toolbox (app desktop personale)"
 
 CACHE_DIR = Path.home() / ".ygo_toolbox" / "card_images"
 

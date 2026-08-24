@@ -575,7 +575,8 @@ class MarketWatchRepository:
             segni = ",".join("?" * len(blocco))
             try:
                 righe = self.storage.query(
-                    f"SELECT id, name, name_it, image_url FROM cdb_cards "
+                    f"SELECT id, name, name_it, image_url, "
+                    f"image_small_url FROM cdb_cards "
                     f"WHERE id IN ({segni})", tuple(blocco))
             except sqlite3.Error:
                 return {}

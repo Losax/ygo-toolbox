@@ -942,20 +942,15 @@ class MarketWatchWidget(QWidget):
         # base è un gesto di ricerca, non un'impostazione dell'app.
         self.deck_btn = QPushButton()
         self.deck_btn.setIcon(_make_deck_icon())
-        self.deck_btn.setToolTip(tr("Basi (mazzi): creane una a mano o importa un file .ydk"))
-        # Due modi di fare la stessa cosa — comporla carta per carta o partire
-        # da un file — quindi stanno sotto lo stesso pulsante, non sparsi.
-        deck_menu = QMenu(self.deck_btn)
-        deck_menu.addAction(tr("Nuova base…"), lambda: self.open_deck())
-        deck_menu.addAction(tr("Importa mazzo (.ydk)…"), self.import_ydk)
-        self.deck_btn.setMenu(deck_menu)
-        # `setMenu` aggiunge una freccetta che, in un quadrato da 38px, spinge
-        # il ventaglio a sinistra e lo schiaccia: accanto all'icona pulita dei
-        # filtri si vedeva la differenza. Si toglie l'indicatore — il menu si
-        # apre lo stesso al clic — e il pulsante resta come gli altri.
-        self.deck_btn.setStyleSheet(
-            "QPushButton::menu-indicator { image: none; width: 0px; }")
+        self.deck_btn.setToolTip(tr("Nuova base: un mazzo di carte in più copie, con filtri comuni"))
+        self.deck_btn.clicked.connect(lambda: self.open_deck())
         search_row.addWidget(self.deck_btn)
+        # Pulsante a PAROLE, non un'icona: importare un mazzo è un gesto che si
+        # cerca leggendo, e nascosto dentro un menù non lo trovava nessuno.
+        self.import_btn = QPushButton(tr("Import"))
+        self.import_btn.setToolTip(tr("Importa un mazzo da file .ydk"))
+        self.import_btn.clicked.connect(self.import_ydk)
+        search_row.addWidget(self.import_btn)
         self._update_card_filters_btn()
         pv.addLayout(search_row)
 
@@ -1227,6 +1222,8 @@ class MarketWatchWidget(QWidget):
         for btn in (*self._header_buttons, self.filters_btn, self.deck_btn):  # icone quadrate
             btn.setFixedSize(self._sp(38), self._sp(38))
             btn.setIconSize(QSize(self._sp(20), self._sp(20)))
+        # l'Import ha del testo dentro: gli si impone l'altezza, non il lato
+        self.import_btn.setFixedHeight(self._sp(38))
         if big:
             self._apply_overview_visuals()   # include la densità
         else:
@@ -2861,6 +2858,7 @@ class MarketWatchWidget(QWidget):
                 "passcode": carta.passcode,
                 "name": nome,
                 "name_it": riga["name_it"] or "",
+                "thumb_url": riga["image_small_url"] or riga["image_url"] or "",
                 "copies": carta.total,
                 # si spiega il totale solo quando viene da più sezioni
                 "sections": carta.sections_label() if carta.split else "",

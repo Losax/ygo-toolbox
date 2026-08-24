@@ -496,5 +496,13 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             'There is no card in the file.',
         'Nessuno dei {n} codici del file è nel catalogo delle carte. Se il Database è vecchio, sincronizzalo.':
             'None of the {n} codes in the file is in the card catalog. If the Database is out of date, sync it.',
+        "In un file .ydk non c'è la rarità: scegli una carta dal mazzo e poi quale stampa seguire. Le carte lasciate senza stampa non entrano nella base.":
+            'A .ydk file carries no rarity: pick a card from the deck, then which printing to track. Cards left without a printing are not added to the base.',
+        'Scegli una carta dal mazzo':
+            'Pick a card from the deck',
+        'Import':
+            'Import',
+        'Importa un mazzo da file .ydk':
+            'Import a deck from a .ydk file',
     },
 }

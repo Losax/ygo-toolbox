@@ -1775,13 +1775,15 @@ def main() -> int:
     st_senza.close()
 
     # -- col catalogo, i passcode diventano nomi (quelli ignoti restano fuori) --
+    # le colonne sono quelle VERE di cdb_cards: se la finta ne perde una, la
+    # query fallisce e il ponte difensivo la trasforma in "nessuna carta"
     storage.execute(
         "CREATE TABLE IF NOT EXISTS cdb_cards (id INTEGER PRIMARY KEY, "
-        "name TEXT, name_it TEXT, image_url TEXT)")
+        "name TEXT, name_it TEXT, image_url TEXT, image_small_url TEXT)")
     storage.execute(
-        "INSERT OR REPLACE INTO cdb_cards (id, name, name_it, image_url) "
-        "VALUES (?, ?, ?, ?)",
-        (14558127, "Ash Blossom & Joyous Spring", "Fioritura di Cenere", ""))
+        "INSERT OR REPLACE INTO cdb_cards (id, name, name_it, image_url, "
+        "image_small_url) VALUES (?, ?, ?, ?, ?)",
+        (14558127, "Ash Blossom & Joyous Spring", "Fioritura di Cenere", "", ""))
     assert widget.repo.has_card_catalog()
     trovate = widget.repo.cards_by_passcode([14558127, 27204312])
     assert set(trovate) == {14558127}, trovate
@@ -1801,33 +1803,38 @@ def main() -> int:
 
     # -- il dialogo: NIENTE è preselezionato (sceglierlo sarebbe inventare) --
     voci_ydk = [{"passcode": 14558127, "name": "Ash Blossom & Joyous Spring",
-                 "name_it": "Fioritura di Cenere", "copies": 3,
-                 "sections": "2 main + 1 side", "printings": stampe}]
+                 "name_it": "Fioritura di Cenere", "thumb_url": "",  # niente rete
+                 "copies": 3, "sections": "2 main + 1 side", "printings": stampe}]
     dlg_ydk = YdkImportDialog(voci_ydk, unknown=[27204312], ignored=[(12, "rumore")],
                               default_name="Prova")
     assert not dlg_ydk._ok_btn.isEnabled(), "senza scelte non si crea la base"
     assert dlg_ydk.result_cards() == []
-    padre_ydk = dlg_ydk.tree.topLevelItem(0)
-    assert padre_ydk.childCount() == 3
+    # il mazzo è una GRIGLIA di carte; le stampe compaiono scegliendone una
+    assert dlg_ydk.grid.count() == 1
+    assert dlg_ydk.prints.count() == 0, "finché non scegli una carta, niente stampe"
+    dlg_ydk.grid.setCurrentRow(0)
+    assert dlg_ydk.prints.count() == 3
     # due stampe con rarità ed espansione identiche restano DUE voci distinte:
     # sono blueprint diversi, con prezzi diversi. Si distinguono col numero.
-    etichette = [padre_ydk.child(i).text(0) for i in range(3)]
+    etichette = [dlg_ydk.prints.item(k).text() for k in range(3)]
     assert sum("#bp-com" in e for e in etichette) == 2, etichette
     # scegliere una stampa abilita il pulsante e porta con sé le copie
-    dlg_ydk._on_click(padre_ydk.child(0), 0)
+    dlg_ydk._choose(0, 0)
     assert dlg_ydk._ok_btn.isEnabled()
+    assert "✓" in dlg_ydk.grid.item(0).text(), "la carta a posto si vede nella griglia"
     scelte_ydk = dlg_ydk.result_cards()
     assert len(scelte_ydk) == 1 and scelte_ydk[0][1] == 3, scelte_ydk
     assert scelte_ydk[0][0].name == "Ash Blossom & Joyous Spring"
     # ri-clic sulla stessa = ci ho ripensato
-    dlg_ydk._on_click(padre_ydk.child(0), 0)
+    dlg_ydk._choose(0, 0)
     assert not dlg_ydk._ok_btn.isEnabled() and dlg_ydk.result_cards() == []
+    assert "✓" not in dlg_ydk.grid.item(0).text()
     # i codici non riconosciuti si vedono, non spariscono
     assert "27204312" in dlg_ydk.summary.text(), dlg_ydk.summary.text()
     dlg_ydk.deleteLater()
     print("[OK] Importa .ydk: sezioni sommate, righe sporche mostrate, ponte "
-          "difensivo al catalogo carte, stampe dalla più comune, e NIENTE "
-          "preselezionato (la stampa la sceglie l'utente).")
+          "difensivo al catalogo carte, mazzo in GRIGLIA con le immagini dalla "
+          "cache su disco, e NIENTE preselezionato (la stampa la sceglie l'utente).")
 
     widget.stop()
     storage.close()

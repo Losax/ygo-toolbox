@@ -57,7 +57,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Apri su CardTrader** | Icona **freccia in uscita** sulla riga, accanto ai filtri e al cestino: apre la pagina della carta sul sito. Basta l'id: CardTrader reindirizza alla pagina giusta. **I filtri non viaggiano nel link** — il sito non li accetta nell'indirizzo (li applica internamente) — perciò il tooltip elenca quelli in vigore, così si rimettono in due secondi. |
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
-| **Importa un mazzo (.ydk)** | Pulsante **carte a ventaglio** → *Importa mazzo (.ydk)…* (o tasto destro sulla watchlist). Il `.ydk` è il formato con cui i mazzi si scambiano fra siti e programmi: dentro ci sono i **codici delle carte** e **quante copie**, ma **non la rarità** — e la stessa carta può avere decine di stampe a prezzi diversissimi. Quindi l'app apre una griglia: **una riga per carta** e, aprendola, **tutte le sue stampe** (dalla più comune alla più ricercata) fra cui scegliere. **Main, Extra e Side si sommano**: se una carta sta 2 volte nel main e 1 nel side, la base ne chiede 3, e la riga lo spiega. Niente è scelto al posto tuo: le carte che lasci senza stampa **non entrano nella base**, e il riepilogo in basso lo dice. I codici che il catalogo non conosce vengono **mostrati**, non ingoiati. Serve il catalogo del **Database** sincronizzato (è lui a sapere che codice corrisponde a che carta). |
+| **Importa un mazzo (.ydk)** | Pulsante **Import** accanto alla barra di ricerca (o tasto destro sulla watchlist). Il `.ydk` è il formato con cui i mazzi si scambiano fra siti e programmi: dentro ci sono i **codici delle carte** e **quante copie**, ma **non la rarità** — e la stessa carta può avere decine di stampe a prezzi diversissimi. Quindi l'app apre il mazzo come una **griglia di immagini**: clic su una carta e a destra compaiono **tutte le sue stampe**, dalla più comune alla più ricercata, fra cui scegliere. Le carte a posto si spuntano in teal. **Main, Extra e Side si sommano**: se una carta sta 2 volte nel main e 1 nel side, la base ne chiede 3, e la riga lo spiega. Niente è scelto al posto tuo: le carte che lasci senza stampa **non entrano nella base**, e il riepilogo in basso lo dice. I codici che il catalogo non conosce vengono **mostrati**, non ingoiati. Serve il catalogo del **Database** sincronizzato (è lui a sapere che codice corrisponde a che carta). |
 | **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
 | **Ordina per** | Riga di pulsantini sopra la tabella: **Manuale** (l'ordine che hai dato trascinando), **Rarità**, **Prezzo**, **Var.**. Il criterio attivo è **teal** con una freccetta; **cliccandolo di nuovo si inverte** il verso. L'ordinamento agisce **dentro ogni cartella/base** e fra le carte sciolte: i gruppi restano gruppi. Le carte senza il dato (prezzo mai visto, variazione non calcolabile) stanno **sempre in fondo**, in entrambi i versi. Il criterio si ricorda alla riapertura. |
 | **Grafico dello storico** | **Doppio clic** su una carta in watchlist (o tasto destro → *Storico prezzi…*): si apre una finestra col grafico dei prezzi rilevati, il prezzo attuale, il minimo, il massimo, la variazione dal primo prezzo e da quanti giorni si segue la carta. Passando il mouse si legge il prezzo in vigore a quella data. Mostra solo i prezzi presi **con i filtri di adesso**; se ce ne sono di più vecchi, presi con altri filtri, un interruttore in basso li aggiunge smorzati e separati da una linea tratteggiata. |
@@ -818,6 +818,26 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     YGOPRODeck**, quindi non è un buco nostro.
     Misurato sul mazzo vero (40 carte, 70 copie): 409 stampe da mostrare, base
     creata in 0,6 secondi con 39 carte e 68 copie, e nessuna copia sbagliata.
+
+78. **La griglia del mazzo, con le immagini (v1.5.1).** L'importazione `.ydk`
+    della versione prima funzionava ma si vedeva come un elenco di testo, e
+    l'opzione era nascosta dentro un menù. Su richiesta dell'utente: un
+    **pulsante *Import*** a parole accanto alla ricerca — un gesto che si cerca
+    leggendo, non un'icona da indovinare — e il mazzo mostrato **come un
+    mazzo**, cioè una griglia di immagini con le copie davanti al nome; a
+    destra le stampe della carta su cui clicchi.
+    Le immagini non costano quasi niente perché arrivano dalla **stessa cache
+    su disco del Database**: si scaricano una volta sola e restano lì. Misurato
+    sul mazzo di prova: 39 immagini in **5 secondi** la prima volta, **zero
+    secondi e zero rete** la seconda. Per questo il file che le gestisce è
+    passato nel `core`: la stessa cache serve a due moduli, e i moduli non si
+    importano fra loro.
+    Tre difetti trovati **guardando le schermate**, non ragionandoci: le
+    pillole di rarità venivano rimpicciolite finché la sigla non si leggeva
+    più; i nomi lunghi delle espansioni venivano tagliati di netto, e il codice
+    del set — che è la parte che serve — spariva a destra, quindi ora sta
+    davanti; e con le celle larghe 132 pixel stavano solo 4 carte per riga,
+    contro le 6 di adesso.
 
 ## 4. Note operative importanti
 

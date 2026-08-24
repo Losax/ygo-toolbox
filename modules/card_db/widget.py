@@ -46,9 +46,9 @@ from PySide6.QtWidgets import (
 from core import anim, badges, i18n, theme
 from core.context import AppContext
 from core.i18n import tr
+from core import card_images as images
 from core.rarity import is_rarity, rarity_pixmap, rarity_rank
 
-from . import images
 from .api import YgoProError
 from .repository import CardDbRepository
 from .workers import SetsWorker, SyncWorker, VersionWorker
