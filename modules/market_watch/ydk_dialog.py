@@ -43,7 +43,10 @@ from .search_model import _make_empty_frame
 
 BADGE_H = 18                     # pillole di rarità, come nelle altre tabelle
 CARD = QSize(100, 146)           # proporzioni di carta
-CELL = QSize(118, 214)           # cella: immagine + due righe di testo
+# La cella tiene l'immagine PIÙ il nome, che può andare a tre righe
+# ("3× Ash Blossom & Joyous Spring"): con 214 di altezza l'ultima riga
+# toccava il bordo della piastrella.
+CELL = QSize(118, 228)
 _ROLE_INDEX = Qt.ItemDataRole.UserRole      # indice della carta in _entries
 _ROLE_PRINT = Qt.ItemDataRole.UserRole + 1  # indice della stampa
 
@@ -139,6 +142,7 @@ class YdkImportDialog(QDialog):
 
         # --- sinistra: il mazzo, come lo si guarda ---
         self.grid = QListWidget()
+        self.grid.setObjectName("deckGrid")   # stile nel tema
         self.grid.setViewMode(QListWidget.ViewMode.IconMode)
         self.grid.setIconSize(CARD)
         self.grid.setGridSize(CELL)
@@ -227,7 +231,7 @@ class YdkImportDialog(QDialog):
 
     # -------------------------------------------------------------- mazzo
     def _build_grid(self) -> None:
-        vuota = QIcon(_make_empty_frame(CARD))
+        vuota = self._icon_for(_make_empty_frame(CARD))
         for i, _voce in enumerate(self._entries):
             item = QListWidgetItem(self.grid)
             item.setData(_ROLE_INDEX, i)
@@ -284,12 +288,29 @@ class YdkImportDialog(QDialog):
         self._pix[int(card_id)] = pix
         self._paint_image(int(card_id))
 
+    @staticmethod
+    def _icon_for(pix: QPixmap) -> QIcon:
+        """Icona che NON cambia quando la cella è selezionata.
+
+        Di suo Qt ridisegna l'icona in modalità `Selected`, cioè le stende
+        sopra una velatura del colore di evidenziazione: su un'illustrazione
+        si vede come uno sbiadimento. Dando lo stesso pixmap alle due
+        modalità, la carta resta la carta e a cambiare è solo lo sfondo
+        della cella.
+        """
+        scalato = pix.scaled(CARD, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
+        icona = QIcon()
+        icona.addPixmap(scalato, QIcon.Mode.Normal)
+        icona.addPixmap(scalato, QIcon.Mode.Selected)
+        icona.addPixmap(scalato, QIcon.Mode.Active)
+        return icona
+
     def _paint_image(self, card_id: int) -> None:
         pix = self._pix.get(card_id)
         if pix is None:
             return
-        icona = QIcon(pix.scaled(CARD, Qt.AspectRatioMode.KeepAspectRatio,
-                                 Qt.TransformationMode.SmoothTransformation))
+        icona = self._icon_for(pix)
         for i, voce in enumerate(self._entries):
             if int(voce["passcode"]) == card_id:
                 item = self.grid.item(i)

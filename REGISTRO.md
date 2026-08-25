@@ -856,6 +856,25 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     primi due l'app consiglia di sincronizzare; negli altri dice cosa c'è che
     non va e come rimediare davvero.
 
+80. **La selezione nella griglia del mazzo (v1.5.3).** Segnalazione
+    dell'utente: premendo una carta l'evidenziazione era "un po' bruttina",
+    poco uniforme. Aveva ragione, e i motivi erano tre.
+    Il colore di evidenziazione dell'app è un teal **pieno**: va benissimo su
+    una riga di testo, ma su una griglia di illustrazioni diventava un
+    rettangolo netto che copriva la carta. Ora si usa il teal **traslucido**
+    già in uso nella tabella principale, con un filo di bordo: la selezione si
+    posa sopra la carta invece di coprirla.
+    Poi le celle non selezionate erano trasparenti, così l'unica con lo sfondo
+    sembrava una macchia. Adesso **ogni carta sta su una piastrella** con gli
+    angoli tondi: la griglia si legge uniforme e la selezione è una variazione,
+    non un salto.
+    Infine l'illustrazione **sbiadiva**: Qt, quando una cella è selezionata,
+    ridisegna l'icona stendendoci sopra una velatura del colore di
+    evidenziazione. Ora la carta resta la carta, e a cambiare è solo lo sfondo.
+    (Dettaglio da poco ma fastidioso: il bordo della cella ora c'è sempre,
+    trasparente quando non è selezionata — se comparisse solo al clic, la
+    carta si sposterebbe di un pixel ogni volta.)
+
 ## 4. Note operative importanti
 
 - **Non fare raffiche di richieste** verso CardTrader: è dietro Cloudflare e può

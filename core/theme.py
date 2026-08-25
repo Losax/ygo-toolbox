@@ -328,6 +328,37 @@ QListView#searchPopup {{
     color: #eef1f6;
 }}
 
+/* ---- griglia del mazzo (importazione .ydk) ----
+   La selezione ereditata dalla palette è il teal PIENO: su una griglia di
+   immagini diventa un rettangolo netto che copre la carta e la sbiadisce.
+   Qui si usa lo stesso teal TRASLUCIDO della tabella principale, con gli
+   angoli tondi delle voci del menu: la selezione si posa sopra la carta
+   invece di coprirla. ---- */
+QListWidget#deckGrid {{
+    background: #1b212a;
+    border: 1px solid #2f3744;
+    border-radius: {s(18)}px;
+    padding: {s(6)}px;
+    outline: 0;
+}}
+QListWidget#deckGrid::item {{
+    /* OGNI cella è una piastrella, non solo quella scelta: senza, le celle
+       spente erano trasparenti e la selezione sembrava una macchia. Così la
+       griglia si legge uniforme e la selezione è una variazione, non un salto. */
+    background: #232a34;
+    /* il bordo c'è SEMPRE, trasparente da spento: se comparisse solo da
+       selezionato, la cella si sposterebbe di un pixel a ogni clic */
+    border: 1px solid transparent;
+    border-radius: {s(12)}px;
+    padding: {s(6)}px;
+    margin: {s(4)}px;
+}}
+QListWidget#deckGrid::item:hover {{ background: #2a323d; }}
+QListWidget#deckGrid::item:selected {{
+    background: rgba(26,195,178,0.14);
+    border: 1px solid rgba(26,195,178,0.65);
+}}
+
 /* ---- scrollbar ---- */
 QScrollBar:vertical {{ background: transparent; width: {s(12)}px; margin: {s(4)}px {s(2)}px; }}
 QScrollBar::handle:vertical {{ background: #333b48; border-radius: {s(6)}px; min-height: {s(32)}px; }}
