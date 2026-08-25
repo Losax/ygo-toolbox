@@ -135,7 +135,8 @@ del README in `docs/`). Committare e pushare a fine sessione.
   (drag&drop, a parità → alfabetico); `folder_id` = cartella (NULL = fuori).
 - `mw_folders(id, provider, name, position, expanded, filters)` — cartelle
   espandibili della watchlist; eliminandone una le carte tornano a folder_id
-  NULL. `filters` = JSON `ListingFilters` validi per TUTTE le carte contenute
+  NULL **se si sceglie così** (v1.5.4: l'eliminazione di un gruppo pieno
+  chiede, e la seconda strada porta via anche le carte). `filters` = JSON `ListingFilters` validi per TUTTE le carte contenute
   ('' = usa i predefiniti). `is_deck` = **base (mazzo)** invece di cartella
   semplice: cambia icona (carte a ventaglio, la stessa del pulsante che le crea)
   e aggiunge il badge "BASE" in colonna 2. Serve un flag ESPLICITO perché una
@@ -943,6 +944,26 @@ confini di parola per non pescare "usato").
   usciva con **0xC0000409** (fail-fast di Windows) senza un rigo di errore,
   perché il thread sopravviveva al widget. Si vede SOLO guardando il codice di
   uscita, non l'output: "tutti i controlli superati" era stampato lo stesso.
+- **Eliminare un gruppo CHIEDE, e chiede cosa** (v1.5.4). `_delete_folder`
+  toglieva e basta, all'istante: un clic sul cestino della riga smontava una
+  base da quaranta carte senza una parola. Il guaio è che il risultato non
+  sembra nemmeno un'eliminazione — la cartella sparisce e le carte restano
+  sparse nella watchlist — quindi al riavvio dà l'impressione che la base si
+  sia **"sfaldata da sola"**, ed è esattamente così che l'utente l'ha
+  segnalato. Diagnosi fatta sul suo database: `sqlite_sequence` diceva
+  `mw_folders` arrivata a **id 10** con solo 2, 3, 5, 7, 8 esistenti — due
+  cartelle create e cancellate — e 31 carte sciolte nate **tutte nello stesso
+  secondo**, cioè un'importazione. Nessuna via automatica cancella cartelle
+  (`delete_folder` la chiamano solo il cestino, il menu contestuale e l'import
+  JSON in modalità *sostituisci*), e un riavvio simulato lasciava la base
+  intatta: non era corruzione, era un clic senza rete di protezione.
+  Ora `_delete_folder` **chiede** (`Solo il gruppo` / `Gruppo e carte` /
+  `Annulla`, predefinito quello che non perde niente) e `_do_delete_folder`
+  esegue — separati apposta, così i test provano le due strade senza aprire
+  finestre. Un gruppo **vuoto** non chiede nulla: non c'è niente da perdere.
+  La lezione: **un'azione distruttiva silenziosa non viene letta come una
+  scelta ma come un difetto del programma**, perché chi la subisce non
+  collega l'effetto al proprio gesto.
 - **Ponte fra moduli** (`AppContext.open_module`, v1.1.0): i moduli **non si
   importano fra loro**, si chiamano per `id` attraverso il contesto. La
   `MainWindow` porta in primo piano il modulo e gli passa il messaggio se

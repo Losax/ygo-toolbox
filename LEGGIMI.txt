@@ -1,5 +1,5 @@
 =====================================================================
-  YGO TOOLBOX v1.5.3 — prezzi delle carte Yu-Gi-Oh! su CardTrader
+  YGO TOOLBOX v1.5.4 — prezzi delle carte Yu-Gi-Oh! su CardTrader
 =====================================================================
 
 Cosa fa

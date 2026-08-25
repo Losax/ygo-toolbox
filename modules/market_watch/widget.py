@@ -2528,7 +2528,7 @@ class MarketWatchWidget(QWidget):
             menu.addAction(tr("Esporta questa base…"),
                            lambda folder=f: self.export_watchlist(folder))
             menu.addAction(tr("Rinomina cartella…"), lambda folder=f: self._rename_folder(folder))
-            menu.addAction(tr("Elimina cartella (le carte tornano fuori)"),
+            menu.addAction(tr("Elimina il gruppo…"),
                            lambda folder=f: self._delete_folder(folder))
         menu.addSeparator()
         menu.addAction(tr("Nuova base…"), lambda: self.open_deck())
@@ -2997,8 +2997,68 @@ class MarketWatchWidget(QWidget):
             self.repo.rename_folder(folder["id"], name.strip())
             self._reload_table()
 
+    @staticmethod
+    def _folder_field(folder, chiave, default=None):
+        """Campo di una cartella, che arrivi da SQLite o da un dizionario."""
+        try:
+            return folder[chiave]
+        except (KeyError, IndexError):
+            return default
+
+    def _watches_in_folder(self, folder_id) -> list:
+        return [w for w in self.repo.list_watches()
+                if w["provider"] == PROVIDER and w["folder_id"] == folder_id]
+
     def _delete_folder(self, folder) -> None:
+        """Eliminare un gruppo PIENO chiede prima — e chiede *cosa*.
+
+        Prima toglieva e basta, all'istante: un clic sul cestino smontava una
+        base da quaranta carte senza una parola. Il risultato non sembrava
+        nemmeno un'eliminazione — la cartella spariva e le carte restavano
+        sparse nella watchlist, così al riavvio dava l'impressione che la base
+        si fosse "sfaldata da sola".
+        Erano due mancanze in una: nessuna conferma, e nessun modo di buttare
+        via la base **insieme** alle sue carte, che è la cosa che si vuole
+        fare quando un mazzo non interessa più.
+        Un gruppo vuoto non chiede niente: non c'è nulla da perdere.
+        """
+        dentro = self._watches_in_folder(folder["id"])
+        if not dentro:
+            self._do_delete_folder(folder, con_carte=False)
+            return
+        nome = self._folder_field(folder, "name", "") or ""
+        e_base = bool(self._folder_field(folder, "is_deck", 0))
+        copie = sum(w["copies"] if "copies" in w.keys() else 1 for w in dentro)
+        box = QMessageBox(self)
+        box.setWindowTitle(tr("Elimina la base") if e_base
+                           else tr("Elimina la cartella"))
+        box.setText(tr("«{nome}» contiene {n} carte ({c} copie).").format(
+            nome=nome, n=len(dentro), c=copie))
+        box.setInformativeText(tr(
+            "«Solo il gruppo» scioglie il raggruppamento: le carte restano "
+            "nella watchlist con il loro storico prezzi.\n"
+            "«Gruppo e carte» elimina anche le carte e il loro storico."))
+        solo = box.addButton(tr("Solo il gruppo"),
+                             QMessageBox.ButtonRole.AcceptRole)
+        tutto = box.addButton(tr("Gruppo e carte"),
+                              QMessageBox.ButtonRole.DestructiveRole)
+        box.addButton(tr("Annulla"), QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(solo)      # il predefinito è quello che non perde
+        box.exec()
+        scelto = box.clickedButton()
+        if scelto is solo:
+            self._do_delete_folder(folder, con_carte=False)
+        elif scelto is tutto:
+            self._do_delete_folder(folder, con_carte=True)
+
+    def _do_delete_folder(self, folder, con_carte: bool = False) -> None:
+        """Elimina davvero. `con_carte=True` porta via anche le carte."""
+        if con_carte:
+            for w in self._watches_in_folder(folder["id"]):
+                self.repo.remove_watch(w["id"])   # toglie anche storico e quote
         self.repo.delete_folder(folder["id"])
+        # senza, `_effective_filters` continuerebbe a leggere una cartella morta
+        self._refresh_folder_cache()
         self._reload_table()
 
     def _maybe_welcome(self) -> None:
@@ -3388,7 +3448,7 @@ class MarketWatchWidget(QWidget):
             # e copie): rinominare è solo una delle cose che ci si vuole fare
             (self._pencil_icon, tr("Modifica la base: nome, filtri, carte e copie"),
              lambda _=False, f=folder: self.open_deck(f)),
-            (self._trash_icon, tr("Elimina cartella (le carte tornano fuori)"),
+            (self._trash_icon, tr("Elimina il gruppo (chiede se togliere anche le carte)"),
              lambda _=False, f=folder: self._delete_folder(f)),
         ):
             btn = QPushButton()

@@ -875,6 +875,27 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     trasparente quando non è selezionata — se comparisse solo al clic, la
     carta si sposterebbe di un pixel ogni volta.)
 
+81. **La base che sembrava sfaldarsi da sola (v1.5.4).** Segnalazione
+    dell'utente: rientrando nell'app la base importata non c'era più e le
+    carte erano sparse una per una, «il che rende anche complicato nel caso
+    voglia eliminarlo tutto insieme».
+    Indagine sul suo database: la cartella della base era stata **creata e poi
+    cancellata** (il contatore degli identificativi era arrivato a 10, ma le
+    cartelle esistenti erano cinque), e le 31 carte sciolte erano nate tutte
+    nello stesso secondo — cioè l'importazione. Nessuna parte dell'app
+    cancella cartelle da sola, e riaprendo l'app su un database con una base
+    dentro la base restava intatta: **non era corruzione**.
+    Era il cestino sulla riga della base, che eliminava **all'istante e senza
+    chiedere niente**, lasciando le carte sparse. Un'eliminazione muta non si
+    legge come una scelta: si legge come un difetto del programma, perché non
+    si collega l'effetto al proprio gesto — e infatti è ricomparsa come "si
+    sfalda da sola".
+    Ora eliminare un gruppo che contiene carte **chiede**, e offre le due cose
+    che si possono volere: *Solo il gruppo* (scioglie il raggruppamento, le
+    carte e il loro storico restano) oppure ***Gruppo e carte*** (via tutto,
+    storico compreso) — che è quello che mancava. Il predefinito è quello che
+    non perde niente, e un gruppo vuoto se ne va senza domande.
+
 ## 4. Note operative importanti
 
 - **Non fare raffiche di richieste** verso CardTrader: è dietro Cloudflare e può

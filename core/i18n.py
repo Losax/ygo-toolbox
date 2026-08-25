@@ -510,5 +510,21 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             'The card catalog cannot be read: {dettaglio}.',
         "Sincronizzare il Database NON risolve: riscrive le righe, non la forma della tabella. Esporta la watchlist (tasto destro → Esporta tutto…), chiudi l'app, cancella ~/.ygo_toolbox/ygo_toolbox.db e risincronizza.":
             'Syncing the Database will NOT fix it: it rewrites the rows, not the shape of the table. Export your watchlist (right click → Export everything…), close the app, delete ~/.ygo_toolbox/ygo_toolbox.db and sync again.',
+        'Elimina la base':
+            'Delete the base',
+        'Elimina la cartella':
+            'Delete the folder',
+        'Elimina il gruppo…':
+            'Delete the group…',
+        'Elimina il gruppo (chiede se togliere anche le carte)':
+            'Delete the group (asks whether to remove the cards too)',
+        '«{nome}» contiene {n} carte ({c} copie).':
+            '“{nome}” holds {n} cards ({c} copies).',
+        '«Solo il gruppo» scioglie il raggruppamento: le carte restano nella watchlist con il loro storico prezzi.\n«Gruppo e carte» elimina anche le carte e il loro storico.':
+            '“Group only” dissolves the grouping: the cards stay in the watchlist with their price history.\n“Group and cards” deletes the cards and their history as well.',
+        'Solo il gruppo':
+            'Group only',
+        'Gruppo e carte':
+            'Group and cards',
     },
 }

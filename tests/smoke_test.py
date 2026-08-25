@@ -1865,6 +1865,39 @@ def main() -> int:
           "GRIGLIA con le immagini dalla "
           "cache su disco, e NIENTE preselezionato (la stampa la sceglie l'utente).")
 
+    # 7d) eliminare un gruppo PIENO: due strade, e nessuna è quella muta di prima
+    fid_del = widget.repo.add_folder(_PROV, "Da buttare", "", is_deck=True)
+    widget.repo.add_watch(_PROV, "900", "Carta 900", "", 10.0, "", 2)
+    w900 = [w for w in widget.repo.list_watches() if w["ref_id"] == "900"][0]
+    widget._move_watch(w900["id"], fid_del)
+    widget.repo.record_price(_PROV, "900", 5.0, "EUR")
+    assert len(widget._watches_in_folder(fid_del)) == 1
+
+    # "solo il gruppo": si scioglie il raggruppamento, la carta e il suo
+    # storico restano — è il comportamento di prima, ma ora è una SCELTA
+    widget._do_delete_folder({"id": fid_del, "name": "Da buttare", "is_deck": 1},
+                             con_carte=False)
+    assert not any(f["id"] == fid_del for f in widget.repo.list_folders(_PROV))
+    rimasta = [w for w in widget.repo.list_watches() if w["ref_id"] == "900"]
+    assert rimasta and rimasta[0]["folder_id"] is None, "la carta non deve sparire"
+    assert widget.repo.history_points(_PROV, "900"), "lo storico non si tocca"
+
+    # "gruppo e carte": spariscono insieme, storico compreso (niente orfani)
+    fid_del2 = widget.repo.add_folder(_PROV, "Da buttare 2", "", is_deck=True)
+    widget._move_watch(rimasta[0]["id"], fid_del2)
+    widget._do_delete_folder({"id": fid_del2, "name": "Da buttare 2", "is_deck": 1},
+                             con_carte=True)
+    assert not any(f["id"] == fid_del2 for f in widget.repo.list_folders(_PROV))
+    assert not [w for w in widget.repo.list_watches() if w["ref_id"] == "900"]
+    assert not widget.repo.history_points(_PROV, "900"), "niente dati orfani"
+
+    # un gruppo VUOTO non chiede niente: non c'è nulla da perdere
+    fid_vuoto = widget.repo.add_folder(_PROV, "Vuota", "")
+    widget._delete_folder({"id": fid_vuoto, "name": "Vuota"})
+    assert not any(f["id"] == fid_vuoto for f in widget.repo.list_folders(_PROV))
+    print("[OK] Elimina un gruppo: chiede prima, sa portarsi via anche le carte "
+          "(storico compreso) e il gruppo vuoto se ne va senza domande.")
+
     widget.stop()
     storage.close()
     print("\nTutti i controlli superati.")
