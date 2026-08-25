@@ -486,6 +486,29 @@ confini di parola per non pescare "usato").
       rilancio*. Se un flusso ha quattro anelli, il collaudo deve averne
       quattro.
 
+- **GOTCHA 27 — la shell Bash mangia le opzioni `/FLAG` di Windows** (scoperto
+  il 25/08/2026).
+    - **Sintomo:** `taskkill /F /IM "YGO Toolbox.exe"` risponde *"Argomento/
+      opzione non valida - 'F:/'"*. Più insidioso il seguito: PyInstaller
+      fallisce con `PermissionError: Accesso negato: dist\YGO Toolbox.exe`,
+      perché l'app che si credeva chiusa era ancora aperta.
+    - **Causa:** la Bash di Git è MSYS e **converte in percorsi tutti gli
+      argomenti che cominciano per `/`**. `/F` diventa `F:/`. Vale per
+      qualunque eseguibile Windows con opzioni `/FLAG` — `taskkill`, `ISCC`,
+      e chiunque altro.
+    - **Cura:** lanciare quei comandi da **PowerShell**; per chiudere l'app
+      `Get-Process -Name "YGO Toolbox" | Stop-Process -Force`. Se serve
+      davvero dalla Bash: opzione raddoppiata (`taskkill //F //IM …`) oppure
+      `MSYS2_ARG_CONV_EXCL='*'` davanti — provate entrambe, funzionano.
+    - **La lezione oltre il bug:** l'errore c'era e si vedeva, ma le chiusure
+      erano scritte come `taskkill … 2>/dev/null` e non se ne accorgeva
+      nessuno. Per giorni la build è andata a buon fine solo perché l'app
+      era chiusa per conto suo. **Un comando di servizio che fallisce in
+      silenzio è un comando che non stai eseguendo**, e la verifica gli va
+      accanto: la prova dell'exe leggeva il titolo della finestra senza
+      controllare che fosse NATA da quel lancio, quindi ha promosso una
+      finestra già aperta della versione precedente.
+
 ---
 
 ## 5. Flussi principali

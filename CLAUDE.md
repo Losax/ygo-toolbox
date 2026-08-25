@@ -73,13 +73,32 @@ QT_QPA_PLATFORM=offscreen python tests/smoke_test.py
 ```powershell
 # rilascio: versione in TRE posti (core/version.py, version_info.txt,
 # intestazione di LEGGIMI.txt), poi
-.venv\Scripts\pyinstaller --noconfirm ygo_toolbox.spec          # exe (chiudere l'app prima!)
+Get-Process -Name "YGO Toolbox" -ErrorAction SilentlyContinue | Stop-Process -Force
+.venv\Scripts\pyinstaller --noconfirm ygo_toolbox.spec          # exe
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" /DAppVersion=X.Y.Z installer.iss
 & "$env:ProgramFiles\GitHub CLI\gh.exe" release create vX.Y.Z `
     "dist\YGO-Toolbox-Setup-vX.Y.Z.exe" --title "YGO Toolbox vX.Y.Z" --notes-file note.md --verify-tag
 ```
+**Questi comandi vanno lanciati da PowerShell, non dalla shell Bash.** Non è
+una preferenza di stile: la Bash di Git è MSYS, e **converte in percorsi
+qualunque argomento che cominci per `/`**. Così `taskkill /F /IM "YGO
+Toolbox.exe"` diventa `taskkill 'F:/' …` e muore con *"Argomento/opzione non
+valida - 'F:/'"*; lo stesso vale per `ISCC /DAppVersion=…` e per ogni
+eseguibile Windows con opzioni `/FLAG`.
+È una trappola **silenziosa se si ignora l'errore**: il 25/08/2026 le
+chiusure dell'app prima della build non chiudevano niente da giorni, e il
+difetto è saltato fuori solo quando PyInstaller ha risposto
+`PermissionError: Accesso negato: dist\YGO Toolbox.exe` — con, un attimo
+dopo, una "verifica dell'exe" che leggeva una finestra **già aperta** della
+versione precedente e la dava per buona.
+Se proprio serve dalla Bash, l'opzione si raddoppia (`taskkill //F //IM …`)
+oppure si mette davanti `MSYS2_ARG_CONV_EXCL='*'` — provate entrambe,
+funzionano. Ma per chiudere l'app la via del progetto è `Stop-Process`.
+
 Verifica sempre l'exe lanciandolo e leggendo `~/.ygo_toolbox/log.txt`: nell'exe
-windowed gli errori non compaiono a schermo, finiscono lì.
+windowed gli errori non compaiono a schermo, finiscono lì. **Controlla anche
+che la finestra sia NATA dal lancio** (titolo + tempo di comparsa): se ne era
+rimasta una aperta, si finisce per "verificare" la versione vecchia.
 
 I dati utente (token, watchlist, storico, catalogo) stanno in `~/.ygo_toolbox/`,
 FUORI dal repository. Se cambi lo schema delle tabelle durante lo sviluppo,
@@ -94,7 +113,7 @@ le tabelle esistenti).
   (`anim.py`), traduzioni (`i18n.py`), aggiornamento dell'app (`updates.py` =
   motore senza Qt, `update_widget.py` = thread + piede sotto il menu).
 - Dettagli, decisioni e trappole stanno in **`REGISTRO_TECNICO.md`**: leggerlo
-  prima di mettere le mani su market_watch, ha 26 GOTCHAS che spiegano *perché*
+  prima di mettere le mani su market_watch, ha 27 GOTCHAS che spiegano *perché*
   il codice è com'è.
 - `modules/<nome>/module.py` = punto di aggancio: una sottoclasse di
   `ToolModule` con `id`, `title`, `create_widget()`. Viene scoperta da sola al
