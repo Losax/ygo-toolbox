@@ -1859,8 +1859,26 @@ def main() -> int:
     assert "✓" not in dlg_ydk.grid.item(0).text()
     # i codici non riconosciuti si vedono, non spariscono
     assert "27204312" in dlg_ydk.summary.text(), dlg_ydk.summary.text()
+
+    # il TASTO DESTRO esclude: rossa, e fuori dalla base qualunque stampa
+    # le fosse stata scelta
+    dlg_ydk._choose(0, 0)
+    assert len(dlg_ydk.result_cards()) == 1
+    dlg_ydk._toggle_excluded(0)
+    assert "✕" in dlg_ydk.grid.item(0).text(), dlg_ydk.grid.item(0).text()
+    assert dlg_ydk.result_cards() == [], "una carta rossa non entra nella base"
+    assert not dlg_ydk._ok_btn.isEnabled(),         "senza scelte valide non si crea una base vuota"
+    assert "esclusa" in dlg_ydk.summary.text(), dlg_ydk.summary.text()
+    # e non si conta due volte: esclusa NON è anche "senza stampa"
+    assert "senza stampa" not in dlg_ydk.summary.text(), dlg_ydk.summary.text()
+    # rimetterla dentro ritrova la stampa: escludere è un ripensamento,
+    # non un azzeramento
+    dlg_ydk._toggle_excluded(0)
+    assert "✓" in dlg_ydk.grid.item(0).text()
+    assert len(dlg_ydk.result_cards()) == 1, "la scelta era stata conservata"
     dlg_ydk.deleteLater()
-    print("[OK] Importa .ydk: sezioni sommate, righe sporche mostrate, ponte "
+    print("[OK] Importa .ydk: tasto destro = carta rossa e fuori dalla base "
+          "(scelta conservata), sezioni sommate, righe sporche mostrate, ponte "
           "catalogo carte che distingue 'assente' da 'illeggibile', mazzo in "
           "GRIGLIA con le immagini dalla "
           "cache su disco, e NIENTE preselezionato (la stampa la sceglie l'utente).")

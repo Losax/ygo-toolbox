@@ -526,5 +526,15 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             'Group only',
         'Gruppo e carte':
             'Group and cards',
+        "In un file .ydk non c'è la rarità: scegli una carta dal mazzo e poi quale stampa seguire. Col tasto destro escludi una carta (diventa rossa): quelle escluse, e quelle senza stampa, non entrano nella base.":
+            'A .ydk file carries no rarity: pick a card from the deck, then which printing to track. Right-click excludes a card (it turns red): excluded cards, and cards without a printing, are not added to the base.',
+        'Esclusa: non entrerà nella base (clic destro per rimetterla)':
+            'Excluded: it will not be added to the base (right-click to put it back)',
+        'ESCLUSA — non entrerà nella base':
+            'EXCLUDED — it will not be added to the base',
+        '1 carta esclusa col tasto destro':
+            '1 card excluded by right-click',
+        '{n} carte escluse col tasto destro':
+            '{n} cards excluded by right-click',
     },
 }

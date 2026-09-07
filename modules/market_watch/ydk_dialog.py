@@ -12,6 +12,13 @@ immagini col numero di copie; a destra le stampe della carta selezionata.
 Niente è preselezionato; le carte lasciate senza stampa **non entrano nella
 base**, e il riepilogo lo dice invece di farle sparire in silenzio.
 
+Il **clic destro** su una carta la **esclude**: diventa rossa e non entrerà
+nella base, qualunque stampa le fosse stata scelta. Serve perché un mazzo
+scaricato non è una lista della spesa — le tre Ash Blossom uno le ha già, e
+tenerle nella base falserebbe il totale. Escludere è una **dichiarazione**,
+non una dimenticanza, quindi il riepilogo le conta a parte: "5 escluse" è
+un'altra cosa da "5 senza stampa".
+
 Le immagini vengono da `core.card_images`, cioè dalla stessa cache su DISCO
 del Database: quelle già scaricate compaiono subito e non costano niente, le
 altre arrivano **una alla volta e spaziate** (`_slot()`), e restano lì per
@@ -21,7 +28,7 @@ le 14.000 del database — quindi si chiedono tutte, non solo quelle a schermo.
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, QThreadPool
-from PySide6.QtGui import QColor, QFont, QIcon, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -108,6 +115,8 @@ class YdkImportDialog(QDialog):
         self._filters_editor = filters_editor
         #: indice della stampa scelta per ogni carta (manca = non scelta)
         self._chosen: dict[int, int] = {}
+        #: indici delle carte ESCLUSE col clic destro (rosse, fuori dalla base)
+        self._excluded: set[int] = set()
         self._current = -1
 
         self.setWindowTitle(tr("Importa mazzo (.ydk)"))
@@ -120,7 +129,8 @@ class YdkImportDialog(QDialog):
 
         intro = QLabel(tr(
             "In un file .ydk non c'è la rarità: scegli una carta dal mazzo e poi "
-            "quale stampa seguire. Le carte lasciate senza stampa non entrano nella base."))
+            "quale stampa seguire. Col tasto destro escludi una carta (diventa "
+            "rossa): quelle escluse, e quelle senza stampa, non entrano nella base."))
         intro.setObjectName("subtitle")
         intro.setWordWrap(True)
         root.addWidget(intro)
@@ -153,6 +163,9 @@ class YdkImportDialog(QDialog):
         self.grid.setUniformItemSizes(True)
         self.grid.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.grid.currentRowChanged.connect(self._select_card)
+        # il clic destro esclude/rimette: nessun menù, è un interruttore
+        self.grid.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.grid.customContextMenuRequested.connect(self._toggle_excluded_at)
         centro.addWidget(self.grid, 5)
 
         # --- destra: le stampe della carta selezionata ---
@@ -231,37 +244,68 @@ class YdkImportDialog(QDialog):
 
     # -------------------------------------------------------------- mazzo
     def _build_grid(self) -> None:
-        vuota = self._icon_for(_make_empty_frame(CARD))
         for i, _voce in enumerate(self._entries):
             item = QListWidgetItem(self.grid)
             item.setData(_ROLE_INDEX, i)
-            item.setIcon(vuota)
             item.setTextAlignment(Qt.AlignmentFlag.AlignHCenter
                                   | Qt.AlignmentFlag.AlignTop)
             item.setSizeHint(CELL)
+            self._apply_icon(i)
             self._refresh_card_item(i)
             self._request_image(i)
 
     def _refresh_card_item(self, i: int) -> None:
-        """Testo e colore della cella: copie, nome e — se scelta — la spunta."""
+        """Testo e colore della cella: tre stati — esclusa, scelta, da fare."""
         item = self.grid.item(i)
         if item is None:
             return
         voce = self._entries[i]
+        escluso = i in self._excluded
         scelta = self._chosen.get(i)
-        item.setText(("✓ " if scelta is not None else "")
-                     + f"{voce['copies']}× {voce['name']}")
-        # il teal è il "fatto" di tutta l'app: qui dice quali carte sono a posto
-        item.setForeground(QColor(theme.ACCENT) if scelta is not None
-                           else QColor(theme.TEXT))
+        if escluso:
+            segno, colore = "✕ ", QColor(theme.NEGATIVE)
+        elif scelta is not None:
+            # il teal è il "fatto" di tutta l'app: dice quali carte sono a posto
+            segno, colore = "✓ ", QColor(theme.ACCENT)
+        else:
+            segno, colore = "", QColor(theme.TEXT)
+        item.setText(f"{segno}{voce['copies']}× {voce['name']}")
+        item.setForeground(colore)
         suggerimento = [voce["name"]]
         if voce.get("sections"):
             suggerimento.append(voce["sections"])
-        if scelta is not None:
+        if escluso:
+            suggerimento.append(
+                tr("Esclusa: non entrerà nella base (clic destro per rimetterla)"))
+        elif scelta is not None:
             suggerimento.append(voce["printings"][scelta]["detail"])
         elif not voce["printings"]:
             suggerimento.append(tr("nessuna stampa nel catalogo"))
         item.setToolTip("\n".join(suggerimento))
+
+    # ---------------------------------------------------------- esclusione
+    def _toggle_excluded_at(self, pos) -> None:
+        """Clic destro sulla griglia: la carta sotto il puntatore entra o esce
+        dall'elenco delle escluse."""
+        item = self.grid.itemAt(pos)
+        if item is None:
+            return
+        self._toggle_excluded(item.data(_ROLE_INDEX))
+
+    def _toggle_excluded(self, i: int) -> None:
+        if not (0 <= i < len(self._entries)):
+            return
+        if i in self._excluded:
+            self._excluded.discard(i)
+        else:
+            self._excluded.add(i)
+        # La stampa scelta NON si cancella: se la carta torna dentro, la
+        # scelta è ancora lì. Escludere è un ripensamento, non un azzeramento.
+        self._apply_icon(i)
+        self._refresh_card_item(i)
+        if i == self._current:
+            self._select_card(i)
+        self._refresh_summary()
 
     # ----------------------------------------------------------- immagini
     def _request_image(self, i: int) -> None:
@@ -273,7 +317,7 @@ class YdkImportDialog(QDialog):
             if not pix.isNull():
                 self._pix[codice] = pix
                 self._paint_image(codice)
-                return
+                return   # noqa: E501 (già dipinta)
         if not url or codice in self._asked or card_images.failed(url):
             return
         self._asked.add(codice)
@@ -289,7 +333,7 @@ class YdkImportDialog(QDialog):
         self._paint_image(int(card_id))
 
     @staticmethod
-    def _icon_for(pix: QPixmap) -> QIcon:
+    def _icon_for(pix: QPixmap, escluso: bool = False) -> QIcon:
         """Icona che NON cambia quando la cella è selezionata.
 
         Di suo Qt ridisegna l'icona in modalità `Selected`, cioè le stende
@@ -297,25 +341,71 @@ class YdkImportDialog(QDialog):
         si vede come uno sbiadimento. Dando lo stesso pixmap alle due
         modalità, la carta resta la carta e a cambiare è solo lo sfondo
         della cella.
+
+        Il rosso dell'esclusione si dipinge **qui dentro**, non con
+        `setBackground` sulla cella: provato, il QSS del tema vince e lo
+        sfondo impostato sull'elemento non si vede (il colore del TESTO
+        invece passa). Dipingere sul pixmap è l'unica via che non dipende da
+        chi vince fra foglio di stile e dato dell'elemento.
         """
         scalato = pix.scaled(CARD, Qt.AspectRatioMode.KeepAspectRatio,
                              Qt.TransformationMode.SmoothTransformation)
+        if escluso:
+            scalato = YdkImportDialog._paint_excluded(scalato)
         icona = QIcon()
         icona.addPixmap(scalato, QIcon.Mode.Normal)
         icona.addPixmap(scalato, QIcon.Mode.Selected)
         icona.addPixmap(scalato, QIcon.Mode.Active)
         return icona
 
-    def _paint_image(self, card_id: int) -> None:
-        pix = self._pix.get(card_id)
-        if pix is None:
+    @staticmethod
+    def _paint_excluded(pix: QPixmap) -> QPixmap:
+        """Velo rosso + cornice + ✕ in un angolo.
+
+        Il velo è translucido di proposito: la carta deve restare
+        riconoscibile — serve capire *quale* hai escluso, non solo che ne hai
+        esclusa una.
+        """
+        fuori = QPixmap(pix)
+        pittore = QPainter(fuori)
+        pittore.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rosso = QColor(theme.NEGATIVE)
+        velo = QColor(rosso)
+        velo.setAlpha(90)
+        pittore.fillRect(fuori.rect(), velo)
+        pittore.setPen(QPen(rosso, 3))
+        pittore.setBrush(Qt.BrushStyle.NoBrush)
+        pittore.drawRect(fuori.rect().adjusted(1, 1, -2, -2))
+        # il tondo con la ✕, in alto a destra
+        lato = max(16, fuori.width() // 4)
+        angolo = fuori.rect().adjusted(fuori.width() - lato - 4, 4, -4,
+                                       lato + 4 - fuori.height())
+        pittore.setBrush(rosso)
+        pittore.setPen(Qt.PenStyle.NoPen)
+        pittore.drawEllipse(angolo)
+        pittore.setPen(QPen(QColor("#1a1e26"), 2))
+        m = angolo.adjusted(lato // 4, lato // 4, -lato // 4, -lato // 4)
+        pittore.drawLine(m.topLeft(), m.bottomRight())
+        pittore.drawLine(m.topRight(), m.bottomLeft())
+        pittore.end()
+        return fuori
+
+    def _apply_icon(self, i: int) -> None:
+        """Icona della cella `i`: la carta se c'è, la cornice vuota se no, e
+        il trattamento rosso se è esclusa."""
+        item = self.grid.item(i)
+        if item is None:
             return
-        icona = self._icon_for(pix)
+        pix = self._pix.get(int(self._entries[i]["passcode"]))
+        item.setIcon(self._icon_for(pix if pix is not None else _make_empty_frame(CARD),
+                                    i in self._excluded))
+
+    def _paint_image(self, card_id: int) -> None:
+        if self._pix.get(card_id) is None:
+            return
         for i, voce in enumerate(self._entries):
             if int(voce["passcode"]) == card_id:
-                item = self.grid.item(i)
-                if item is not None:
-                    item.setIcon(icona)
+                self._apply_icon(i)
 
     # ------------------------------------------------------------- stampe
     def _select_card(self, i: int) -> None:
@@ -328,11 +418,15 @@ class YdkImportDialog(QDialog):
         voce = self._entries[i]
         self.side_title.setText(f"{voce['copies']}× {voce['name']}")
         pezzi = []
+        if i in self._excluded:
+            pezzi.append(tr("ESCLUSA — non entrerà nella base"))
         if voce.get("sections"):
             pezzi.append(voce["sections"])
         if voce.get("name_it"):
             pezzi.append(voce["name_it"])
         self.side_hint.setText(" · ".join(pezzi))
+        self.side_hint.setStyleSheet(
+            f"color: {theme.NEGATIVE};" if i in self._excluded else "")
         stampe = voce["printings"]
         if not stampe:
             # capita se il catalogo prezzi non ha quella carta: si dice, non si
@@ -380,25 +474,36 @@ class YdkImportDialog(QDialog):
 
     # ------------------------------------------------------------ riepilogo
     def _refresh_summary(self) -> None:
-        scegliibili = [v for v in self._entries if v["printings"]]
-        scelte = len(self._chosen)
-        copie = sum(self._entries[i]["copies"] for i in self._chosen)
+        # Le ESCLUSE si contano a parte, e vengono togliete da tutti gli altri
+        # conti: sommarle a "senza stampa" direbbe due volte la stessa carta, e
+        # soprattutto confonderebbe una scelta con una dimenticanza.
+        scegliibili = {i for i, v in enumerate(self._entries) if v["printings"]}
+        da_scegliere = scegliibili - self._excluded
+        valide = {i for i in self._chosen if i not in self._excluded}
+        scelte = len(valide)
+        copie = sum(self._entries[i]["copies"] for i in valide)
         if scelte == 0:
             # all'apertura non è un problema da segnalare, è cosa fare adesso
             pezzi = [tr("Nessuna stampa scelta: apri una carta e scegline una "
-                        "fra le {t} in elenco.").format(t=len(scegliibili))]
+                        "fra le {t} in elenco.").format(t=len(da_scegliere))]
         else:
             pezzi = [(tr("{s} carta su {t} con una stampa scelta · {c} copie")
                       if scelte == 1 else
                       tr("{s} carte su {t} con una stampa scelta · {c} copie")).format(
-                s=scelte, t=len(scegliibili), c=copie)]
-        mancanti = len(scegliibili) - scelte
+                s=scelte, t=len(da_scegliere), c=copie)]
+        if self._excluded:
+            pezzi.append((tr("1 carta esclusa col tasto destro")
+                          if len(self._excluded) == 1 else
+                          tr("{n} carte escluse col tasto destro")
+                          ).format(n=len(self._excluded)))
+        mancanti = len(da_scegliere - valide)
         if mancanti and scelte:
             pezzi.append((tr("1 carta senza stampa: non entrerà nella base")
                           if mancanti == 1 else
                           tr("{n} carte senza stampa: non entreranno nella base")
                           ).format(n=mancanti))
-        senza_catalogo = len(self._entries) - len(scegliibili)
+        senza_catalogo = len([i for i, v in enumerate(self._entries)
+                              if not v["printings"] and i not in self._excluded])
         if senza_catalogo:
             pezzi.append((tr("1 carta senza stampe nel catalogo")
                           if senza_catalogo == 1 else
@@ -417,6 +522,8 @@ class YdkImportDialog(QDialog):
                           tr("{n} righe del file non capite")
                           ).format(n=len(self._ignored)))
         self.summary.setText(" · ".join(pezzi))
+        # `scelte` conta solo le NON escluse: escludere l'ultima carta scelta
+        # deve spegnere il pulsante, non creare una base vuota
         self._ok_btn.setEnabled(bool(self.name_input.text().strip()) and scelte > 0)
 
     # ------------------------------------------------------------ risultati
@@ -427,9 +534,11 @@ class YdkImportDialog(QDialog):
         return self._filters_json
 
     def result_cards(self) -> list[tuple]:
-        """Solo le carte con una stampa scelta: le altre restano fuori."""
+        """Solo le carte con una stampa scelta **e non escluse**."""
         fuori = []
         for i, j in sorted(self._chosen.items()):
+            if i in self._excluded:
+                continue        # rossa: fuori, qualunque stampa avesse
             voce = self._entries[i]
             stampa = voce["printings"][j]
             fuori.append((CardRef(id=str(stampa["ref_id"]),
