@@ -311,17 +311,25 @@ def _listing_detail(product: dict) -> str:
 
 
 def _products_list(payload: object, blueprint_id: str) -> list:
-    """/marketplace/products può tornare una lista o un dict per blueprint."""
+    """Gli annunci DI QUEL blueprint. Mai quelli di un altro.
+
+    `/marketplace/products` torna un dict indicizzato per blueprint_id (o, in
+    forma alternativa, una lista pura per la singola richiesta).
+
+    **Qui c'era un ripiego pericoloso, tolto nella v1.6.1:** se la chiave
+    richiesta non c'era si restituiva "la prima lista trovata" nel dict, cioè
+    gli annunci di un'ALTRA stampa. È la peggior specie di difetto — un prezzo
+    e un venditore veri, ma di un'altra carta, mostrati come se fossero di
+    questa: l'utente li cerca sul sito e non li trova.
+    Chiave assente = **nessun annuncio**, che è un'informazione ("Nessuna
+    copia"), non un invito a indovinare.
+    """
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
         by_id = payload.get(str(blueprint_id))
         if isinstance(by_id, list):
             return by_id
-        # fallback: prima lista trovata
-        for value in payload.values():
-            if isinstance(value, list):
-                return value
     return []
 
 

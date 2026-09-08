@@ -536,5 +536,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             '1 card excluded by right-click',
         '{n} carte escluse col tasto destro':
             '{n} cards excluded by right-click',
+        "Prezzo e venditore sono del controllo del {quando}: l'ultimo controllo non è riuscito per questa carta, quindi l'annuncio potrebbe non esserci più.":
+            'Price and seller come from the check on {quando}: the latest check failed for this card, so the listing may no longer exist.',
     },
 }

@@ -913,6 +913,30 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     creare la base si spegne se escludi l'ultima carta scelta, invece di
     creare una base vuota.
 
+83. **Il prezzo fantasma (v1.6.1).** Un amico che usa l'app ha segnalato una
+    carta — *Ruler of the End of the World* — mostrata a **3,10 €** dal
+    venditore *Manta Trading*, quando il prezzo più basso vero era 4,54 € e di
+    quel venditore **non esisteva alcun annuncio** per quella carta.
+    Interrogando CardTrader dal vivo: 57 annunci per quella stampa, il più
+    basso a 3,35 €, e *Manta Trading* non c'era. Quell'annuncio era **vero, ma
+    venduto**: l'app teneva l'ultimo che aveva visto.
+    Fin qui è voluto — meglio l'ultimo prezzo noto che un trattino. Il difetto
+    era che l'app **non diceva che era vecchio**: l'ora dell'ultimo controllo
+    era **una sola per tutte le carte**, quindi una carta il cui controllo non
+    era riuscito (capita: con una watchlist grossa il freno anti-blocco si
+    allarga e il giro si interrompe) mostrava comunque l'ora di adesso. E in
+    Panoramica quella colonna è nascosta — proprio nella vista che mostra il
+    venditore, cioè il dato che invecchia peggio.
+    Adesso l'ora del controllo è **di ogni singola carta**: la colonna
+    *Controllo* dice quando è stato rilevato quel prezzo (o `—` se non si sa),
+    e una carta non verificata nell'ultimo giro si vede **smorzata**, col
+    suggerimento che spiega da quando è quel dato e che l'annuncio potrebbe non
+    esserci più.
+    Nello stesso giro è stato tolto un ripiego nel lettore delle risposte che,
+    quando l'API non conteneva la stampa richiesta, restituiva **gli annunci di
+    un'altra stampa**: nessuna prova che sia successo qui, ma produce lo stesso
+    sintomo e non doveva esserci.
+
 ## 4. Note operative importanti
 
 - **Non fare raffiche di richieste** verso CardTrader: è dietro Cloudflare e può

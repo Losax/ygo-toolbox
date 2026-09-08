@@ -129,6 +129,12 @@ class MarketWatchRepository:
                 "ALTER TABLE mw_watchlist ADD COLUMN copies INTEGER NOT NULL DEFAULT 1")
         except sqlite3.OperationalError:
             pass
+        try:  # quando è stato controllato QUESTO prezzo (v1.6.1: era una data
+              # sola per tutte, e le carte non controllate sembravano fresche)
+            self.storage.execute(
+                "ALTER TABLE mw_watchlist ADD COLUMN checked_at TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass
         self.storage.execute(
             """
             CREATE TABLE IF NOT EXISTS mw_folders (
@@ -191,6 +197,21 @@ class MarketWatchRepository:
         secca, usata dall'importazione."""
         self.storage.execute(
             "UPDATE mw_watchlist SET folder_id = ? WHERE id = ?", (folder_id, watch_id)
+        )
+
+    def set_watch_checked(self, triples) -> None:
+        """triples: (provider, ref_id, quando) — l'ora del controllo, CARTA PER
+        CARTA.
+
+        Prima esisteva solo `mw_settings.last_checked`, **una data per tutte**:
+        una carta il cui controllo non era riuscito mostrava comunque l'ora
+        dell'ultimo giro, cioè un prezzo vecchio presentato come appena
+        verificato. Si scrive **solo** per le carte davvero controllate.
+        """
+        self.storage.executemany(
+            "UPDATE mw_watchlist SET checked_at = ? "
+            "WHERE provider = ? AND ref_id = ?",
+            [(quando, provider, str(ref)) for provider, ref, quando in triples],
         )
 
     def set_watch_copies(self, watch_id, copies: int) -> None:

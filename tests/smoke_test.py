@@ -1916,6 +1916,56 @@ def main() -> int:
     print("[OK] Elimina un gruppo: chiede prima, sa portarsi via anche le carte "
           "(storico compreso) e il gruppo vuoto se ne va senza domande.")
 
+    # 7e) il PREZZO FANTASMA segnalato da un utente: 3,10 € da un venditore
+    #     che per quella carta non esiste. Tre difetti, tre controlli.
+    from modules.market_watch.providers.cardtrader import (  # noqa: E402
+        _products_list as _plist,
+    )
+    from modules.market_watch.providers.base import PriceQuote as _PQ  # noqa: E402
+
+    # (a) il parser non deve MAI dare gli annunci di un altro blueprint
+    assert len(_plist({"111": [{"x": 1}]}, "111")) == 1      # chiave giusta
+    assert len(_plist([{"x": 1}], "111")) == 1               # lista pura
+    assert _plist({}, "111") == []
+    assert _plist({"999": [{"x": 1}, {"x": 2}]}, "111") == [], \
+        "chiave assente = nessun annuncio, non quelli di un'ALTRA stampa"
+
+    # (b) l'ora del controllo è PER CARTA: chi non è stato controllato non
+    #     deve sembrare fresco
+    widget.repo.add_watch(_PROV, "910", "Carta 910", "", 10.0, "", 1)
+    widget.repo.add_watch(_PROV, "911", "Carta 911", "", 10.0, "", 1)
+    fantasma = _PQ(amount=3.10, currency="EUR", seller="Manta Trading",
+                   condition="Near Mint", language="EN")
+    widget._on_prices([{"ref_id": "910", "quote": fantasma}], 1, "finto")
+    ore = {w["ref_id"]: (w["checked_at"] or "") for w in widget.repo.list_watches()}
+    assert ore["910"], "la carta controllata porta la sua ora"
+    assert not ore["911"], \
+        "la carta NON controllata non deve prendersi l'ora del giro"
+
+    # (c) un prezzo non verificato nell'ultimo giro lo DICE: ora vecchia in
+    #     colonna Controllo, prezzo smorzato e avviso nel suggerimento
+    widget.repo.set_watch_checked([(_PROV, "911", "01/01 00:00")])
+    vecchio_prezzo = _PQ(amount=9.99, currency="EUR", seller="TaleSpin")
+    widget.repo.set_last_quotes(_PROV, [("911", _json.dumps(vecchio_prezzo.to_dict()))])
+    widget.repo.record_price(_PROV, "911", 9.99, "EUR", widget._watch_key(
+        [w for w in widget.repo.list_watches() if w["ref_id"] == "911"][0]))
+    widget._on_prices([{"ref_id": "910", "quote": fantasma}], 1, "finto")
+    riga_911 = next(i for i, (k, pl) in enumerate(widget._row_entries)
+                    if k == "watch" and str(pl["ref_id"]) == "911")
+    controllo = widget.table.item(riga_911, 11)
+    assert controllo is not None and controllo.text() == "01/01 00:00", \
+        f"la colonna Controllo deve dire l'ora VERA: {controllo and controllo.text()!r}"
+    prezzo = widget.table.item(riga_911, 8)
+    assert "non è riuscito" in (prezzo.toolTip() or ""), \
+        f"il prezzo vecchio deve avvisare: {prezzo.toolTip()!r}"
+    # e la carta controllata NON porta l'avviso
+    riga_910 = next(i for i, (k, pl) in enumerate(widget._row_entries)
+                    if k == "watch" and str(pl["ref_id"]) == "910")
+    assert "non è riuscito" not in (widget.table.item(riga_910, 8).toolTip() or "")
+    print("[OK] Prezzo fantasma: gli annunci di un altro blueprint non passano "
+          "più, l'ora del controllo è per carta, e un prezzo non verificato lo "
+          "dice invece di sembrare appena rilevato.")
+
     widget.stop()
     storage.close()
     print("\nTutti i controlli superati.")

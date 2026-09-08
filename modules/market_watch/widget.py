@@ -1933,7 +1933,31 @@ class MarketWatchWidget(QWidget):
         self.table.setItem(row, 9, change_item)
         # 10 Soglia, 11 Controllo (solo vista normale)
         self.table.setItem(row, 10, cell(f"≥ {watch['threshold_pct']:.1f}%"))
-        self.table.setItem(row, 11, cell(checked))
+        # L'ora è quella di QUESTA carta. Vuota = non lo sappiamo (database
+        # nato prima della colonna, o carta aggiunta dopo l'ultimo controllo):
+        # si scrive "—", non l'ora del giro — sarebbe di nuovo una data non
+        # sua. Si popola da sé al primo controllo.
+        proprio = (watch["checked_at"] if "checked_at" in watch.keys() else "") or ""
+        self.table.setItem(row, 11, cell(proprio or "—"))
+        # Prezzo NON verificato nell'ultimo giro: va detto. In Panoramica la
+        # colonna Controllo è nascosta, ed è proprio la vista che mostra
+        # venditore e dettagli dell'annuncio — cioè i dati che invecchiano
+        # peggio: un annuncio venduto resta lì con nome e prezzo.
+        if proprio and checked and proprio != checked:
+            avviso = tr("Prezzo e venditore sono del controllo del {quando}: "
+                        "l'ultimo controllo non è riuscito per questa carta, "
+                        "quindi l'annuncio potrebbe non esserci più.").format(
+                            quando=proprio)
+            price_item.setToolTip(
+                (price_item.toolTip() + "\n\n" if price_item.toolTip() else "")
+                + avviso)
+            if not no_match:
+                price_item.setForeground(QColor(theme.TEXT_MUTED))
+            for c in (11, 12):
+                vecchio_item = self.table.item(row, c)
+                if vecchio_item is not None:
+                    vecchio_item.setForeground(QColor(theme.TEXT_MUTED))
+                    vecchio_item.setToolTip(avviso)
         # 12 Venditore, 13 Commenti, 14 Q.tà (solo Panoramica, dall'annuncio scelto)
         comment_text = qty_text = ""
         if q is not None:
@@ -3155,6 +3179,12 @@ class MarketWatchWidget(QWidget):
             for r in results
         ])
         checked = datetime.now().strftime("%d/%m %H:%M")
+        # L'ora va segnata SOLO sulle carte davvero controllate: se il giro si
+        # interrompe (3 errori di fila) o una singola carta fallisce, le altre
+        # non devono sembrare aggiornate — è il difetto che ha fatto vedere a
+        # un utente un annuncio venduto da giorni come se fosse di adesso.
+        self.repo.set_watch_checked(
+            [(PROVIDER, r["ref_id"], checked) for r in results])
         self.repo.set_setting("last_checked", checked)
         self._save_rate_interval()
         self._render_after_check(checked)

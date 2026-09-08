@@ -145,6 +145,11 @@ del README in `docs/`). Committare e pushare a fine sessione.
   esistente: passare dall'editor la promuove) e, una tantum per i DB
   precedenti, `_adopt_deck_flags` — filtri propri o carte in più copie sono
   dati che una cartella semplice non avrebbe motivo di avere.
+- `mw_watchlist.checked_at` — **quando è stato rilevato QUESTO prezzo**
+  (v1.6.1). Prima c'era solo `mw_settings.last_checked`, una data per
+  tutte: vedi GOTCHA 29. Si scrive **solo** per le carte davvero
+  controllate (`set_watch_checked`); vuota = non lo sappiamo, e la colonna
+  Controllo mostra `—` invece dell'ora del giro.
 - `mw_watchlist.copies` — quante copie della carta (default 1). Moltiplica il
   prezzo nei totali di base; il prezzo mostrato sulla riga resta UNITARIO,
   col numero di copie davanti al nome ("3× Ash Blossom").
@@ -529,6 +534,43 @@ confini di parola per non pescare "usato").
     - **La lezione oltre il bug:** verificato con una prova da dieci righe
       (tre celle, una con `setBackground`) invece di dedurlo dalla
       documentazione. Trenta secondi, e ha cambiato l'implementazione.
+
+- **GOTCHA 29 — il prezzo fantasma: un annuncio venduto mostrato come appena
+  rilevato** (v1.6.1, segnalato da un utente vero).
+    - **Sintomo:** in Panoramica *Ruler of the End of the World* a **3,10 €**
+      dal venditore *Manta Trading*, quando il minimo vero era 4,54 € e di
+      quel venditore **non esisteva nessun annuncio** per quella carta.
+      Interrogata l'API dal vivo: blueprint 409410 (Secret Rare, MAMO) aveva
+      57 annunci, minimo 3,35 €, e *Manta Trading* non c'era in nessuna delle
+      due stampe della carta.
+    - **Causa, doppia.** (1) `mw_settings.last_checked` era **una data per
+      tutte** le carte: se il controllo di una carta falliva — o il giro si
+      interrompeva dopo `MAX_CONSECUTIVE_FAILURES` errori di fila, cosa
+      normalissima con una watchlist grossa e il freno anti-429 che si allarga
+      — quella carta teneva prezzo e venditore precedenti, ma la colonna
+      *Controllo* mostrava comunque l'ora dell'ultimo giro. (2) In Panoramica
+      quella colonna è **nascosta**, ed è proprio la vista che mostra
+      venditore, condizione e commenti, cioè i dati che invecchiano peggio: un
+      annuncio venduto resta lì col suo nome e il suo prezzo.
+    - **Cura:** `mw_watchlist.checked_at`, ora **per carta**, scritta solo per
+      quelle controllate; la colonna Controllo dice l'ora VERA (o `—` se non
+      la sappiamo, mai quella del giro); e una carta non verificata
+      nell'ultimo giro si **smorza** (prezzo e ora in `TEXT_MUTED`) con un
+      suggerimento che dice quando è stata rilevata e che l'annuncio potrebbe
+      non esserci più. Così il dato resta — meglio dell'ultimo noto che un
+      trattino — ma **non finge di essere di adesso**.
+    - **Terza cura, sullo stesso viaggio:** `_products_list` aveva un ripiego
+      *"prima lista trovata"* per quando la chiave del blueprint richiesto non
+      c'era nel dict — cioè restituiva gli annunci di un'ALTRA stampa. Non ho
+      la prova che sia scattato in questo caso (per 409410 la risposta era
+      corretta), ma produce esattamente lo stesso sintomo — un venditore vero
+      che per quella carta non esiste — e va tolto comunque: chiave assente =
+      nessun annuncio.
+    - **La lezione oltre il bug:** mostrare l'ultimo dato noto è giusto,
+      **spacciarlo per fresco no**. Ogni volta che un valore sopravvive al
+      fallimento del controllo che doveva aggiornarlo, va etichettato con la
+      sua età, altrimenti il programma dice una bugia con la faccia
+      dell'esattezza — e l'utente la scopre sul sito, non nell'app.
 
 ---
 
