@@ -46,6 +46,7 @@ from core import card_images, rarity, theme
 from core.i18n import tr
 
 from .providers.base import CardRef
+from .repository import ANY_RARITY
 from .search_model import _make_empty_frame
 
 BADGE_H = 18                     # pillole di rarità, come nelle altre tabelle
@@ -56,6 +57,7 @@ CARD = QSize(100, 146)           # proporzioni di carta
 CELL = QSize(118, 228)
 _ROLE_INDEX = Qt.ItemDataRole.UserRole      # indice della carta in _entries
 _ROLE_PRINT = Qt.ItemDataRole.UserRole + 1  # indice della stampa
+_ROLE_RARITY = Qt.ItemDataRole.UserRole + 2  # rarità scelta (modalità)
 
 
 def _rarity_of(detail: str) -> str:
@@ -117,6 +119,10 @@ class YdkImportDialog(QDialog):
         self._chosen: dict[int, int] = {}
         #: indici delle carte ESCLUSE col clic destro (rosse, fuori dalla base)
         self._excluded: set[int] = set()
+        #: carte che seguono "la più economica" invece di una stampa fissa:
+        #: indice -> rarità (o ANY_RARITY). La stampa scelta resta comunque in
+        #: `_chosen` e fa da rappresentante (serve un ref_id per la riga).
+        self._modes: dict[int, str] = {}
         self._current = -1
 
         self.setWindowTitle(tr("Importa mazzo (.ydk)"))
@@ -264,6 +270,8 @@ class YdkImportDialog(QDialog):
         scelta = self._chosen.get(i)
         if escluso:
             segno, colore = "✕ ", QColor(theme.NEGATIVE)
+        elif i in self._modes:
+            segno, colore = "★ ", QColor(theme.ACCENT)
         elif scelta is not None:
             # il teal è il "fatto" di tutta l'app: dice quali carte sono a posto
             segno, colore = "✓ ", QColor(theme.ACCENT)
@@ -435,6 +443,28 @@ class YdkImportDialog(QDialog):
             avviso.setFlags(Qt.ItemFlag.NoItemFlags)
             self.prints.addItem(avviso)
             return
+        # In cima: "la più economica" — prima fra tutte, poi per rarità. Sono
+        # scelte come le altre, quindi stanno nello stesso elenco invece che in
+        # un comando a parte: quello che si sceglie è pur sempre *cosa seguire*.
+        modo = self._modes.get(i, "")
+        rarita = voce.get("rarities") or []
+        totale = sum(n for _r, n in rarita)
+        if totale > 1:
+            speciale = QListWidgetItem(
+                ("✓  " if modo == ANY_RARITY else "")
+                + tr("★ Più economica · qualsiasi rarità ({n})").format(n=totale))
+            speciale.setData(_ROLE_RARITY, ANY_RARITY)
+            speciale.setForeground(QColor(theme.ACCENT))
+            self.prints.addItem(speciale)
+        for nome_rar, n in rarita:
+            if n < 2:
+                continue     # con una stampa sola non c'è niente da confrontare
+            it_rar = QListWidgetItem(
+                ("✓  " if modo == nome_rar else "")
+                + tr("★ Più economica · {rar} ({n})").format(rar=nome_rar, n=n))
+            it_rar.setData(_ROLE_RARITY, nome_rar)
+            it_rar.setForeground(QColor(theme.ACCENT))
+            self.prints.addItem(it_rar)
         doppie = duplicate_labels(stampe)
         scelta = self._chosen.get(i)
         for j, stampa in enumerate(stampe):
@@ -447,7 +477,8 @@ class YdkImportDialog(QDialog):
                 codice = f"{codice} #{stampa['ref_id']}" if codice                     else f"#{stampa['ref_id']}"
             if codice:
                 etichetta = f"[{codice}]  {etichetta}"
-            item = QListWidgetItem(("✓  " + etichetta) if j == scelta else etichetta)
+            spuntata = (j == scelta and not modo)
+            item = QListWidgetItem(("✓  " + etichetta) if spuntata else etichetta)
             item.setData(_ROLE_PRINT, j)
             item.setToolTip(etichetta)      # per intero: la riga è accorciata
             nome_rarita = _rarity_of(stampa["detail"])
@@ -458,10 +489,40 @@ class YdkImportDialog(QDialog):
             self.prints.setCurrentRow(scelta)
 
     def _on_print_clicked(self, item: QListWidgetItem) -> None:
+        if not (0 <= self._current < len(self._entries)):
+            return
+        rar = item.data(_ROLE_RARITY)
+        if rar:
+            self._choose_rarity(self._current, str(rar))
+            return
         j = item.data(_ROLE_PRINT)
-        if j is None or not (0 <= self._current < len(self._entries)):
+        if j is None:
             return
         self._choose(self._current, j)
+
+    def _choose_rarity(self, i: int, rar: str) -> None:
+        """Segui la più economica di quella rarità (ri-clic = ci ho ripensato).
+
+        Serve comunque una stampa *rappresentante*: la riga della watchlist ha
+        un `ref_id`, ed è quello che tiene insieme lo storico dei prezzi anche
+        quando la stampa più economica cambia. Si prende la prima di quella
+        rarità — la più comune, per come sono ordinate.
+        """
+        if self._modes.get(i) == rar:
+            self._modes.pop(i, None)
+        else:
+            self._modes[i] = rar
+            stampe = self._entries[i]["printings"]
+            if rar == ANY_RARITY:
+                candidate = list(range(len(stampe)))
+            else:
+                candidate = [j for j, s in enumerate(stampe)
+                             if _rarity_of(s["detail"]) == rar]
+            if candidate:
+                self._chosen[i] = candidate[0]
+        self._refresh_card_item(i)
+        self._select_card(i)
+        self._refresh_summary()
 
     def _choose(self, i: int, j: int) -> None:
         if self._chosen.get(i) == j:
@@ -534,7 +595,11 @@ class YdkImportDialog(QDialog):
         return self._filters_json
 
     def result_cards(self) -> list[tuple]:
-        """Solo le carte con una stampa scelta **e non escluse**."""
+        """`(CardRef, copie, rarità)` per le carte scelte e non escluse.
+
+        `rarità` vuota = segui quella stampa esatta; altrimenti è la modalità
+        "la più economica", e il CardRef è solo il rappresentante.
+        """
         fuori = []
         for i, j in sorted(self._chosen.items()):
             if i in self._excluded:
@@ -545,5 +610,5 @@ class YdkImportDialog(QDialog):
                                   name=stampa["name"],
                                   detail=stampa["detail"] or "",
                                   image_url=stampa["image_url"] or ""),
-                          voce["copies"]))
+                          voce["copies"], self._modes.get(i, "")))
         return fuori

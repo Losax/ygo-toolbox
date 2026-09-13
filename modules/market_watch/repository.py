@@ -19,7 +19,12 @@ from __future__ import annotations
 
 import sqlite3
 
+from core import rarity
 from core.storage import Storage
+
+#: modalità "qualunque rarità" di `mw_watchlist.rarity`. Un asterisco e non
+#: una stringa vuota, perché '' vuol già dire "segui la stampa esatta".
+ANY_RARITY = "*"
 
 
 class CardCatalogError(RuntimeError):
@@ -135,6 +140,15 @@ class MarketWatchRepository:
                 "ALTER TABLE mw_watchlist ADD COLUMN checked_at TEXT NOT NULL DEFAULT ''")
         except sqlite3.OperationalError:
             pass
+        # v1.7.0 — "la più economica in una rarità": vedi `set_watch_rarity`.
+        for col, decl in (("rarity", "TEXT NOT NULL DEFAULT ''"),
+                          ("winner_ref", "TEXT NOT NULL DEFAULT ''"),
+                          ("scan_at", "TEXT NOT NULL DEFAULT ''")):
+            try:
+                self.storage.execute(
+                    f"ALTER TABLE mw_watchlist ADD COLUMN {col} {decl}")
+            except sqlite3.OperationalError:
+                pass
         self.storage.execute(
             """
             CREATE TABLE IF NOT EXISTS mw_folders (
@@ -198,6 +212,60 @@ class MarketWatchRepository:
         self.storage.execute(
             "UPDATE mw_watchlist SET folder_id = ? WHERE id = ?", (folder_id, watch_id)
         )
+
+    def set_watch_rarity(self, watch_id, rarity: str) -> None:
+        """Modalità della carta: `''` = quella stampa esatta (predefinito),
+        `ANY_RARITY` = la più economica fra TUTTE le stampe, altrimenti il nome
+        di una rarità = la più economica fra le stampe di quella rarità.
+
+        `ref_id` NON cambia mai: resta l'identità della riga (e la chiave dello
+        storico prezzi). La stampa che di volta in volta vince la scansione sta
+        in `winner_ref` — se cambiasse `ref_id` lo storico si spezzerebbe in
+        due serie a ogni sorpasso.
+        Cambiare modalità azzera vincitore e data di scansione: da quel momento
+        si insegue un altro prodotto, e i dati di prima non valgono più.
+        """
+        self.storage.execute(
+            "UPDATE mw_watchlist SET rarity = ?, winner_ref = '', scan_at = '' "
+            "WHERE id = ?", (rarity or "", watch_id))
+
+    def set_watch_scan(self, provider, ref_id, winner_ref, quando: str) -> None:
+        """Esito di una scansione completa: quale stampa ha vinto e quando."""
+        self.storage.execute(
+            "UPDATE mw_watchlist SET winner_ref = ?, scan_at = ? "
+            "WHERE provider = ? AND ref_id = ?",
+            (str(winner_ref or ""), quando, provider, str(ref_id)))
+
+    def rarities_of(self, provider, name) -> list:
+        """Le rarità in cui esiste questa carta, con quante stampe ciascuna.
+
+        Ordinate dalla più comune alla più ricercata (`rarity_rank`), che è
+        anche l'ordine in cui si cercano di solito. Serve a proporre SOLO
+        rarità che esistono davvero: offrirne una senza stampe vorrebbe dire
+        promettere un prezzo che non si può trovare.
+        """
+        conteggi: dict[str, int] = {}
+        for riga in self.printings(provider, name):
+            conteggi[rarity.from_detail(riga["detail"])] = conteggi.get(
+                rarity.from_detail(riga["detail"]), 0) + 1
+        return sorted(
+            ((nome, n) for nome, n in conteggi.items() if nome),
+            key=lambda c: (rarity.rarity_rank(c[0]) < 0,
+                           rarity.rarity_rank(c[0]), c[0]))
+
+    def siblings(self, provider, name, rarita: str) -> list:
+        """Le stampe da interrogare per trovare la più economica.
+
+        `''` → nessuna (la carta segue la sua stampa esatta), `ANY_RARITY` →
+        tutte, altrimenti solo quelle della rarità richiesta.
+        """
+        if not rarita:
+            return []
+        righe = self.printings(provider, name)
+        if rarita != ANY_RARITY:
+            righe = [r for r in righe
+                     if rarity.from_detail(r["detail"]) == rarita]
+        return [str(r["ref_id"]) for r in righe]
 
     def set_watch_checked(self, triples) -> None:
         """triples: (provider, ref_id, quando) — l'ora del controllo, CARTA PER
@@ -539,6 +607,15 @@ class MarketWatchRepository:
             (provider, str(ref_id)),
         )
         return (rows[0]["set_code"] or "").upper() if rows else None
+
+    def catalog_detail(self, provider, ref_id) -> str | None:
+        """"rarità · espansione" di una stampa (serve a mostrare QUALE stampa
+        sta vincendo, in modalità "la più economica")."""
+        rows = self.storage.query(
+            "SELECT detail FROM mw_catalog WHERE provider = ? AND ref_id = ?",
+            (provider, str(ref_id)),
+        )
+        return rows[0]["detail"] if rows else None
 
     def catalog_image(self, provider, ref_id) -> str | None:
         rows = self.storage.query(

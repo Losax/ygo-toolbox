@@ -58,6 +58,7 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Rimuovi** | Icona **cestino** sulla riga (in Panoramica impostazioni e cestino sono impilati). |
 | **Basi (mazzi)** | Pulsante **carte a ventaglio accanto alla barra di ricerca** (o tasto destro → *Nuova base…*): apre un modulo dove dai un **nome**, imposti i **filtri una volta sola per tutta la base**, poi cerchi le carte e dici **quante copie** ne vuoi. La ricerca è **la stessa della barra principale**: miniature, hover animato e pill del codice set. Cercare di nuovo una carta già presente aggiunge una copia. La base compare in watchlist come una cartella: **valore totale che tiene conto delle copie** e carte marcate `3×`. La **matita** sulla riga riapre lo stesso modulo per modificarla. Togliere una carta dalla base **non la cancella**: esce solo dalla base (lo storico prezzi resta). |
 | **Importa un mazzo (.ydk)** | Pulsante **Import** accanto alla barra di ricerca (o tasto destro sulla watchlist). Il `.ydk` è il formato con cui i mazzi si scambiano fra siti e programmi: dentro ci sono i **codici delle carte** e **quante copie**, ma **non la rarità** — e la stessa carta può avere decine di stampe a prezzi diversissimi. Quindi l'app apre il mazzo come una **griglia di immagini**: clic su una carta e a destra compaiono **tutte le sue stampe**, dalla più comune alla più ricercata, fra cui scegliere. Le carte a posto si spuntano in teal. **Main, Extra e Side si sommano**: se una carta sta 2 volte nel main e 1 nel side, la base ne chiede 3, e la riga lo spiega. **Col tasto destro escludi una carta**: diventa rossa (velo, cornice e una ✕ nell'angolo) e non entrerà nella base, anche se le avevi già scelto una stampa — utile per le carte che possiedi già, che nel totale darebbero un prezzo falso. Un altro clic destro la rimette dentro, con la stampa che avevi scelto. Niente è scelto al posto tuo: le carte escluse e quelle lasciate senza stampa **non entrano nella base**, e il riepilogo in basso le conta separatamente. I codici che il catalogo non conosce vengono **mostrati**, non ingoiati. Serve il catalogo del **Database** sincronizzato (è lui a sapere che codice corrisponde a che carta). |
+| **La più economica in una rarità** | **Tasto destro su una carta → *Segui la più economica…*** (e, importando un `.ydk`, le voci ★ in cima all'elenco delle stampe). Invece di seguire una stampa precisa, scegli **solo la rarità** — o *qualsiasi rarità* — e l'app cerca il prezzo più basso fra tutte le stampe di quella rarità. Serve per carte come Ash Blossom, che ha **7 stampe Ultra Rare**: se non ti importa quale, ti interessa la più economica. Accanto a ogni rarità c'è quante stampe ha, perché è il lavoro che quella scelta costa. L'app guarda **tutte** le stampe una volta al giorno e ogni volta che premi *Controlla ora*; nel frattempo segue quella che aveva vinto, così il controllo resta veloce. In tabella la colonna *Rarità* mostra quella scelta e *Set* la stampa che sta vincendo adesso. |
 | **Da dove arrivano le copie** | Se ti servono 3 copie e il venditore più economico ne ha una, l'app prende le **3 copie più economiche davvero disponibili**, anche da venditori diversi: la colonna *Prezzo* mostra quanto costano tutte e tre, non tre volte il prezzo migliore. In Panoramica la cella *Q.tà* diventa `3 ▸`: **clic** e sotto la carta compare una riga per ogni venditore che contribuisce (quante copie, a che prezzo, condizione, paese). Se il mercato non basta, il prezzo diventa giallo e lo dice. |
 | **Ordina per** | Riga di pulsantini sopra la tabella: **Manuale** (l'ordine che hai dato trascinando), **Rarità**, **Prezzo**, **Var.**. Il criterio attivo è **teal** con una freccetta; **cliccandolo di nuovo si inverte** il verso. L'ordinamento agisce **dentro ogni cartella/base** e fra le carte sciolte: i gruppi restano gruppi. Le carte senza il dato (prezzo mai visto, variazione non calcolabile) stanno **sempre in fondo**, in entrambi i versi. Il criterio si ricorda alla riapertura. |
 | **Grafico dello storico** | **Doppio clic** su una carta in watchlist (o tasto destro → *Storico prezzi…*): si apre una finestra col grafico dei prezzi rilevati, il prezzo attuale, il minimo, il massimo, la variazione dal primo prezzo e da quanti giorni si segue la carta. Passando il mouse si legge il prezzo in vigore a quella data. Mostra solo i prezzi presi **con i filtri di adesso**; se ce ne sono di più vecchi, presi con altri filtri, un interruttore in basso li aggiunge smorzati e separati da una linea tratteggiata. |
@@ -936,6 +937,28 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     quando l'API non conteneva la stampa richiesta, restituiva **gli annunci di
     un'altra stampa**: nessuna prova che sia successo qui, ma produce lo stesso
     sintomo e non doveva esserci.
+
+84. **"Non mi importa quale Ultra Rare, voglio la più economica" (v1.7.0).**
+    Richiesta dell'utente, e il problema è vero: Ash Blossom ha **sette stampe
+    Ultra Rare**, e chi vuole giocarci non ha motivo di preferirne una.
+    Ora si sceglie **la rarità invece della stampa**: tasto destro sulla carta
+    → *Segui la più economica…*, oppure — importando un `.ydk` — le voci con la
+    stella in cima all'elenco delle stampe. Si può anche dire *qualsiasi
+    rarità*. Accanto a ogni rarità c'è il numero di stampe, che è il lavoro che
+    quella scelta costerà: non è un dettaglio da nascondere.
+    **Perché non guarda tutto ogni volta.** L'API di CardTrader non sa
+    rispondere per più stampe in una richiesta: l'ho verificato provando le
+    virgole, la forma ad array (risponde *400*) e il parametro ripetuto. Quindi
+    ogni stampa è una richiesta, e sul mazzo di prova da 39 carte il conto
+    passerebbe da 39 a **412** per controllo in "qualsiasi rarità" — ogni
+    mezz'ora. La scelta, tua: **guardare tutto una volta al giorno** e a ogni
+    *Controlla ora*, e nel frattempo seguire la stampa che aveva vinto. Il
+    prezzo che vedi è sempre quello vero di una stampa vera; fra due scansioni
+    può non essere il minimo assoluto, e la data dell'ultima scansione è
+    salvata.
+    Un dettaglio che cambia i conti: quando servono più copie, vince la stampa
+    che costa meno **per quel numero di copie**, non quella col singolo annuncio
+    più basso — il primo venditore può averne una sola.
 
 ## 4. Note operative importanti
 

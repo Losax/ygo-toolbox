@@ -94,6 +94,18 @@ def rarity_abbrev(name: str) -> str:
     return _style(name)[0]
 
 
+def from_detail(detail: str) -> str:
+    """La rarità dal campo "rarità · espansione" del catalogo prezzi.
+
+    Sta qui e non nel market_watch perché la usano in tre: la griglia
+    dell'importazione `.ydk`, la scelta "la più economica in questa rarità" e
+    il controllo dei prezzi. A volte la parte sinistra porta altro
+    ("Ultra Rare | ©1996"), quindi si taglia anche sul `|`.
+    """
+    testa = (detail or "").split("·")[0]
+    return testa.split("|")[0].strip()
+
+
 # Parole che compaiono in QUALSIASI nome di rarità reale. Servono a
 # riconoscere anche quelle che la tabella qui sopra non conosce ancora:
 # Konami ne inventa di nuove (la "Quarter Century Secret Rare" è del 2023) e

@@ -1741,6 +1741,7 @@ def main() -> int:
         MarketWatchRepository as _MWRepo,
     )
     from modules.market_watch.widget import PROVIDER as _PROV  # noqa: E402
+    from PySide6.QtCore import Qt as _Qt  # noqa: E402
     from modules.market_watch.ydk_dialog import (  # noqa: E402
         YdkImportDialog,
         sort_printings,
@@ -1832,7 +1833,8 @@ def main() -> int:
     # -- il dialogo: NIENTE è preselezionato (sceglierlo sarebbe inventare) --
     voci_ydk = [{"passcode": 14558127, "name": "Ash Blossom & Joyous Spring",
                  "name_it": "Fioritura di Cenere", "thumb_url": "",  # niente rete
-                 "copies": 3, "sections": "2 main + 1 side", "printings": stampe}]
+                 "copies": 3, "sections": "2 main + 1 side", "printings": stampe,
+                 "rarities": [("Common", 2), ("Secret Rare", 1)]}]
     dlg_ydk = YdkImportDialog(voci_ydk, unknown=[27204312], ignored=[(12, "rumore")],
                               default_name="Prova")
     assert not dlg_ydk._ok_btn.isEnabled(), "senza scelte non si crea la base"
@@ -1841,10 +1843,14 @@ def main() -> int:
     assert dlg_ydk.grid.count() == 1
     assert dlg_ydk.prints.count() == 0, "finché non scegli una carta, niente stampe"
     dlg_ydk.grid.setCurrentRow(0)
-    assert dlg_ydk.prints.count() == 3
+    # il pannello ora ha in cima le voci "più economica": si contano le STAMPE
+    stampe_elencate = [k for k in range(dlg_ydk.prints.count())
+                       if dlg_ydk.prints.item(k).data(_Qt.ItemDataRole.UserRole + 1)
+                       is not None]
+    assert len(stampe_elencate) == 3, dlg_ydk.prints.count()
     # due stampe con rarità ed espansione identiche restano DUE voci distinte:
     # sono blueprint diversi, con prezzi diversi. Si distinguono col numero.
-    etichette = [dlg_ydk.prints.item(k).text() for k in range(3)]
+    etichette = [dlg_ydk.prints.item(k).text() for k in stampe_elencate]
     assert sum("#bp-com" in e for e in etichette) == 2, etichette
     # scegliere una stampa abilita il pulsante e porta con sé le copie
     dlg_ydk._choose(0, 0)
@@ -1859,6 +1865,36 @@ def main() -> int:
     assert "✓" not in dlg_ydk.grid.item(0).text()
     # i codici non riconosciuti si vedono, non spariscono
     assert "27204312" in dlg_ydk.summary.text(), dlg_ydk.summary.text()
+
+    # si può scegliere "la più economica" già qui: la voce compare SOLO per le
+    # rarità con almeno due stampe (con una sola non c'è niente da confrontare)
+    etichette_speciali = [dlg_ydk.prints.item(k).text() for k in range(3)
+                          if dlg_ydk.prints.item(k).data(_Qt.ItemDataRole.UserRole + 2)]
+    assert any("Common" in e for e in etichette_speciali), etichette_speciali
+    assert not any("Secret Rare" in e for e in etichette_speciali),         "con una stampa sola non si offre la scelta 'più economica'"
+    voce_comune = next(dlg_ydk.prints.item(k) for k in range(dlg_ydk.prints.count())
+                       if (dlg_ydk.prints.item(k).data(_Qt.ItemDataRole.UserRole + 2)
+                           or "") == "Common")
+    dlg_ydk._on_print_clicked(voce_comune)
+    assert dlg_ydk._modes.get(0) == "Common"
+    assert "★" in dlg_ydk.grid.item(0).text()
+    scelte_rar = dlg_ydk.result_cards()
+    assert len(scelte_rar) == 1 and scelte_rar[0][2] == "Common", scelte_rar
+    assert scelte_rar[0][0].id.startswith("bp-com"),         "il rappresentante è una stampa di QUELLA rarità"
+    # ri-clic = ci ho ripensato. La voce va RILETTA: scegliendo, l'elenco si
+    # ricostruisce e il vecchio elemento non esiste più (nell'app si clicca
+    # comunque su quello nuovo).
+    voce_comune = next(dlg_ydk.prints.item(k) for k in range(dlg_ydk.prints.count())
+                       if (dlg_ydk.prints.item(k).data(_Qt.ItemDataRole.UserRole + 2)
+                           or "") == "Common")
+    dlg_ydk._on_print_clicked(voce_comune)
+    assert 0 not in dlg_ydk._modes
+    # scegliendo una rarità si era fissato anche un rappresentante: si rimette
+    # tutto com'era, perché i controlli qui sotto partono da "niente scelto"
+    dlg_ydk._chosen.pop(0, None)
+    dlg_ydk._refresh_card_item(0)
+    dlg_ydk._refresh_summary()
+    assert dlg_ydk.result_cards() == []
 
     # il TASTO DESTRO esclude: rossa, e fuori dalla base qualunque stampa
     # le fosse stata scelta
@@ -1965,6 +2001,101 @@ def main() -> int:
     print("[OK] Prezzo fantasma: gli annunci di un altro blueprint non passano "
           "più, l'ora del controllo è per carta, e un prezzo non verificato lo "
           "dice invece di sembrare appena rilevato.")
+
+    # 7f) "la più economica in questa rarità": si interrogano TUTTE le stampe
+    #     di quella rarità e vince la meno cara — ma non a ogni giro.
+    from modules.market_watch.repository import ANY_RARITY as _ANY  # noqa: E402
+    from modules.market_watch.workers import PriceFetchWorker as _PFW  # noqa: E402
+    from modules.market_watch import widget as _mw  # noqa: E402
+    from datetime import datetime as _ora, timedelta as _delta  # noqa: E402
+
+    # tre stampe Ultra Rare e una Common della stessa carta
+    for _ref, _det in (("ur-a", "Ultra Rare · Set A"), ("ur-b", "Ultra Rare · Set B"),
+                       ("ur-c", "Ultra Rare · Set C"), ("com-a", "Common · Set A")):
+        storage.execute(
+            "INSERT OR REPLACE INTO mw_catalog (provider, ref_id, name, detail, "
+            "image_url, set_code) VALUES (?, ?, ?, ?, ?, ?)",
+            (_PROV, _ref, "Carta Multipla", _det, "", _det.split(" · ")[1]))
+
+    # le rarità proposte sono SOLO quelle che esistono, con quante stampe
+    assert widget.repo.rarities_of(_PROV, "Carta Multipla") == [
+        ("Common", 1), ("Ultra Rare", 3)], widget.repo.rarities_of(_PROV, "Carta Multipla")
+    assert sorted(widget.repo.siblings(_PROV, "Carta Multipla", "Ultra Rare")) == \
+        ["ur-a", "ur-b", "ur-c"]
+    assert len(widget.repo.siblings(_PROV, "Carta Multipla", _ANY)) == 4
+    assert widget.repo.siblings(_PROV, "Carta Multipla", "") == [], \
+        "stampa esatta = nessun fan-out"
+
+    # --- il worker interroga i candidati e tiene la più economica ---
+    class _ProvaProvider:
+        """Prezzi finti, uno per stampa. 'ur-b' è la più economica."""
+        PREZZI = {"ur-a": 5.0, "ur-b": 3.0, "ur-c": 9.0}
+
+        def __init__(self):
+            self.chieste = []
+
+        def search_cards(self, query):      # noqa: D102 (contratto)
+            return []
+
+        def lowest_price(self, card_id, filters=None, copies=1):
+            self.chieste.append(str(card_id))
+            prezzo = self.PREZZI.get(str(card_id))
+            if prezzo is None:
+                return None
+            return _PQ(amount=prezzo, currency="EUR", seller=f"v-{card_id}")
+
+    prov = _ProvaProvider()
+    esiti = []
+    worker = _PFW(prov, [("ur-a", None, 1, ["ur-a", "ur-b", "ur-c"])])
+    worker.finished_ok.connect(lambda r, f, e: esiti.append(r))
+    worker.run()                      # sincrono: niente thread nel test
+    assert prov.chieste == ["ur-a", "ur-b", "ur-c"], prov.chieste
+    assert len(esiti) == 1 and len(esiti[0]) == 1
+    vinto = esiti[0][0]
+    assert vinto["ref_id"] == "ur-a", "l'identità della riga NON cambia"
+    assert abs(vinto["quote"].amount - 3.0) < 1e-6, "vince la più economica"
+    assert vinto["winner"] == "ur-b", vinto["winner"]
+
+    # con più copie conta il TOTALE, non l'unitario: la stampa col singolo
+    # annuncio più basso può costare di più per tre
+    caro_ma_intero = _PQ(amount=4.0, currency="EUR", total=12.0, covered=3)
+    basso_ma_scarso = _PQ(amount=3.0, currency="EUR", total=15.0, covered=3)
+    assert _PFW._meglio(caro_ma_intero, basso_ma_scarso, 3) is caro_ma_intero
+    assert _PFW._meglio(caro_ma_intero, basso_ma_scarso, 1) is basso_ma_scarso
+
+    # --- la politica: quando si guarda TUTTO e quando no ---
+    widget.repo.add_watch(_PROV, "ur-a", "Carta Multipla", "Ultra Rare · Set A",
+                          10.0, "", 1)
+    w_multi = [w for w in widget.repo.list_watches() if w["ref_id"] == "ur-a"][0]
+    # modalità normale: nessun fan-out
+    assert widget._candidati(w_multi, completo=True) == (["ur-a"], False)
+    # accesa la modalità: mai scansionata -> si guarda tutto
+    widget.repo.set_watch_rarity(w_multi["id"], "Ultra Rare")
+    w_multi = [w for w in widget.repo.list_watches() if w["ref_id"] == "ur-a"][0]
+    cand, scansione = widget._candidati(w_multi, completo=False)
+    assert scansione and sorted(cand) == ["ur-a", "ur-b", "ur-c"], (cand, scansione)
+    # appena scansionata: il controllo AUTOMATICO segue solo la vincente
+    widget.repo.set_watch_scan(_PROV, "ur-a", "ur-b",
+                               _ora.now().isoformat(timespec="seconds"))
+    w_multi = [w for w in widget.repo.list_watches() if w["ref_id"] == "ur-a"][0]
+    assert widget._candidati(w_multi, completo=False) == (["ur-b"], False)
+    # ...ma "Controlla ora" riguarda tutto comunque
+    cand, scansione = widget._candidati(w_multi, completo=True)
+    assert scansione and len(cand) == 3
+    # e una scansione vecchia torna dovuta da sola
+    widget.repo.set_watch_scan(_PROV, "ur-a", "ur-b",
+                               (_ora.now() - _delta(hours=_mw.SCAN_HOURS + 1))
+                               .isoformat(timespec="seconds"))
+    w_multi = [w for w in widget.repo.list_watches() if w["ref_id"] == "ur-a"][0]
+    assert widget._candidati(w_multi, completo=False)[1] is True
+
+    # cambiare rarità azzera vincitore e data: si insegue un altro prodotto
+    widget.repo.set_watch_rarity(w_multi["id"], _ANY)
+    w_multi = [w for w in widget.repo.list_watches() if w["ref_id"] == "ur-a"][0]
+    assert not w_multi["winner_ref"] and not w_multi["scan_at"]
+    print("[OK] Più economica per rarità: fan-out su tutte le stampe della "
+          "rarità, vince il TOTALE per le copie richieste, l'identità della "
+          "riga non cambia, e fra una scansione e l'altra si segue la vincente.")
 
     widget.stop()
     storage.close()

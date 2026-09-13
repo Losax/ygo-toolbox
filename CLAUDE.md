@@ -46,7 +46,7 @@ come artefatto: due volte era un difetto vero (GOTCHA 14).
   numerata**: i punti nuovi si aggiungono **IN FONDO, in ordine crescente**
   (inserendoli in cima la cronologia si legge al rovescio: è già capitato e ho
   dovuto riordinarla).
-- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 29
+- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 30
   **GOTCHAS** e le decisioni col loro *perché*. Quando scopri una trappola,
   scrivila lì con il sintomo, la causa e la cura — è la parte più utile del
   documento.
@@ -113,7 +113,7 @@ le tabelle esistenti).
   (`anim.py`), traduzioni (`i18n.py`), aggiornamento dell'app (`updates.py` =
   motore senza Qt, `update_widget.py` = thread + piede sotto il menu).
 - Dettagli, decisioni e trappole stanno in **`REGISTRO_TECNICO.md`**: leggerlo
-  prima di mettere le mani su market_watch, ha 29 GOTCHAS che spiegano *perché*
+  prima di mettere le mani su market_watch, ha 30 GOTCHAS che spiegano *perché*
   il codice è com'è.
 - `modules/<nome>/module.py` = punto di aggancio: una sottoclasse di
   `ToolModule` con `id`, `title`, `create_widget()`. Viene scoperta da sola al

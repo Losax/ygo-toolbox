@@ -11,7 +11,7 @@ Flusso d'uso:
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -83,7 +83,7 @@ from .history_chart import HistoryDialog, Run, split_runs
 from .providers import cardtrader
 from .providers.base import CardRef, ListingFilters, PriceQuote
 from .providers.cardtrader import CardTraderClient, CardTraderProvider
-from .repository import CardCatalogError, MarketWatchRepository
+from .repository import ANY_RARITY, CardCatalogError, MarketWatchRepository
 from .search_model import (
     ThumbDelegate,
     _make_empty_frame,
@@ -97,6 +97,17 @@ from .workers import CatalogSyncWorker, ImageFetchWorker, PriceFetchWorker
 from .ydk_dialog import YdkImportDialog, sort_printings
 
 PROVIDER = "cardtrader"
+
+# Ogni quante ore si riguardano TUTTE le stampe di una carta in modalità "la
+# più economica in questa rarità". Fra una scansione e l'altra si segue quella
+# che aveva vinto: costa una richiesta come una carta normale.
+# Il motivo del compromesso è misurato: l'API di CardTrader non risponde per
+# più stampe in una volta, e un mazzo da 39 carte in "qualsiasi rarità"
+# vorrebbe 412 richieste a ogni controllo (contro 39). Un giro completo al
+# giorno, più uno a ogni "Controlla ora", tiene il conto vicino a quello di
+# prima senza mai mostrare un prezzo inventato: quello che si vede è sempre di
+# una stampa vera, e la data dell'ultima scansione è scritta nel suggerimento.
+SCAN_HOURS = 24
 # Le miniature si scaricano/cachano grandi (ROW_THUMB) e vengono rimpicciolite
 # dalla tabella in vista normale (downscale = nitido). In Panoramica si usa la
 # dimensione piena e righe/font più grandi.
@@ -812,7 +823,8 @@ class MarketWatchWidget(QWidget):
         QTimer.singleShot(0, self._rebuild_completer)
 
         self.timer = QTimer(self)
-        self.timer.timeout.connect(self.check_now)
+        # automatico: NIENTE scansione completa (vedi SCAN_HOURS)
+        self.timer.timeout.connect(lambda: self.check_now(completo=False))
         self._apply_interval()
         # Ricontrollo automatico all'apertura: i dati ricaricati dal DB possono
         # essere vecchi di ore/giorni, così si vede subito la variazione reale
@@ -1082,7 +1094,9 @@ class MarketWatchWidget(QWidget):
         footer.setSpacing(10)
         self.check_btn = QPushButton(tr("Controlla ora"))
         self.check_btn.setObjectName("primary")
-        self.check_btn.clicked.connect(self.check_now)
+        # `clicked` passa un bool: senza la lambda finirebbe in `completo`
+        # e il pulsante farebbe l'OPPOSTO di quel che dice (GOTCHA 25)
+        self.check_btn.clicked.connect(lambda: self.check_now())
         footer.addWidget(self.check_btn)
         footer.addSpacing(6)
         footer.addWidget(QLabel(tr("Auto ogni")))
@@ -1859,6 +1873,19 @@ class MarketWatchWidget(QWidget):
             rarity, setname = detail.split(" · ", 1)
         else:
             rarity, setname = "", detail
+        # Modalità "la più economica": la stampa non è fissa, quindi la colonna
+        # Rarità mostra la rarità SCELTA e la colonna Set quella che vince
+        # adesso (o "—" finché non si è guardato). Lasciare i dati della stampa
+        # di partenza direbbe una cosa falsa: non è quella che si sta seguendo.
+        modalita = (watch["rarity"] if "rarity" in watch.keys() else "") or ""
+        vincente = (watch["winner_ref"] if "winner_ref" in watch.keys() else "") or ""
+        if modalita:
+            rarity = tr("Qualsiasi") if modalita == ANY_RARITY else modalita
+            setname = ""
+            if vincente:
+                vinto = self.repo.catalog_detail(PROVIDER, vincente) or ""
+                if " · " in vinto:
+                    setname = vinto.split(" · ", 1)[1]
         q = self._last_quotes.get(ref_id)
 
         # 0 Immagine (solo miniatura)
@@ -2502,6 +2529,53 @@ class MarketWatchWidget(QWidget):
         self._move_anim = anim_
         anim_.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
+    def _add_cheapest_menu(self, menu, watch) -> None:
+        """Sottomenu "Segui la più economica": stampa esatta, una rarità, o
+        qualsiasi.
+
+        È un sottomenu e non una finestra perché la scelta è una sola voce fra
+        poche, ed è la stessa per una carta singola e per una dentro una base.
+        Accanto a ogni rarità c'è **quante stampe** ha: è il numero di
+        richieste che quella scelta costerà a ogni scansione completa, e
+        nasconderlo vorrebbe dire far scegliere al buio.
+        """
+        attuale = (watch["rarity"] if "rarity" in watch.keys() else "") or ""
+        # Il sottomenu si crea col PADRE esplicito e poi si aggiunge: con
+        # `menu.addMenu(titolo)` l'unico riferimento è quello Python, e questa
+        # funzione RITORNA prima che il menu venga mostrato — il C++ viene
+        # buttato via e al clic si trova un oggetto morto. Il sottomenu delle
+        # cartelle non ha il problema solo perché nasce dentro `_table_menu`,
+        # che resta viva fino a `exec()`.
+        sub = QMenu(tr("Segui la più economica…"), menu)
+        menu.addMenu(sub)
+        wid = watch["id"]
+
+        def voce(etichetta: str, valore: str) -> None:
+            azione = sub.addAction(etichetta)
+            azione.setCheckable(True)
+            azione.setChecked(attuale == valore)
+            azione.triggered.connect(
+                lambda _c=False, i=wid, v=valore: self._set_cheapest(i, v))
+
+        voce(tr("Questa stampa esatta"), "")
+        rarita = self.repo.rarities_of(PROVIDER, watch["card_name"])
+        totale = sum(n for _r, n in rarita)
+        if totale > 1:
+            voce(tr("Qualsiasi rarità ({n} stampe)").format(n=totale), ANY_RARITY)
+        if rarita:
+            sub.addSeparator()
+        for nome, n in rarita:
+            voce((tr("{rar} (1 stampa)") if n == 1
+                  else tr("{rar} ({n} stampe)")).format(rar=nome, n=n), nome)
+
+    def _set_cheapest(self, watch_id, rarita: str) -> None:
+        """Cambia modalità e ricontrolla subito: il prezzo di prima era di un
+        altro prodotto, tenerlo a schermo sarebbe una bugia."""
+        self.repo.set_watch_rarity(watch_id, rarita)
+        self._reload_table()
+        self._set_busy(False, tr("Modalità cambiata: ricontrollo il prezzo…"))
+        self.check_now()
+
     def _move_watch(self, watch_id, dest_fid, before_id=None) -> None:
         """Colloca la carta in `dest_fid` (None = fuori), prima di `before_id`
         (None = in fondo), e riscrive il layout normalizzato di tutte."""
@@ -2546,6 +2620,7 @@ class MarketWatchWidget(QWidget):
                            lambda wid=w["id"], nm=w["card_name"],
                            c=(w["copies"] if "copies" in w.keys() else 1):
                            self._ask_copies(wid, nm, c))
+            self._add_cheapest_menu(menu, w)
         elif entry is not None and entry[0] == "folder":
             f = entry[1]
             menu.addAction(tr("Modifica base…"), lambda folder=f: self.open_deck(folder))
@@ -2647,8 +2722,12 @@ class MarketWatchWidget(QWidget):
             self.repo.set_folder_deck(fid, True)
         existing = {w["ref_id"]: w for w in self.repo.list_watches()
                     if w["provider"] == PROVIDER}
-        wanted = {ref.id for ref, _c in cards}
-        for ref, copies in cards:
+        # `cards` arriva col 3° elemento (la modalità "più economica") dalla
+        # griglia del .ydk, e senza dall'editor delle basi a mano: si tollerano
+        # entrambe invece di obbligare il chiamante più semplice a fingere.
+        cards = [(c if len(c) >= 3 else (*c, "")) for c in cards]
+        wanted = {ref.id for ref, _c, _r in cards}
+        for ref, copies, rarita in cards:
             watch = existing.get(ref.id)
             if watch is None:
                 self.repo.add_watch(PROVIDER, ref.id, ref.name, ref.detail,
@@ -2656,6 +2735,8 @@ class MarketWatchWidget(QWidget):
                 watch = [w for w in self.repo.list_watches() if w["ref_id"] == ref.id][0]
             else:
                 self.repo.set_watch_copies(watch["id"], copies)
+            if rarita:
+                self.repo.set_watch_rarity(watch["id"], rarita)
             if watch["folder_id"] != fid:
                 self._move_watch(watch["id"], fid)
         # Carte tolte dalla base: NON si cancellano dalla watchlist (si
@@ -2666,7 +2747,7 @@ class MarketWatchWidget(QWidget):
         self._refresh_folder_cache()
         self._reload_table()
         self._flash_folder(fid)
-        copies_tot = sum(c for _r, c in cards)
+        copies_tot = sum(c for _r, c, _m in cards)
         self._set_busy(False, tr("Base «{name}»: {n} carte, {c} copie. Controllo i prezzi…")
                        .format(name=name, n=len(cards), c=copies_tot))
         self.check_now()
@@ -2919,6 +3000,7 @@ class MarketWatchWidget(QWidget):
                 # si spiega il totale solo quando viene da più sezioni
                 "sections": carta.sections_label() if carta.split else "",
                 "printings": sort_printings(self.repo.printings(PROVIDER, nome)),
+                "rarities": self.repo.rarities_of(PROVIDER, nome),
             })
         return voci, sconosciuti
 
@@ -3101,9 +3183,39 @@ class MarketWatchWidget(QWidget):
         se c'è il token e la watchlist non è vuota, niente popup)."""
         if self.provider is not None and self.repo.list_watches():
             self._set_busy(True, tr("Controllo automatico all'avvio…"))
-            self.check_now()
+            self.check_now(completo=False)
 
-    def check_now(self) -> None:
+    def _scan_dovuta(self, watch) -> bool:
+        """È ora di riguardare TUTTE le stampe di questa carta?"""
+        quando = watch["scan_at"] if "scan_at" in watch.keys() else ""
+        if not quando:
+            return True          # mai scansionata
+        try:
+            prima = datetime.fromisoformat(quando)
+        except ValueError:
+            return True          # data illeggibile: si rifà, non si indovina
+        return datetime.now() - prima >= timedelta(hours=SCAN_HOURS)
+
+    def _candidati(self, watch, completo: bool) -> tuple[list, bool]:
+        """Quali stampe interrogare per questa carta, e se è una scansione.
+
+        Modalità normale → la sua stampa e basta. Modalità "più economica" →
+        tutte le stampe della rarità quando la scansione è dovuta (o quando
+        l'ha chiesto l'utente), altrimenti solo quella che aveva vinto.
+        """
+        ref = str(watch["ref_id"])
+        rar = (watch["rarity"] if "rarity" in watch.keys() else "") or ""
+        if not rar:
+            return [ref], False
+        if completo or self._scan_dovuta(watch):
+            fratelli = self.repo.siblings(PROVIDER, watch["card_name"], rar)
+            return (fratelli or [ref]), True
+        vincente = (watch["winner_ref"] if "winner_ref" in watch.keys() else "") or ref
+        return [vincente], False
+
+    def check_now(self, completo: bool = True) -> None:
+        """`completo=False` (controllo automatico) salta le scansioni non
+        ancora dovute: vedi `SCAN_HOURS`."""
         if self.provider is None:
             QMessageBox.information(self, tr("Token mancante"), tr("Imposta prima il token CardTrader."))
             return
@@ -3120,8 +3232,13 @@ class MarketWatchWidget(QWidget):
         self._failed_images.clear()
         self._refresh_folder_cache()   # i filtri effettivi dipendono dalle basi
         self._set_busy(True, tr("Controllo prezzi su CardTrader…"))
-        jobs = [(w["ref_id"], self._effective_filters(w),
-                 w["copies"] if "copies" in w.keys() else 1) for w in watches]
+        jobs, self._scan_refs = [], set()
+        for w in watches:
+            candidati, e_scansione = self._candidati(w, completo)
+            if e_scansione:
+                self._scan_refs.add(str(w["ref_id"]))
+            jobs.append((w["ref_id"], self._effective_filters(w),
+                         w["copies"] if "copies" in w.keys() else 1, candidati))
         self._price_worker = PriceFetchWorker(self.provider, jobs)
         self._price_worker.finished_ok.connect(self._on_prices)
         self._price_worker.progress.connect(self._on_price_progress)
@@ -3178,6 +3295,14 @@ class MarketWatchWidget(QWidget):
             (r["ref_id"], json.dumps(r["quote"].to_dict()) if r["quote"] is not None else "")
             for r in results
         ])
+        # Esito della scansione completa: quale stampa ha vinto e quando.
+        # Si scrive solo per le carte che hanno DAVVERO fatto il giro completo,
+        # altrimenti la data direbbe che si è guardato tutto senza averlo fatto.
+        adesso_iso = datetime.now().isoformat(timespec="seconds")
+        for result in results:
+            if str(result["ref_id"]) in getattr(self, "_scan_refs", set()):
+                self.repo.set_watch_scan(PROVIDER, result["ref_id"],
+                                         result.get("winner", ""), adesso_iso)
         checked = datetime.now().strftime("%d/%m %H:%M")
         # L'ora va segnata SOLO sulle carte davvero controllate: se il giro si
         # interrompe (3 errori di fila) o una singola carta fallisce, le altre

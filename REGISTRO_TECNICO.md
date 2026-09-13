@@ -145,6 +145,15 @@ del README in `docs/`). Committare e pushare a fine sessione.
   esistente: passare dall'editor la promuove) e, una tantum per i DB
   precedenti, `_adopt_deck_flags` — filtri propri o carte in più copie sono
   dati che una cartella semplice non avrebbe motivo di avere.
+- `mw_watchlist.rarity` / `winner_ref` / `scan_at` — **"la più economica
+  in questa rarità"** (v1.7.0). `rarity` vuota = segui quella stampa
+  esatta (comportamento di sempre); `*` (`ANY_RARITY`) = fra tutte;
+  altrimenti il nome di una rarità. **`ref_id` non cambia mai**: resta
+  l'identità della riga e la chiave dello storico — la stampa che vince di
+  volta in volta sta in `winner_ref`, perché farlo diventare `ref_id`
+  spezzerebbe lo storico in due serie a ogni sorpasso. `scan_at` = quando
+  si sono guardate TUTTE le stampe l'ultima volta. Cambiare rarità azzera
+  vincitore e data: da quel momento si insegue un altro prodotto.
 - `mw_watchlist.checked_at` — **quando è stato rilevato QUESTO prezzo**
   (v1.6.1). Prima c'era solo `mw_settings.last_checked`, una data per
   tutte: vedi GOTCHA 29. Si scrive **solo** per le carte davvero
@@ -571,6 +580,45 @@ confini di parola per non pescare "usato").
       fallimento del controllo che doveva aggiornarlo, va etichettato con la
       sua età, altrimenti il programma dice una bugia con la faccia
       dell'esattezza — e l'utente la scopre sul sito, non nell'app.
+
+- **"La più economica in questa rarità"** (v1.7.0). Ash Blossom ha **7 stampe
+  Ultra Rare**: a chi vuole giocarci non importa *quale*, importa che sia Ultra
+  e che costi poco. Il vincolo è l'API: `/marketplace/products` **non risponde
+  per più stampe in una volta** — provate le virgole (torna la prima),
+  `blueprint_id[]` (**400**) e il parametro ripetuto (torna l'ultima) — quindi
+  ogni stampa è una richiesta.
+  **Misurato sul mazzo vero (39 carte):** 39 richieste oggi, **118** se ognuna
+  seguisse la sua rarità più affollata, **412** in "qualsiasi rarità". Con il
+  controllo automatico ogni 30 minuti, il fan-out a ogni giro non sta in piedi.
+  **Compromesso scelto dall'utente:** scansione completa **a intervalli**
+  (`SCAN_HOURS = 24`) e **sempre** su "Controlla ora" o quando l'utente cambia
+  qualcosa; fra una scansione e l'altra si interroga solo `winner_ref`, quindi
+  una richiesta come una carta normale. Quel che si mostra è **sempre il prezzo
+  vero di una stampa vera**: fra due scansioni può non essere il minimo
+  assoluto, e per questo la data dell'ultima scansione è un dato salvato, non
+  un dettaglio.
+  Il confronto fra candidati usa il **totale per le copie richieste**, non
+  l'unitario (`PriceFetchWorker._meglio`): se ne servono tre, la stampa più
+  conveniente è quella che costa meno *per tre* — il venditore col singolo
+  annuncio più basso può averne una sola.
+  Il fan-out ha cambiato anche la barra di avanzamento: si conta per
+  **richieste**, non per carte, altrimenti su una scansione resta ferma su
+  "3/40" per un minuto e sembra bloccata.
+- **GOTCHA 30 — un sottomenu creato in una funzione che ritorna viene
+  distrutto** (v1.7.0).
+    - **Sintomo:** `RuntimeError: Internal C++ object (QMenu) already deleted`
+      appena si legge il sottomenu, e nell'app sarebbe una voce morta al clic.
+    - **Causa:** `sub = menu.addMenu(titolo)` lascia l'unico riferimento in una
+      variabile **Python**. Finché il menu si costruisce dentro la stessa
+      funzione che poi fa `exec()` (come "Sposta nella cartella") non si vede
+      niente; spostando la costruzione in un helper che **ritorna**, quel
+      riferimento muore e PySide porta via l'oggetto C++.
+    - **Cura:** padre esplicito — `sub = QMenu(titolo, menu)` e poi
+      `menu.addMenu(sub)`: così la proprietà è di Qt e non del refcount.
+    - **La lezione oltre il bug:** l'ha trovato lo **script di prova**, non
+      l'occhio: costruire il menu fuori dall'interfaccia e stamparne le voci
+      costa dieci righe e smaschera un difetto che a schermo sarebbe comparso
+      solo al clic, e solo qualche volta.
 
 ---
 

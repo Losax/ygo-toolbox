@@ -538,5 +538,23 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             '{n} cards excluded by right-click',
         "Prezzo e venditore sono del controllo del {quando}: l'ultimo controllo non è riuscito per questa carta, quindi l'annuncio potrebbe non esserci più.":
             'Price and seller come from the check on {quando}: the latest check failed for this card, so the listing may no longer exist.',
+        'Segui la più economica…':
+            'Track the cheapest…',
+        'Questa stampa esatta':
+            'This exact printing',
+        'Modalità cambiata: ricontrollo il prezzo…':
+            'Mode changed: rechecking the price…',
+        'Qualsiasi rarità ({n} stampe)':
+            'Any rarity ({n} printings)',
+        '{rar} ({n} stampe)':
+            '{rar} ({n} printings)',
+        'Qualsiasi':
+            'Any',
+        '{rar} (1 stampa)':
+            '{rar} (1 printing)',
+        '★ Più economica · qualsiasi rarità ({n})':
+            '★ Cheapest · any rarity ({n})',
+        '★ Più economica · {rar} ({n})':
+            '★ Cheapest · {rar} ({n})',
     },
 }
