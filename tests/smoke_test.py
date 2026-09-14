@@ -28,8 +28,8 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from core.context import AppContext, Notifier  # noqa: E402
 from core.storage import Storage  # noqa: E402
-from modules.market_watch.providers.base import ListingFilters, PriceQuote  # noqa: E402
-from modules.market_watch.providers.cardtrader import (  # noqa: E402
+from core.prices.base import ListingFilters, PriceQuote  # noqa: E402
+from core.prices.cardtrader import (  # noqa: E402
     CardTraderProvider,
     fetch_catalog,
 )
@@ -336,7 +336,7 @@ def main() -> int:
     print("[OK] Cartelle: totale 165.00 € e var. +3.1% sotto Prezzo/Var., gruppo evidenziato.")
 
     # 4) filtri annunci: lingua/condizione/Zero decidono quali annunci contano
-    from modules.market_watch.providers.cardtrader import _listing_matches  # noqa: E402
+    from core.prices.cardtrader import _listing_matches  # noqa: E402
 
     listings = [
         {"price": {"cents": 1000, "currency": "EUR"}, "graded": False,
@@ -352,7 +352,7 @@ def main() -> int:
     assert not _listing_matches(listings[1], ListingFilters(zero_only=True))
 
     # stampa americana (euristica): inglese + (venditore US oppure commento USA/American)
-    from modules.market_watch.providers.cardtrader import _is_american_print  # noqa: E402
+    from core.prices.cardtrader import _is_american_print  # noqa: E402
     en = lambda **kw: {"properties_hash": {"yugioh_language": "en"}, **kw}
     assert _is_american_print(en(user={"country_code": "US"}))                       # venditore US
     assert _is_american_print(en(description="American 1st edition"))                 # commento
@@ -395,7 +395,7 @@ def main() -> int:
     print("[OK] Filtri: lingua sempre modificabile, americana si spegne da sola.")
 
     # 5a-bis) due pulsanti distinti: predefiniti (header) e carta-da-aggiungere.
-    from modules.market_watch.providers.base import CardRef  # noqa: E402
+    from core.prices.base import CardRef  # noqa: E402
     assert not widget.filters_btn.isEnabled(), "senza carta selezionata va disabilitato"
     widget._selected_ref = CardRef(id="556", name="Dark Magician", detail="Secret Rare · LOB")
     widget._pending_filters = None
@@ -564,7 +564,7 @@ def main() -> int:
 
     # 5a-quater) copie da più venditori: il costo di 3 copie non è 3× la più
     # economica se quel venditore ne ha una sola (caso "Blitzclique Surge").
-    from modules.market_watch.providers.cardtrader import _pick_copies  # noqa: E402
+    from core.prices.cardtrader import _pick_copies  # noqa: E402
 
     def offerta(prezzo, qty, venditore):
         return (prezzo, "EUR", {"quantity": qty,
@@ -725,7 +725,7 @@ def main() -> int:
 
     # 5b) rate limit: il 429 non deve più far fallire il controllo.
     # Il client ritenta rispettando Retry-After e allarga la spaziatura.
-    from modules.market_watch.providers import cardtrader as ct  # noqa: E402
+    from core.prices import cardtrader as ct  # noqa: E402
 
     class FakeResponse:
         def __init__(self, status, payload=None, retry_after=None):
@@ -1149,7 +1149,7 @@ def main() -> int:
     # Il segnaposto grigio di CardTrader vale come immagine ASSENTE, e il
     # percorso relativo arriva senza slash iniziale (caso reale: "Deception of
     # the Sinful Spoils", 645 stampe su 47.980 nel catalogo vero).
-    from modules.market_watch.providers import cardtrader as ctp  # noqa: E402
+    from core.prices import cardtrader as ctp  # noqa: E402
     assert ctp.usable_image_url("https://www.cardtrader.comfallbacks/card_uploader/show.png") == ""
     assert ctp.usable_image_url("") == ""
     assert ctp.usable_image_url("https://x/show_vera.jpg") == "https://x/show_vera.jpg"
@@ -1954,10 +1954,10 @@ def main() -> int:
 
     # 7e) il PREZZO FANTASMA segnalato da un utente: 3,10 € da un venditore
     #     che per quella carta non esiste. Tre difetti, tre controlli.
-    from modules.market_watch.providers.cardtrader import (  # noqa: E402
+    from core.prices.cardtrader import (  # noqa: E402
         _products_list as _plist,
     )
-    from modules.market_watch.providers.base import PriceQuote as _PQ  # noqa: E402
+    from core.prices.base import PriceQuote as _PQ  # noqa: E402
 
     # (a) il parser non deve MAI dare gli annunci di un altro blueprint
     assert len(_plist({"111": [{"x": 1}]}, "111")) == 1      # chiave giusta
@@ -2096,6 +2096,295 @@ def main() -> int:
     print("[OK] Più economica per rarità: fan-out su tutte le stampe della "
           "rarità, vince il TOTALE per le copie richieste, l'identità della "
           "riga non cambia, e fra una scansione e l'altra si segue la vincente.")
+
+    # ------------------------------------------------------------------
+    # 8) COLLEZIONE — cosa possiedo, quanto vale, i raccoglitori
+    # ------------------------------------------------------------------
+    from modules.collection.add_dialog import (  # noqa: E402
+        AddCardDialog,
+        parse_amount,
+    )
+    from modules.collection.repository import (  # noqa: E402
+        CollectionRepository,
+    )
+    from modules.collection.widget import CollectionWidget  # noqa: E402
+    from modules.collection.workers import PriceRefreshWorker  # noqa: E402
+
+    col = CollectionWidget(ctx)
+    crepo = col.repo
+
+    # 8a) le copie si fondono solo quando le righe sono DAVVERO la stessa cosa
+    uno = crepo.add_item(_PROV, "ur-a", "Carta Multipla", "Ultra Rare · Set A",
+                         "SETA", quantity=2, condition="Near Mint",
+                         language="en", paid=3.0)
+    due = crepo.add_item(_PROV, "ur-a", "Carta Multipla", "Ultra Rare · Set A",
+                         "SETA", quantity=1, condition="Near Mint",
+                         language="en", paid=3.0)
+    assert uno == due, "stessa stampa, stesso stato, stesso prezzo: si somma"
+    assert crepo.item(uno)["quantity"] == 3
+    # pagata una cifra diversa = riga diversa: il prezzo d'acquisto è un dato
+    # inserito a mano, non si media
+    tre = crepo.add_item(_PROV, "ur-a", "Carta Multipla", "Ultra Rare · Set A",
+                         "SETA", quantity=1, condition="Near Mint",
+                         language="en", paid=11.0)
+    assert tre != uno
+    # e "non so cosa l'ho pagata" (None) non è "l'ho pagata zero"
+    regalata = crepo.add_item(_PROV, "ur-b", "Carta Multipla",
+                              "Ultra Rare · Set B", "SETB", quantity=1, paid=0.0)
+    ignota = crepo.add_item(_PROV, "ur-b", "Carta Multipla",
+                            "Ultra Rare · Set B", "SETB", quantity=1, paid=None)
+    assert regalata != ignota, "0 = regalata, None = non lo so: righe diverse"
+
+    # 8b) il valore vale per la parte che ha un prezzo, e il resto è contato
+    _adesso = _ora.now().isoformat(timespec="seconds")
+    crepo.set_prices(_PROV, [("ur-a", 10.0, "EUR", _adesso),
+                             ("ur-b", None, "EUR", _adesso)])  # nessuno la vende
+    senza_prezzo = crepo.add_item(_PROV, "com-a", "Carta Multipla",
+                                  "Common · Set A", "SETA", quantity=4)
+    conti = crepo.totals(_PROV)
+    assert conti["copie"] == 3 + 1 + 1 + 1 + 4, conti["copie"]
+    assert abs(conti["valore"] - 10.0 * 4) < 1e-6, conti["valore"]
+    assert conti["copie_valutate"] == 4                  # le 3 + 1 di "ur-a"
+    assert conti["copie_senza_annuncio"] == 2            # "ur-b": controllata
+    assert conti["copie_da_controllare"] == 4            # "com-a": mai vista
+    # il guadagno confronta SOLO dove ci sono entrambi i dati
+    assert conti["copie_confrontabili"] == 4
+    assert abs(conti["guadagno"] - ((10.0 - 3.0) * 3 + (10.0 - 11.0))) < 1e-6, \
+        conti["guadagno"]
+    # la spesa invece è su TUTTE le copie con un prezzo d'acquisto: 0.0 compreso
+    assert conti["copie_con_spesa"] == 5, conti["copie_con_spesa"]
+
+    # a zero copie la riga se ne va (possedere zero copie non è uno stato)
+    crepo.set_quantity(senza_prezzo, 0)
+    assert crepo.item(senza_prezzo) is None
+    assert crepo.totals(_PROV)["copie_da_controllare"] == 0
+
+    # 8c) raccoglitori: tasche, buchi, scambi, travasi
+    b1 = crepo.add_binder("Prova", 3, 3)
+    crepo.place(uno, b1, 0)
+    crepo.place(tre, b1, 4)
+    assert crepo.first_free_slot(b1) == 1, "il primo buco, non la fine"
+    # chi arriva su una tasca occupata SCAMBIA con chi c'era
+    crepo.place(tre, b1, 0)
+    assert int(crepo.item_at(b1, 0)["id"]) == tre
+    assert int(crepo.item_at(b1, 4)["id"]) == uno, "l'altra non è sparita"
+    # cambiare formato NON sposta le carte: lo slot è assoluto, cambia la pagina
+    assert 4 // (3 * 3) == 0                      # 3×3: prima pagina
+    crepo.set_binder_layout(b1, 2, 2)
+    assert int(crepo.item(uno)["slot"]) == 4      # la carta è ferma...
+    assert 4 // (2 * 2) == 1                      # ...ma ora è in seconda pagina
+    crepo.set_binder_layout(b1, 3, 3)
+
+    # eliminare il raccoglitore NON butta le carte, a meno che non lo si chieda
+    b2 = crepo.add_binder("Da buttare")
+    dentro = crepo.add_item(_PROV, "ur-a", "Carta Multipla", "Ultra Rare · Set A",
+                            "SETA", quantity=1, condition="Played",
+                            binder_id=b2, slot=0)
+    crepo.delete_binder(b2)
+    assert crepo.item(dentro) is not None, "il raccoglitore se ne va, la carta no"
+    assert crepo.item(dentro)["binder_id"] is None
+    assert int(crepo.item(dentro)["slot"]) == -1
+    b3 = crepo.add_binder("Da buttare davvero")
+    crepo.place(dentro, b3, 0)
+    crepo.delete_binder(b3, con_carte=True)
+    assert crepo.item(dentro) is None
+
+    # 8d) il worker: "nessuno la vende" è un risultato, un errore non scrive
+    class _ProvaPrezzi:
+        """None = nessun annuncio; l'eccezione = guasto."""
+
+        def __init__(self):
+            self.chieste = []
+
+        def search_cards(self, query):      # noqa: D102 (contratto)
+            return []
+
+        def lowest_price(self, card_id, filters=None, copies=1):
+            self.chieste.append(str(card_id))
+            if str(card_id) == "rotta":
+                raise _CTError("429 Too Many Requests")
+            if str(card_id) == "invenduta":
+                return None
+            return _PQ(amount=4.25, currency="EUR", seller="v")
+
+    from core.prices.cardtrader import CardTraderError as _CTError  # noqa: E402
+    prov_col = _ProvaPrezzi()
+    esiti = []
+    worker = PriceRefreshWorker(prov_col, ["ur-a", "invenduta", "rotta"])
+    worker.finished_ok.connect(lambda r, f, e: esiti.append((r, f, e)))
+    worker.run()                       # sincrono: niente thread nel test
+    righe, falliti, errore = esiti[0]
+    assert [r[0] for r in righe] == ["ur-a", "invenduta"], righe
+    assert righe[0][1] == 4.25
+    assert righe[1][1] is None, "controllata e senza annunci: prezzo NULL"
+    assert falliti == 1 and "429" in errore
+    crepo.set_prices(_PROV, righe)
+    salvati = crepo.prices(_PROV)
+    assert salvati["invenduta"][0] is None and salvati["invenduta"][2], \
+        "senza annunci resta la DATA: la carta è stata guardata"
+    assert "rotta" not in salvati, "un errore di rete non è un prezzo"
+
+    # 8e) il dialogo: senza stampa scelta non si aggiunge niente
+    assert parse_amount("") is None and parse_amount("1,50") == 1.5
+    assert parse_amount("0") == 0.0, "zero è un dato vero, non 'non lo so'"
+    dlg = AddCardDialog(
+        cerca_nomi=lambda q: ["Carta Multipla"],
+        stampe_di=lambda n: list(widget.repo.printings(_PROV, n)))
+    dlg.search.setText("carta")
+    dlg._cerca()
+    assert dlg.names.count() == 1
+    dlg.names.setCurrentRow(0)
+    assert dlg.prints.count() >= 3, dlg.prints.count()
+    assert not dlg._ok.isEnabled(), "niente è preselezionato"
+    assert dlg.result_card() is None
+    dlg.prints.setCurrentRow(0)
+    assert dlg._ok.isEnabled()
+    dlg.paid.setText("2,40")
+    assert dlg.result_card()["paid"] == 2.4
+    dlg.deleteLater()
+
+    # 8f) l'interfaccia: ordinamento onesto e ponte fra moduli
+    col._reload()
+    col._sort, col._sort_desc = "prezzo", False
+    ordinate = col._filtrate()
+    assert ordinate[-1]["price"] is None, "chi non ha prezzo va in fondo"
+    col._sort_desc = True
+    ordinate = col._filtrate()
+    assert ordinate[-1]["price"] is None, \
+        "...anche invertendo: altrimenti galleggerebbe in cima"
+
+    ricevuti = []
+    ctx.open_module = lambda mid, payload=None: (
+        ricevuti.append((mid, payload)), True)[1]
+    assert col.handle_request({"card_name": "Carta Multipla"})
+    assert not col.handle_request({}), "senza nome non si fa finta di niente"
+    assert not col.handle_request("una stringa")
+
+    # 8g) il trascinamento: il gesto che nessuna schermata prova
+    #     (qui è saltata fuori una costante di stile che in questa PySide6 non
+    #     esiste — una riga che si esegue SOLO trascinando davvero)
+    from PySide6.QtCore import QMimeData as _QMime  # noqa: E402
+    from PySide6.QtCore import QPoint as _QPoint, QPointF as _QPF  # noqa: E402
+    from PySide6.QtGui import QDropEvent as _QDrop  # noqa: E402
+    from PySide6.QtWidgets import QListWidgetItem as _QLWI  # noqa: E402
+    from modules.collection.binder_view import (  # noqa: E402
+        MIME as _MIME,
+        BinderPage as _BinderPage,
+        CardTray as _CardTray,
+    )
+
+    pagina = _BinderPage()
+    pagina.resize(420, 460)
+    pagina.set_layout_size(3, 3)
+    pagina.set_page(0)
+    for _i in range(9):
+        assert pagina.slot_at(pagina._rect_for(_i).center()) == _i
+    pagina.set_page(2)
+    assert pagina.slot_at(pagina._rect_for(0).center()) == 18, \
+        "lo slot è ASSOLUTO: la terza pagina comincia da 18, non da 0"
+    assert pagina.slot_at(_QPoint(2, 2)) == -1, "fuori dalle tasche, nessuna tasca"
+
+    pagina.set_page(0)
+    lasciate = []
+    pagina.dropped.connect(lambda i, s: lasciate.append((i, s)))
+    _dati = _QMime()
+    _dati.setData(_MIME, b"42")
+    _punto = _QPF(pagina._rect_for(4).center())
+    pagina.dropEvent(_QDrop(_punto, Qt.DropAction.MoveAction, _dati,
+                            Qt.MouseButton.LeftButton,
+                            Qt.KeyboardModifier.NoModifier))
+    assert lasciate == [(42, 4)], lasciate
+    _altro = _QMime()
+    _altro.setText("una riga di testo qualunque")
+    pagina.dropEvent(_QDrop(_punto, Qt.DropAction.MoveAction, _altro,
+                            Qt.MouseButton.LeftButton,
+                            Qt.KeyboardModifier.NoModifier))
+    assert len(lasciate) == 1, "solo il formato nostro entra nella pagina"
+
+    _vassoio = _CardTray()
+    _voce = _QLWI("Dark Magician", _vassoio)
+    _voce.setData(Qt.ItemDataRole.UserRole, 7)
+    _md = _vassoio.mimeData([_voce])
+    assert _md.hasFormat(_MIME) and bytes(_md.data(_MIME)) == b"7"
+    pagina.deleteLater()
+    _vassoio.deleteLater()
+
+    # 8h) il ponte verso il catalogo carte: per nome, e difensivo
+    from core import card_catalog as _cc  # noqa: E402
+    assert _cc.by_name(storage, []) == {}
+    trovate = _cc.by_name(storage, ["Dark Magician", "Nome Inventato"])
+    assert "Nome Inventato" not in trovate, \
+        "chi non c'è resta fuori: mai l'immagine di un'altra carta"
+
+    # 8i) LEGGERE UNA MINIATURA NON DEVE SCARICARE NIENTE
+    #     Il difetto vero: `pixmap()` avviava il download, e `_fill_table` la
+    #     chiama per OGNI riga — anche per le mille fuori dallo schermo. Su una
+    #     collezione da 2.000 carte erano 2.000 richieste a YGOPRODeck messe in
+    #     coda all'apertura dell'app, cioè il "volume alto" per cui minacciano
+    #     la blacklist dell'IP. Qui si conta, invece di fidarsi.
+    from core import card_images as _ci  # noqa: E402
+    from modules.collection.images import ThumbSource as _Thumbs  # noqa: E402
+
+    _partite = []
+    _vera_task, _vera_cached = _ci.ImageTask, _ci.cached
+    try:
+        _ci.ImageTask = lambda cid, url, small, sig: _partite.append(cid)
+        _ci.cached = lambda cid, small=True: None      # niente su disco
+        fonte = _Thumbs(storage)
+        fonte._pool.start = lambda task: None          # non si esegue nulla
+        fonte._ref = {f"Carta {i}": (1000 + i, f"http://esempio/{i}.jpg")
+                      for i in range(500)}
+        for nome in fonte._ref:
+            fonte.pixmap(nome)                         # LEGGERE
+        assert _partite == [], \
+            f"leggere ha messo in coda {len(_partite)} download"
+        for nome in list(fonte._ref)[:8]:
+            fonte.request(nome)                        # CHIEDERE
+        assert len(_partite) == 8, _partite
+        fonte.request(list(fonte._ref)[0])             # due volte: una sola
+        assert len(_partite) == 8, "una carta già chiesta non si richiede"
+    finally:
+        _ci.ImageTask, _ci.cached = _vera_task, _vera_cached
+
+    # 8k) "Aggiungi una carta qui…" deve riempire QUELLA tasca anche quando la
+    #     carta si FONDE con una riga gemella (e con le righe sfuse è la norma:
+    #     hanno tutte binder=None e slot=-1). Prima si capiva quale riga fosse
+    #     nata dal diff degli id, e fondendosi non ne nasceva nessuna: la tasca
+    #     restava vuota e l'unico messaggio diceva "1× carta in collezione".
+    b_tasca = crepo.add_binder("Tasche", 3, 3)
+    sfusa_id = crepo.add_item(_PROV, "111", "Carta Gemella", "Ultra Rare · Set",
+                              "SET", quantity=1, paid=2.5)
+    di_nuovo = crepo.add_item(_PROV, "111", "Carta Gemella", "Ultra Rare · Set",
+                              "SET", quantity=1, paid=2.5)
+    assert di_nuovo == sfusa_id, "add_item fonde e torna l'id della gemella"
+    col._binder_id = b_tasca
+    col.add_card = lambda nome_iniziale="": di_nuovo    # il dialogo l'ha già dato
+    col._aggiungi_in_tasca(4)
+    dentro = crepo.item_at(b_tasca, 4)
+    assert dentro is not None and int(dentro["id"]) == sfusa_id, \
+        "la tasca deve riempirsi anche se la carta si è fusa"
+    assert int(dentro["quantity"]) == 2, "e portarsi dietro tutte le copie"
+
+    # 8j) la freschezza: si mostra il prezzo PIÙ VECCHIO, non il più recente
+    crepo.set_prices(_PROV, [("ur-a", 10.0, "EUR", "2026-01-02T10:00:00"),
+                             ("ur-b", None, "EUR", "2026-09-14T10:00:00")])
+    vecchio, recente = crepo.price_span(_PROV)
+    assert vecchio.startswith("2026-01-02"), vecchio
+    assert recente.startswith("2026-09-14"), recente
+    col._refresh_summary()
+    etichetta = col.stat_agg.text()
+    assert "02/01/2026" in etichetta, \
+        f"la data più vecchia deve comparire, altrimenti il totale sembra fresco: {etichetta!r}"
+
+    col.stop()
+    print("[OK] Collezione: leggere una miniatura NON scarica (le richieste le "
+          "fa solo chi sa cosa c'è a schermo), e la freschezza dei prezzi "
+          "mostra il più VECCHIO, non il più recente.")
+    print("[OK] Collezione: il valore copre solo le copie con un prezzo (e dice "
+          "quante non ce l'hanno), 'nessuno la vende' non è 'mai controllata', "
+          "il guadagno esce solo dove ci sono valore E spesa, le tasche del "
+          "raccoglitore tengono i buchi e scambiano, e un errore di rete non "
+          "scrive un prezzo.")
 
     widget.stop()
     storage.close()

@@ -586,10 +586,20 @@ class CardDbWidget(QWidget):
         self.d_sets_grid.setColumnStretch(1, 1)
         v.addWidget(self.d_sets_box)
 
+        azioni = QHBoxLayout()
+        azioni.setSpacing(8)
         self.watch_btn = QPushButton(tr("Segui i prezzi in Market Watch"))
         self.watch_btn.setEnabled(False)
         self.watch_btn.clicked.connect(self._send_to_market_watch)
-        v.addWidget(self.watch_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        azioni.addWidget(self.watch_btn)
+        # Le due cose che si vogliono fare da qui sono "seguila" e "ce l'ho":
+        # stessa carta, due moduli diversi, stesso ponte (per id di modulo).
+        self.own_btn = QPushButton(tr("Ce l'ho: aggiungi alla Collezione"))
+        self.own_btn.setEnabled(False)
+        self.own_btn.clicked.connect(self._send_to_collection)
+        azioni.addWidget(self.own_btn)
+        azioni.addStretch(1)
+        v.addLayout(azioni)
         v.addStretch(1)
 
         area.setWidget(colonna)
@@ -967,6 +977,7 @@ class CardDbWidget(QWidget):
         self._fill_sets(self.repo.sets_of(card_id))
 
         self.watch_btn.setEnabled(True)
+        self.own_btn.setEnabled(True)
         self.art.set_source(None)
         percorso = images.cached(card_id, small=False)
         if percorso is not None:
@@ -1231,6 +1242,20 @@ class CardDbWidget(QWidget):
             QMessageBox.information(
                 self, tr("Market Watch"),
                 tr("Il modulo Market Watch non è disponibile."))
+
+    def _send_to_collection(self) -> None:
+        """Passa la carta alla Collezione. Stesso ponte, stesso motivo per cui
+        si passa il NOME: la stampa che si possiede la sa solo l'utente."""
+        if self._current_id is None:
+            return
+        carta = self.repo.card(self._current_id)
+        if carta is None:
+            return
+        ok = self.ctx.open_module("collection", {"card_name": carta["name"]})
+        if not ok:
+            QMessageBox.information(
+                self, tr("Collezione"),
+                tr("Il modulo Collezione non è disponibile."))
 
     # ------------------------------------------------------------ interfaccia
     def apply_scale(self, scale: float) -> None:

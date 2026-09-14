@@ -71,6 +71,26 @@ App desktop (PySide6/Qt) per seguire i prezzi delle carte Yu-Gi-Oh! su
 | **Finestre "in-app"** | Le impostazioni non si aprono più come finestre di Windows: sono **card del tema** senza cornice, con ombra e dissolvenza, posizionate accanto al pulsante che le apre. **Clic fuori dalla card = chiudi e applica** (come un menu; per scartare c'è *Annulla*). |
 | **Si aggiorna da sola** | All'avvio l'app guarda se è uscita una versione nuova e, se sì, **la scarica in sottofondo senza chiedere**. Quando è pronta, **in basso a sinistra sotto il menu** (quindi visibile da qualunque pagina) compare *"Versione X.Y.Z pronta"* e un pulsante **Riavvia e aggiorna**: chiude l'app, installa, la riapre. Meno di un minuto. Watchlist, token e catalogo non si toccano. Se il download non riesce **non compare nessun errore**, resta *Apri la pagina* (il modo manuale di prima); se l'installazione non parte, **l'app non si chiude** e lo dice. Con una sincronizzazione o un controllo prezzi in corso, chiede prima. |
 
+### Collezione (v1.8.0)
+
+Un modulo a sé, nel menu a sinistra: **quello che possiedi**, non quello che
+guardi.
+
+| Funzione | Come si usa |
+|---|---|
+| **Aggiungi una carta** | Pulsante *Aggiungi carta*: cerchi il nome, poi **scegli la stampa** che hai in mano (set e rarità), dici quante copie, in che condizione, in che lingua, se è prima edizione e — se lo sai — **quanto l'hai pagata**. Niente è preselezionato: la stampa decide il prezzo, e sceglierla al posto tuo vorrebbe dire inventare il valore della tua collezione. |
+| **Dal Database** | Nella pagina di una carta c'è *Ce l'ho: aggiungi alla Collezione*, accanto a *Segui i prezzi in Market Watch*: porta la carta di là con la ricerca già fatta. |
+| **Quanto vale** | Il riepilogo in alto: **Valore** (somma del prezzo più basso su CardTrader per le copie che possiedi), **Carte**, **Spesa** e **Differenza**. Il valore vale per **la parte che ha un prezzo**, e sotto c'è scritto quante copie non ce l'hanno: "su 412 copie di 500 · 88 mai controllate". Non è pedanteria — un totale che fa finta di conoscere tutto è un totale sbagliato. |
+| **Differenza (guadagno)** | Confronta valore e spesa **solo sulle carte che hanno tutti e due i dati**, e lo dice ("su 280 copie con valore e spesa"). Sottrarre quello che hai speso su una parte dal valore di tutto darebbe un numero più grande e completamente falso. |
+| **Aggiorna i prezzi** | Non succede da solo: **ogni stampa è una richiesta** a CardTrader, e una collezione vera sono centinaia. Il pulsante apre due scelte e **ti dice quante richieste costano**: solo quelle mancanti o più vecchie di 7 giorni, oppure tutta la collezione. Si può **fermare a metà** senza perdere quello che è già arrivato. |
+| **"Nessuno la vende"** | Se una stampa è stata controllata ma non ha annunci, il prezzo resta "—" **con la data del controllo** nel tooltip: è un'informazione (l'abbiamo guardata), diversa da "mai controllata". |
+| **Raccoglitori** | La seconda vista. Ogni raccoglitore è fatto di **pagine di tasche** (3×3 come quelli veri, o 4×3, 4×2, 2×2): trascini le carte dall'elenco *Carte sfuse* dentro le tasche, e le sposti trascinandole. **Le tasche vuote restano vuote** — chi colleziona lascia il posto alla carta che gli manca. Lasciando una carta su una tasca occupata, le due si **scambiano**. |
+| **Cambiare formato** | La tendina 3×3 / 4×3 / …: le carte **non si spostano**, si ridistribuiscono sulle pagine, come travasando un raccoglitore vero. |
+| **Eliminare un raccoglitore** | Chiede sempre, e distingue: *Tienile* (le carte tornano sfuse) oppure *Elimina anche le carte*. |
+| **Serve il catalogo** | Per aggiungere carte serve il **catalogo delle stampe** di CardTrader, quello che si sincronizza dal Market Watch. Se manca, la Collezione lo dice e ti ci porta. |
+
+---
+
 ### Filtri disponibili (Opzioni)
 - **Lingua** (es. Italiano, Inglese, …)
 - **Condizione minima** (Near Mint, Excellent, …)
@@ -959,6 +979,56 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     Un dettaglio che cambia i conti: quando servono più copie, vince la stampa
     che costa meno **per quel numero di copie**, non quella col singolo annuncio
     più basso — il primo venditore può averne una sola.
+
+85. **La Collezione e i raccoglitori digitali (v1.8.0).** Richiesta
+    dell'utente: un modulo nuovo dove mettere le carte che possiede, sapere
+    quanto vale la collezione e organizzarla in **raccoglitori**.
+    **Il valore non è mai un numero solo.** Il prezzo di una carta è l'annuncio
+    più basso su CardTrader per quella stampa — la stessa misura del Market
+    Watch, dallo stesso provider — quindi il totale può coprire solo le stampe
+    che sono state controllate. Il riepilogo scrive sempre quante copie restano
+    fuori, e distingue **"nessuno la vende"** (controllata, senza annunci) da
+    **"mai controllata"**: la prima è un'informazione, la seconda un buco. La
+    *Differenza* fra valore e spesa si calcola **solo sulle carte che hanno
+    entrambi i dati**, perché il numero grande e sbagliato sarebbe stato facile.
+    **Perché i prezzi non si aggiornano da soli.** L'API vuole una richiesta per
+    stampa, e una collezione vera sono centinaia o migliaia: un aggiornamento
+    automatico a ogni avvio sarebbe la raffica che le regole di questo progetto
+    vietano. Si aggiorna quando lo chiedi, il menu **dice quante richieste
+    costa** ogni scelta, e si può fermare a metà senza perdere niente.
+    **I raccoglitori sono disegnati a mano** (non una lista di icone) per una
+    ragione sola: un raccoglitore vero ha **tasche vuote**, e sono importanti
+    quanto quelle piene — chi colleziona lascia il posto alla carta che gli
+    manca. Una lista mette gli elementi uno dopo l'altro e i buchi non li sa
+    fare. La tasca è una posizione, quindi cambiare formato alla pagina
+    ridistribuisce le carte senza spostarne nessuna.
+    **Tre cose viste solo guardando le schermate**, non leggendo il codice: le
+    frecce ◀ ▶ ▲ come CARATTERI non esistono nel font incorporato e i pulsanti
+    uscivano vuoti (ora sono disegnate); le pillole di set e rarità uscivano
+    **tagliate di netto** perché lo stile mangia una ventina di pixel ai lati
+    dei widget di cella (ora la misura si prende, non si indovina); e in una
+    finestra stretta il nome della carta si riduceva a "Ash Bloss…", quindi
+    sotto una certa larghezza spariscono *Pagata* e *Raccoglitore*, che si
+    ritrovano altrove.
+    **Due difetti gravi trovati prima di rilasciare, non dopo.** Il modulo
+    finito è passato da una revisione a più dimensioni (Qt, dati, onestà dei
+    numeri, rete, regressioni), con ogni rilievo dato a un secondo passaggio
+    che doveva provare a **smontarlo**. Ne sono rimasti in piedi due grossi.
+    Il primo: aprire l'app avrebbe mandato **una richiesta di immagine per
+    ogni carta della collezione** — misurato, 2.000 carte = più di quattro
+    minuti di richieste ininterrotte a YGOPRODeck, cioè proprio quello che le
+    loro regole vietano. Leggere una miniatura e scaricarla erano la stessa
+    funzione; adesso sono due, e a scaricare è solo chi sa cosa c'è a schermo.
+    Il secondo: *"Aggiungi una carta qui"* su una tasca vuota **non ci metteva
+    niente** se la carta si possedeva già, perché in quel caso non nasce una
+    riga nuova, si sommano le copie a quella che c'è. Entrambi ora hanno un
+    controllo automatico che li riprenderebbe.
+    Dalla stessa revisione: la data dei prezzi mostra il controllo **più
+    vecchio** e non il più recente (bastava aggiornare una carta per far
+    sembrare fresco tutto il totale); l'intestazione di un raccoglitore non
+    accosta più un valore parziale al numero totale di copie; e in tabella
+    *Pagata* è il totale della riga come *Valore*, non il prezzo di una copia
+    sola — accostati, dicevano un guadagno tre volte più grande del vero.
 
 ## 4. Note operative importanti
 

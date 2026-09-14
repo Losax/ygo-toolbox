@@ -22,6 +22,8 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `updates.py` | **Motore** dell'aggiornamento, senza Qt (quindi provabile headless). `LATEST_URL` = API release di GitHub: risponde solo se il repo è pubblico **e c'è almeno una Release pubblicata** (i tag non contano); altrimenti 404 e il controllo tace (**silenzio su qualunque problema**: né il controllo né il download li ha chiesti l'utente). `is_newer` confronta per NUMERI, non alfabeticamente: "1.0.9" < "1.0.23", che alfabeticamente sarebbe il contrario; `>` stretto, perché Inno non impedisce i downgrade. `fetch_latest` → `Release` (versione, pagina, url/nome/**dimensione** dell'asset) con `_pick_asset` che scegli per **pattern** (nome con "setup", `.exe`, `state == "uploaded"`), **mai `assets[0]`**: fra `gh release create` e la fine dell'upload la lista è incompleta. `scarica` a blocchi, annullabile, con **scadenza a orologio** (il `timeout` di `urlopen` è per-lettura: un proxy che sgocciola non lo fa scattare mai), su `<nome>.part` poi `os.replace`; **niente `Range`/ripresa**, riprendere dentro il file di un'altra release costruisce un ibrido che passa il controllo di dimensione. `verifica_file` = peso dichiarato **e** firma `MZ` (il peso da solo non smaschera la pagina d'errore di un proxy). `install_command`/`lancia_installer` (GOTCHA 24), `installer_partito` (il segnale è **la comparsa del file di `/LOG`**), e lo stato fra due avvii in `updates/stato.json` — `segna_attesa` prima di chiudersi, `esito_precedente` al riavvio: è l'**unica** prova che l'installazione sia avvenuta. |
 | `update_widget.py` | **Interfaccia** dell'aggiornamento: `UpdateWorker` (QThread: un giro solo, controlla e scarica) e `UpdateFooter`, il riquadro **sotto il menu laterale** — lì perché nell'header del market_watch non lo vedeva nessuno (l'app si apre sul Database: l'installazione di prova era rimasta 9 release indietro con l'avviso attivo). Stati: nascosto → *trovata* → *preparo* → *pronta* → *avvio* → *non partita*, più l'esito al riavvio. Il pulsante primario ha **un solo slot che dispaccia su `self._stato`** (GOTCHA 25). Riceve dalla `MainWindow` due funzioni invece di conoscerla: `occupato()` (→ `busy_reason()` dei widget) e `chiudi()`. |
 | `card_images.py` | Cache immagini delle carte **su DISCO** (`~/.ygo_toolbox/card_images/`), download **spaziati** (`_slot()`, 0,13 s) e URL falliti **ricordati**. È la regola più stringente di YGOPRODeck — *"download and re-host the images yourself"*, pena la blacklist — quindi il file scaricato resta lì per sempre e si prende **solo quel che serve a schermo**. Stava in `card_db/images.py`; dalla v1.5.1 è nel core perché la usa anche il Market Watch (griglia dell'importazione `.ydk`) e i moduli **non si importano fra loro** — stessa strada di `badges.py` e `rarity.py`. Ha una `requests.Session` **propria**: il `core` non può importare `modules`, sarebbe il contrario di come sta in piedi l'app. La cache è UNA, quindi un'immagine presa dal Database è già pronta per il Market Watch. |
+| `prices/` | **Strato dei prezzi**, salito qui dal market_watch nella v1.8.0 perché ora serve a DUE moduli (Market Watch e Collezione). `base.py` (contratto `PriceProvider`, `CardRef`, `PriceQuote`, `ListingFilters`), `cardtrader.py` (client + `LIMITER`), `net.py` (Session condivisa), `config.py` (token), `catalog.py` (lettura del catalogo stampe). Il motivo forte non è la simmetria ma il **freno**: `LIMITER` deve restare UN oggetto solo, o due moduli sommerebbero il traffico verso la stessa API dietro Cloudflare. `catalog.py` legge la tabella `mw_catalog`, che **conserva il nome storico**: rinominarla sarebbe una migrazione su database già in mano agli utenti per guadagnare due lettere. La scrive il Market Watch (`fetch_catalog`), la leggono in due. |
+| `card_catalog.py` | **Ponte in sola lettura verso `cdb_cards`** (il catalogo del Database), estratto da `market_watch/repository.py` nella v1.8.0 quando è servito anche alla Collezione. `status()` distingue `assente` / `vuota` / `incompleta` / `illeggibile` / `ok` (v1.6.0: i primi due sono stati NORMALI e tornano un dizionario vuoto, gli altri sollevano `CardCatalogError` — un difetto che manda l'utente a sincronizzare quando il problema è la FORMA della tabella è peggio di un errore parlante). `by_passcode()` per il `.ydk`, `by_name()` per le miniature della Collezione. Si legge, **mai** si scrive: il proprietario resta il Database. |
 | `badges.py` | Pillole condivise: `pill(testo, altezza, ink, bg)` e `set_pill(codice)` (fondo scuro, sigla teal). Stavano nel market_watch; dalla v1.1.5 sono nel core perché le usa anche il Database — e i moduli **non si importano fra loro**. Un vocabolario visivo comune va in un posto comune. |
 | `rarity.py` | Badge rarità (sigla community UR/ScR/QCSR… + colori foil), `rarity_rank` per l'ordinamento e **`is_rarity`** (v1.1.7): YGOPRODeck mette a volte altro in quel campo — 192 stampe su 44.190 con "2", "3", "New", "European debut", "force-SMW". Il filtro NON è una lista nera (invecchierebbe al primo refuso nuovo): passa ciò che la scala conosce **o** che contiene una parola da rarità (`rare`, `common`, `short print`, `duel terminal`), così una rarità inventata domani resta visibile. Verificato su tutti i 48 valori distinti del DB: scartati gli 8 sbagliati, zero rarità vere perse. Spostato da `modules/market_watch/` al core nella v1.1.5, stesso motivo. Match per SOTTOSTRINGA dal più specifico al più generico ("rare" per ultimo!). |
 | `i18n.py` | Traduzioni leggere: ITALIANO = chiave e fallback (chiavi non mappate restano in italiano), dict `en` completo. `load_language()` all'avvio (PRIMA della UI, da main), scelta in `~/.ygo_toolbox/language.txt`, `tr("…")` ovunque nelle stringhe visibili; template con `.format()`. La lingua si applica al RIAVVIO (la UI si costruisce una volta). |
@@ -32,8 +34,7 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `module.py` | Punto di aggancio (`MarketWatchModule`). |
 | `widget.py` | Tutta la UI + logica: ricerca live, watchlist, controlli prezzi, anteprima, Opzioni. |
 | `repository.py` | Accesso DB (tabelle `mw_*`) + migrazioni + settings. |
-| `providers/base.py` | Contratto `PriceProvider`, `CardRef`, `PriceQuote`, `ListingFilters`. |
-| `providers/cardtrader.py` | Client HTTP + parsing + `fetch_catalog` (paginato) + filtri annunci + euristica "americana" + **rate limit** (`LIMITER`, vedi GOTCHA 13). |
+| *(provider)* | Spostati in **`core/prices/`** nella v1.8.0 (`base.py`, `cardtrader.py`): li usa anche la Collezione, e il rate limiter deve essere uno solo. |
 | `workers.py` | `QThread`: `PriceFetchWorker` (una carta alla volta, tollerante agli errori, segnale `progress`), `CatalogSyncWorker`, `ImageFetchWorker`. |
 | `search_model.py` | `ThumbDelegate` (disegno voci popup: miniatura, testo, pill codice, hover animato) + download miniature. NB hover: scala ASIMMETRICA (y 1.07, x 1.018) — oltre i bordi della finestra popup non si può disegnare, con 1.06 anche in X la pill veniva tagliata al bordo. |
 | `flags.py` | Bandierine paesi disegnate a runtime con QPainter (~38 paesi; strisce/croci/casi speciali, pill col codice come ripiego) + `country_name` per i tooltip. Cache per (codice, altezza). Zero asset, zero rete. |
@@ -46,8 +47,19 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `filters_dialog.py` | Dialoghi "in-app": `CardDialog` (base SENZA cornice di Windows: **Qt.Popup** + FramelessWindowHint + WA_TranslucentBackground → il clic fuori chiude da solo; `reject()` reindirizza ad `accept()` = **chiudere applica**, solo il pulsante Annulla scarta via `_cancel`; le QComboBox interne NON chiudono il popup). Card `QFrame#popover` con ombra; `open_near(anchor)` posiziona accanto al pulsante ed entra con **fade + scivolamento** — NB: `setWindowOpacity` è inaffidabile sulle finestre translucide di Windows → si usa `anim.fade_in` (effetto opacità annidato sopra l'ombra della card: widget diversi = lecito). `FiltersDialog` = solo filtri annunci, con tre chiamanti (predefiniti dall'imbuto in header, carta-in-arrivo e per-riga entrambi con `allow_global`; lingua ≠ en spegne l'americana via `_on_language_changed`, MAI bloccare la combo). `DisplayDialog` = solo visualizzazione (pulsante Opzioni). `ToggleSwitch` = QCheckBox ridipinto a interruttore (pallino animato, traccia teal); freccette combo = PNG chevron generato da `theme._chevron_url` (cache in ~/.ygo_toolbox/cache — il QSS accetta solo url() per ::down-arrow). `AnimatedCombo` = tendina animata (fade sulla view + scivolamento) con menu ARROTONDATO: contenitore QComboBoxPrivateContainer reso translucido (flags Popup+Frameless+NoDropShadow, WA_TranslucentBackground) e trasparente con stylesheet a dichiarazione NUDA (il selettore di classe privata NON fa presa nei fogli di widget!) + stylesheet esplicito sulla view per ripristinarne il look; `setMaxVisibleItems(30)` per non far comparire i QComboBoxPrivateScroller (strisce-freccia squadrate sopra/sotto). Uscita card animata in `CardDialog.done()` (closeEvent con event.ignore() + reject, chiusura vera al finished; guardia `_exiting`). |
 | `history_chart.py` | Grafico dello storico prezzi: logica pura (`split_runs`, `collapse`, `nice_ticks`, `price_at`, dataclass `Run`) + `PriceChart` (QWidget dipinto con QPainter) + `HistoryDialog`. La logica sta fuori da Qt apposta: lo smoke test la prova senza aprire finestre. **Non è una `CardDialog`** (Qt.Popup = si chiude al primo clic fuori): è una finestra che si guarda e si sorvola col mouse. Si disegna in un QWidget, NON in un pixmap → la densità dello schermo la gestisce Qt e il grafico resta nitido (non aumenta il debito dei 21 pixmap disegnati a mano). |
 | `transfer.py` | Esporta/importa la watchlist in **JSON leggibile** (`formato: ygo-toolbox/watchlist`, `versione`). Niente Qt dentro: logica pura, testabile. **JSON e non CSV** perché i dati sono gerarchici (cartelle→carte, e entrambe portano un *oggetto* filtri): in CSV servirebbero più file collegati da id, meno comprensibili per un amico, non più. Chiavi in italiano: il file lo legge una persona. **NON si esportano MAI il token** (è una credenziale, e il file nasce per essere passato) **né il catalogo** (47.980 righe riscaricabili). Storico e preferenze entrano nel backup e restano fuori dall'export di una singola base: la regola la applica `export_data` da sé (`include_history=None` = "decidi tu"), non la memoria del chiamante. Import: `replace=False` aggiorna le carte già presenti con quanto dice il file (ignorarne pezzi in silenzio sarebbe peggio) e non duplica lo storico; `replace=True` svuota prima ed è l'unico caso in cui applica le preferenze. Lo storico si reinserisce con `add_history_row`, che conserva la data ORIGINALE — `record_price` timbrerebbe `now` e appiattirebbe la storia sul giorno dell'import. |
-| `net.py` | `requests.Session` condivisa (keep-alive). |
-| `config.py` | Token (file / env). |
+| *(rete e token)* | `net.py` e `config.py` spostati in **`core/prices/`** nella v1.8.0, con i provider. |
+
+**modules/collection/** (modulo **Collezione** — v1.8.0)
+| File | Ruolo |
+|---|---|
+| `module.py` | Punto di aggancio (`CollectionModule`, id `collection`, titolo "Collezione"). |
+| `repository.py` | Tabelle `col_*`. Tre domande, tre tabelle: cosa possiedo (`col_items`), i raccoglitori (`col_binders`), quanto vale oggi (`col_prices`). `totals()` è il cuore: torna il valore INSIEME a quante copie non lo hanno, perché un totale senza quel numero è un totale che mente (vedi §2). |
+| `widget.py` | Le due viste — **Inventario** (tabella) e **Raccoglitori** (pagine) — riepilogo, aggiornamento prezzi, menù contestuali. |
+| `binder_view.py` | `BinderPage`: la pagina **dipinta a mano** con QPainter, e `CardTray` (elenco trascinabile). Non è un `QListWidget` in IconMode come la griglia del `.ydk`, e il motivo è uno solo: **le tasche vuote**. Una lista a icone mette gli elementi uno dopo l'altro, i buchi in mezzo non esistono e ogni carta tolta fa scalare tutte le altre — l'opposto di un raccoglitore. Qui la tasca è una **posizione** (`slot`), la pagina è `slot // (colonne × righe)`, e cambiare formato ridistribuisce senza spostare niente. Trascinamento con un tipo MIME proprio (`application/x-ygo-collection-item`) invece di `text/plain`: così la pagina accetta solo ciò che viene davvero dalla collezione. |
+| `add_dialog.py` | Aggiungi/modifica: cerca → **scegli la stampa** → dichiara lo stato. Niente preselezionato (stessa regola del `.ydk`). Riceve due FUNZIONI (`cerca_nomi`, `stampe_di`) invece della connessione, così si prova senza database. Il prezzo pagato è un `QLineEdit` e non uno spinbox apposta: vuoto = **non lo so**, e uno spinbox lo zero lo scriverebbe da solo. |
+| `images.py` | `ThumbSource`: nome carta → miniatura, da `core.card_images` (cache su DISCO condivisa col Database) passando per `core.card_catalog`. **Non** dal CDN di CardTrader: quello sta dietro Cloudflare e una pagina di raccoglitore sono nove immagini per volta. Il prezzo del compromesso, detto chiaro: l'immagine è quella della CARTA, non della singola stampa. |
+| `workers.py` | `PriceRefreshWorker` (QThread). Due differenze dal controllo del Market Watch, ed è quello che rende onesto il valore: **"nessuno la vende" è un risultato** (prezzo NULL + data), un **errore non scrive niente** (la riga resta quella di prima, con la sua data). |
+| `format.py` | `soldi()` e `quando()`: la regola "un dato che non c'è si scrive —, mai zero" in un posto solo, perché la usano sia la tabella sia la pagina del raccoglitore. |
 
 **modules/card_db/** (modulo **Database**, fonte YGOPRODeck — v1.1.0)
 | File | Ruolo |
@@ -210,6 +222,34 @@ colonne aggiunte con `ALTER TABLE ADD COLUMN` in `_init_schema` (`mw_catalog`:
 al catalogo serve **ri-sincronizzare**.
 
 ---
+
+### Collezione (prefisso `col_`, v1.8.0)
+
+- `col_items(id, provider, ref_id, card_name, detail, set_code, image_url,
+  quantity, condition, language, first_edition, paid, note, binder_id, slot,
+  added_at)` — una riga per **stampa in un certo stato**. `paid` è REAL
+  **senza NOT NULL e senza default**: `NULL` = "non so cosa l'ho pagata",
+  `0.0` = "regalata". Sono due cose diverse e confonderle falserebbe la
+  *Differenza*. `binder_id` NULL = carta sfusa; `slot` = tasca **assoluta**
+  dentro il raccoglitore (-1 = nessuna), quindi la pagina è
+  `slot // (colonne × righe)` e cambiare formato non sposta niente.
+  `add_item` **fonde** due righe solo se stampa, stato, raccoglitore, tasca
+  **e prezzo pagato** coincidono: due copie pagate 2 € e 12 € restano due
+  righe, perché il prezzo d'acquisto lo ha inserito una persona e nessuno ha
+  il diritto di mediarlo.
+- `col_binders(id, name, position, cols, rows, note, created_at)` — i
+  raccoglitori. Eliminandone uno le carte **restano** (tornano sfuse) a meno
+  che non si scelga il contrario: il valore predefinito è il meno distruttivo,
+  stessa lezione dei gruppi del Market Watch (v1.5.4).
+- `col_prices(provider, ref_id, price, currency, checked_at)` — una **cache**,
+  non uno storico: la Collezione risponde a "quanto vale adesso", e un punto
+  per ogni controllo di 2.000 carte sarebbe un archivio che nessuno guarda
+  (lo storico per carta ce l'ha già il Market Watch). `price` può essere
+  **NULL con una data**: vuol dire *controllata, ma nessuno la vende* — senza
+  questa distinzione una carta introvabile resterebbe per sempre "mai
+  controllata". `cleanup_prices` toglie i prezzi delle stampe non più
+  possedute: niente dati orfani.
+- `col_settings(key, value)` — ordinamento scelto e spaziatura dell'API.
 
 ## 3. Provider CardTrader (verificato dal vivo)
 
@@ -619,6 +659,128 @@ confini di parola per non pescare "usato").
       l'occhio: costruire il menu fuori dall'interfaccia e stamparne le voci
       costa dieci righe e smaschera un difetto che a schermo sarebbe comparso
       solo al clic, e solo qualche volta.
+
+- **Il valore di una collezione non è un numero, sono quattro** (v1.8.0).
+  `CollectionRepository.totals()` non torna un totale: torna il valore
+  *insieme* a quante copie non ce l'hanno, divise fra **mai controllate** e
+  **controllate ma senza annunci**. È la regola 4 del progetto applicata al
+  caso peggiore: su 500 carte con 88 senza prezzo, "812 €" da solo è falso e
+  nessuno se ne accorgerebbe. Stessa disciplina sulla *Differenza*: si calcola
+  solo dove ci sono **valore E spesa**, e l'interfaccia dice su quante copie.
+  Sommare il valore di tutto e sottrarre la spesa di una parte darebbe il
+  numero che a tutti fa piacere leggere.
+- **Aggiornare i prezzi è un gesto, non un automatismo** (v1.8.0). Una
+  collezione vera sono centinaia o migliaia di stampe, e l'API di CardTrader
+  vuole **una richiesta per stampa** (provato nella v1.7.0: virgole,
+  `blueprint_id[]` → 400, parametro ripetuto). Un aggiornamento all'avvio
+  sarebbe la raffica che il `LIMITER` esiste per evitare. Quindi: si aggiorna
+  quando lo chiede l'utente, il menù **dichiara il numero di richieste** di
+  ogni scelta (è il tempo che sta per spendere e il traffico che sta per
+  mandare), e `requestInterruption` consegna comunque il parziale — mezz'ora
+  di lavoro non si butta perché si è chiuso in anticipo.
+- **GOTCHA 31 — le frecce ◀ ▶ ▲ ▼ non esistono nel font incorporato**
+  (v1.8.0).
+    - **Sintomo:** i pulsanti "pagina precedente/successiva" e quello del
+      verso dell'ordinamento comparivano **vuoti**. Nessun errore, nessun
+      avviso.
+    - **Causa:** il tema carica Inter da `assets/fonts` e quei glifi lì non ci
+      sono; il ripiego di sistema non scatta perché il carattere viene
+      disegnato dal QSS del pulsante.
+    - **Cura:** disegnarli (`_arrow_icon`, un triangolo con `QPainter`), come
+      già si fa per bandierine, rarità e chevron delle tendine.
+    - **Come è saltato fuori:** guardando una schermata coi font veri. Non
+      c'era modo di vederlo leggendo il codice.
+- **Un limitatore solo, un valore solo** (v1.8.0). `cardtrader.LIMITER` è
+  sempre stato unico, ma la spaziatura imparata durante l'uso la salvava ogni
+  modulo per conto suo (`mw_settings.api_interval`). Con due moduli il conto
+  non torna: i widget si costruiscono in ordine alfabetico, quindi all'avvio
+  vinceva **sempre** il Market Watch e la calibrazione fatta dalla Collezione
+  finiva nel cestino senza che si vedesse. Ora il valore sta in **un file**,
+  `~/.ygo_toolbox/api_interval.txt`, di cui è proprietario
+  `core/prices/config.py`; il vecchio `mw_settings` si legge ancora come
+  ripiego, per non far ripartire da zero chi aggiorna.
+
+- **GOTCHA 34 — leggere una miniatura non deve SCARICARLA** (v1.8.0).
+    - **Sintomo:** nessuno. L'app si apre, la tabella si riempie, tutto bello —
+      e intanto parte una raffica di richieste a YGOPRODeck che dura minuti.
+    - **Causa:** `ThumbSource.pixmap()` faceva due cose: se l'immagine non era
+      su disco, **metteva in coda il download**. `_fill_table` la chiama per
+      OGNI riga della collezione, non per quelle a schermo. **Misurato con un
+      banco di prova**: 2.000 carte → 2.000 `ImageTask` in coda in una sola
+      passata, che a `INTERVAL = 0,13 s` sono più di quattro minuti di
+      richieste ininterrotte. E parte da sola: `_load_modules` costruisce
+      **tutti** i widget all'avvio. `_load_visible_thumbs`, che il taglio
+      giusto lo fa, arrivava 300 ms dopo su una coda già piena.
+    - **Cura:** separare i due gesti. `pixmap()` **legge e basta** (memoria o
+      disco, mai rete); `request()` scarica, e la chiamano solo i posti che
+      sanno cosa c'è a schermo — righe visibili, tasche della pagina aperta,
+      anteprima del dialogo. È la divisione che il Database ha sempre avuto
+      fra `_request_image` e il riempimento della tabella: qui era stata persa
+      scrivendo un modulo nuovo.
+    - **La regola generale:** una funzione che si chiama come una lettura
+      (`pixmap`, `get`, `load`) e che dentro fa una richiesta di rete è una
+      trappola a orologeria, perché chi la chiama la userà in un ciclo. Il
+      costo va messo nel NOME.
+    - **Come è saltata fuori:** una revisione adversariale a più dimensioni
+      (Qt, dati, onestà dei numeri, rete, regressioni) fatta girare sul modulo
+      finito, con ogni rilievo passato a un verificatore che doveva provare a
+      **smontarlo**. Questo ha retto, con tanto di misura. È il metodo che ha
+      trovato anche il GOTCHA 35.
+
+- **GOTCHA 35 — `add_item` FONDE, quindi "quale riga è nata" non si deduce**
+  (v1.8.0).
+    - **Sintomo:** tasto destro su una tasca vuota → *"Aggiungi una carta
+      qui…"* → si aggiunge una carta **che si possiede già** → la tasca resta
+      **vuota**, e l'unico messaggio dice "1× carta in collezione". Il gesto
+      dichiarato dal menu non avviene e nessuno lo dice.
+    - **Causa:** `_aggiungi_in_tasca` capiva quale riga fosse nata confrontando
+      gli id prima e dopo. Ma `add_item` **fonde** con la riga gemella
+      (stessa stampa, stato, posto e prezzo pagato) e non inserisce niente:
+      l'insieme delle righe nuove è vuoto e il `place()` non veniva mai
+      chiamato. Con le carte sfuse è la norma, non un caso limite: hanno tutte
+      `binder_id` NULL e `slot` -1, quindi si fondono quasi sempre.
+    - **Cura:** non dedurre. `add_item` l'id lo **restituisce già** (nuovo o
+      fuso che sia); `add_card` lo passa avanti e `_aggiungi_in_tasca` usa
+      quello.
+    - **La lezione:** quando una funzione può fondere invece di creare,
+      qualunque ragionamento del tipo "guardo cosa è comparso" è sbagliato per
+      costruzione — e sbaglia proprio nel caso più comune.
+
+- **GOTCHA 33 — `PM_StartDragDistance` non esiste** (v1.8.0).
+    - **Sintomo:** `AttributeError: PM_StartDragDistance` — ma **solo
+      trascinando davvero** una carta dentro la pagina del raccoglitore. Fino a
+      quel momento tutto funziona: la pagina si disegna, il drop dall'elenco
+      funziona, le schermate sono perfette.
+    - **Causa:** in questa PySide6 l'enum `QStyle.PixelMetric` ha
+      `PM_MaximumDragDistance`, che è un'altra cosa. La soglia oltre la quale
+      un movimento del mouse diventa un trascinamento la tiene
+      l'**applicazione**: `QApplication.startDragDistance()`.
+    - **Cura:** una riga. Ma il punto non è la riga.
+    - **La lezione:** è una riga che si esegue **solo facendo il gesto**, e
+      nessuna schermata la tocca — il metodo di verifica di questo progetto
+      (guarda l'immagine coi font veri) qui non arrivava. L'ha trovata una
+      prova che **fa il gesto al posto della mano**: costruisce un `QDropEvent`
+      a mano, lo consegna alla pagina e controlla che il segnale esca con la
+      tasca giusta. Trenta righe, ora nello smoke test (blocco 8g), che
+      coprono anche due cose che a occhio non si vedono: che lo `slot` sia
+      **assoluto** (la terza pagina comincia da 18, non da 0) e che un testo
+      qualunque trascinato da fuori venga **ignorato**.
+
+- **GOTCHA 32 — lo stile mangia i lati dei widget di cella** (v1.8.0).
+    - **Sintomo:** le pillole di set e rarità nella tabella della Collezione
+      uscivano **tagliate di netto** sul bordo destro ("QCSR" → "QCS|"),
+      anche con la colonna larga il giusto.
+    - **Causa:** `QTableWidget::item` nel QSS ha un padding orizzontale, e Qt
+      piazza il widget di cella dentro il rettangolo **già ridotto**: colonna
+      larga 72, widget dentro 52. In più `ResizeToContents` misura
+      l'ELEMENTO, che in quelle celle non c'è — quindi non compensa.
+    - **Cura:** la larghezza se la calcola il widget (`_fit_columns`) e il
+      padding si **misura** al primo disegno (`_misura_cell_pad`) invece di
+      scriverlo a mano: quel numero **scala con l'interfaccia**, a scala 1,3
+      sarebbe un altro.
+    - **Parentela:** è lo stesso terreno del GOTCHA 28 (`setBackground`
+      invisibile sotto il QSS): quando foglio di stile e codice dicono cose
+      diverse sullo stesso pixel, vince il foglio.
 
 ---
 

@@ -9,9 +9,13 @@ import requests
 from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QImage
 
-from .net import SESSION
-from .providers.base import PriceProvider, PriceQuote
-from .providers.cardtrader import CardTraderClient, CardTraderError, fetch_catalog
+from core.prices.base import PriceProvider, PriceQuote
+from core.prices.cardtrader import (
+    CardTraderClient,
+    CardTraderError,
+    fetch_catalog,
+)
+from core.prices.net import SESSION
 
 
 class PriceFetchWorker(QThread):

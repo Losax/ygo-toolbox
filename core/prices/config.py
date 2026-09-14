@@ -31,6 +31,32 @@ def load_token(data_dir: Path) -> str | None:
     return None
 
 
+#: La spaziatura fra le chiamate all'API, imparata dal limitatore durante
+#: l'uso. Sta in un FILE e non nelle impostazioni di un modulo perché il
+#: limitatore è **uno solo** per tutta l'app: con una copia per modulo, chi si
+#: costruisce per ultimo sovrascriveva quella degli altri e la calibrazione di
+#: una sessione intera finiva nel cestino a ogni avvio.
+INTERVAL_FILE = "api_interval.txt"
+
+
+def load_interval(data_dir: Path) -> float:
+    """La spaziatura salvata, o 0 se non c'è (o non si legge)."""
+    percorso = Path(data_dir) / INTERVAL_FILE
+    try:
+        return float(percorso.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0.0
+
+
+def save_interval(data_dir: Path, secondi: float) -> None:
+    try:
+        percorso = Path(data_dir) / INTERVAL_FILE
+        percorso.parent.mkdir(parents=True, exist_ok=True)
+        percorso.write_text(f"{float(secondi):.3f}", encoding="utf-8")
+    except OSError:
+        pass          # una preferenza di comodo: se non si scrive, pazienza
+
+
 def save_token(data_dir: Path, token: str) -> None:
     path = _token_path(data_dir)
     path.parent.mkdir(parents=True, exist_ok=True)

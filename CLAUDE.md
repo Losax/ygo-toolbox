@@ -46,7 +46,7 @@ come artefatto: due volte era un difetto vero (GOTCHA 14).
   numerata**: i punti nuovi si aggiungono **IN FONDO, in ordine crescente**
   (inserendoli in cima la cronologia si legge al rovescio: è già capitato e ho
   dovuto riordinarla).
-- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 30
+- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 35
   **GOTCHAS** e le decisioni col loro *perché*. Quando scopri una trappola,
   scrivila lì con il sintomo, la causa e la cura — è la parte più utile del
   documento.
@@ -111,9 +111,13 @@ le tabelle esistenti).
   scoperta automatica (`module_loader.py`), servizi condivisi (`context.py`:
   storage + notifier), SQLite (`storage.py`), tema (`theme.py`), animazioni
   (`anim.py`), traduzioni (`i18n.py`), aggiornamento dell'app (`updates.py` =
-  motore senza Qt, `update_widget.py` = thread + piede sotto il menu).
+  motore senza Qt, `update_widget.py` = thread + piede sotto il menu), **prezzi**
+  (`prices/`: provider, rate limiter, token, catalogo stampe) e il **ponte in
+  sola lettura** verso il catalogo carte del Database (`card_catalog.py`).
+  Regola che vale per tutti e due gli ultimi: ciò che serve a DUE moduli va
+  qui, perché i moduli non si importano fra loro.
 - Dettagli, decisioni e trappole stanno in **`REGISTRO_TECNICO.md`**: leggerlo
-  prima di mettere le mani su market_watch, ha 30 GOTCHAS che spiegano *perché*
+  prima di mettere le mani su market_watch, ha 35 GOTCHAS che spiegano *perché*
   il codice è com'è.
 - `modules/<nome>/module.py` = punto di aggancio: una sottoclasse di
   `ToolModule` con `id`, `title`, `create_widget()`. Viene scoperta da sola al
@@ -128,7 +132,7 @@ le tabelle esistenti).
 - Timer/thread di un modulo vanno fermati in `on_stop()`.
 - **MAI raffiche di richieste verso CardTrader** (API e CDN immagini sono
   dietro Cloudflare: 429 e 403). Esistono già due freni, non aggirarli:
-  `providers/cardtrader.LIMITER` per l'API e `search_model._img_slot` per le
+  `core/prices/cardtrader.LIMITER` per l'API e `search_model._img_slot` per le
   immagini. Gli URL che falliscono si ricordano, non si ritentano in loop.
 - **MAI il pannello Browser dell'app (`mcp__Claude_Browser__*`) su un sito
   dietro Cloudflare — cardmarket.com e TUTTI i suoi sotto-domini** (`www.`,
@@ -188,16 +192,44 @@ le tabelle esistenti).
 
 ## Modulo market_watch (fonte: API ufficiale CardTrader)
 
-- La fonte prezzi è un **provider intercambiabile**: `providers/base.py`
-  (contratto `PriceProvider`) + `providers/cardtrader.py` (implementazione).
-  Per aggiungere CardMarket ecc., basta una nuova classe lì.
+- La fonte prezzi è un **provider intercambiabile**, e dalla v1.8.0 sta nel
+  **core** perché lo usano in due (Market Watch e Collezione):
+  `core/prices/base.py` (contratto `PriceProvider`) +
+  `core/prices/cardtrader.py` (implementazione). Per aggiungere CardMarket
+  ecc., basta una nuova classe lì. Il `LIMITER` deve restare **uno solo**: due
+  moduli con due freni separati sommerebbero il traffico verso la stessa API.
 - Il prezzo "minimo" si ricava da `/marketplace/products?blueprint_id=ID`.
-- Il token CardTrader si gestisce in `config.py` (file `~/.ygo_toolbox/
+- Il token CardTrader si gestisce in `core/prices/config.py` (file `~/.ygo_toolbox/
   cardtrader_token.txt` o variabile d'ambiente `CARDTRADER_TOKEN`). NON
   scrivere mai token nel codice o nei commit.
 - **VERIFICATO con token reale (2026-06-29):** forma del prezzo, struttura
   della risposta e game id Yu-Gi-Oh! (= 4) combaciano col parser difensivo.
-  Dettagli delle forme reali in cima a `providers/cardtrader.py`.
+  Dettagli delle forme reali in cima a `core/prices/cardtrader.py`.
+
+## Modulo collection — "Collezione" (v1.8.0)
+
+- **Le carte che possiedi**, non quelle che guardi: `col_items` (stampa +
+  stato + copie + prezzo pagato), `col_binders` (raccoglitori digitali),
+  `col_prices` (cache dell'ultimo prezzo per stampa).
+- **Il valore non si mostra mai da solo**: `totals()` porta con sé quante
+  copie NON hanno un prezzo, divise fra "mai controllate" e "controllate ma
+  nessuno le vende". La *Differenza* fra valore e spesa si calcola solo dove
+  ci sono entrambi i dati. È la regola 4 ("non inventare numeri") nel punto in
+  cui sarebbe stato più facile tradirla.
+- **I prezzi NON si aggiornano da soli.** Ogni stampa è una richiesta, e una
+  collezione sono centinaia: l'aggiornamento è un gesto dell'utente e il menù
+  dichiara quante richieste costa. Non aggiungere controlli automatici qui.
+- **Leggere una miniatura NON deve scaricarla** (GOTCHA 34):
+  `ThumbSource.pixmap()` legge e basta, `request()` scarica, e a chiamare
+  `request()` è solo chi sa cosa c'è **a schermo**. Una funzione che si chiama
+  come una lettura e dentro fa rete viene usata in un ciclo, sempre.
+- Il prezzo arriva dallo **stesso provider** del Market Watch
+  (`core/prices/`), quindi dallo stesso `LIMITER`. Le **immagini** invece
+  arrivano da YGOPRODeck via `core/card_images.py` (cache su disco), non dal
+  CDN di CardTrader: una pagina di raccoglitore sono nove immagini per volta.
+- Per aggiungere carte serve il **catalogo delle stampe**, che lo scarica il
+  Market Watch. Se manca, si invita e si passa di là con
+  `AppContext.open_module` — i moduli non si importano fra loro.
 
 ## Distribuzione
 Repo **pubblico**: https://github.com/Losax/ygo-toolbox — l'app si consegna

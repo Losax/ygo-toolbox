@@ -556,5 +556,159 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             '★ Cheapest · any rarity ({n})',
         '★ Più economica · {rar} ({n})':
             '★ Cheapest · {rar} ({n})',
+
+        # ---------------------------- Collezione (v1.8.0) ----------------
+        'Collezione': 'Collection',
+        'Quello che possiedi, e quanto vale': "What you own, and what it's worth",
+        'Aggiungi carta': 'Add card',
+        'Aggiorna i prezzi': 'Refresh prices',
+        'Valore': 'Value',
+        'Carte': 'Cards',
+        'Spesa': 'Spent',
+        'Differenza': 'Difference',
+        'Inventario': 'Inventory',
+        'Raccoglitori': 'Binders',
+        '🔍  Filtra per nome, set o rarità…': '🔍  Filter by name, set or rarity…',
+        "Inverti l'ordine": 'Reverse the order',
+        'Ferma': 'Stop',
+        'Nuovo raccoglitore': 'New binder',
+        'Nessun raccoglitore': 'No binder',
+        'Formato della pagina': 'Page layout',
+        'Pagina precedente': 'Previous page',
+        'Pagina successiva': 'Next page',
+        'Carte sfuse': 'Loose cards',
+        'Trascinale in una tasca per metterle nel raccoglitore':
+            'Drag them into a pocket to file them in the binder',
+        'Trascina una carta in una tasca della pagina':
+            'Drag a card into a pocket on the page',
+        'Pronta': 'Ready',
+        'Catalogo mancante': 'Catalog missing',
+        'Per aggiungere carte serve il catalogo delle stampe di CardTrader, '
+        'che si scarica dal Market Watch (una volta sola, qualche minuto).'
+        '\n\nVuoi aprirlo adesso?':
+            'Adding cards needs the CardTrader printings catalog, which is '
+            'downloaded from Market Watch (once, a few minutes).'
+            '\n\nOpen it now?',
+        'Modifica…': 'Edit…',
+        'Metti nel raccoglitore': 'File in binder',
+        'Nessuno (carte sfuse)': 'None (loose cards)',
+        'Aggiorna il prezzo di questa carta': "Refresh this card's price",
+        'Togli dalla collezione': 'Remove from the collection',
+        'Come si chiama?': "What's it called?",
+        'Rinomina…': 'Rename…',
+        'Elimina…': 'Delete…',
+        'Rinomina': 'Rename',
+        'Elimina il raccoglitore': 'Delete the binder',
+        'Cosa ne facciamo delle carte?': 'What about the cards?',
+        'Tienile (diventano sfuse)': 'Keep them (they become loose)',
+        'Elimina anche le carte': 'Delete the cards too',
+        "l'aggiornamento dei prezzi della collezione":
+            'the collection price refresh',
+        'Catalogo stampe da sincronizzare': 'Printings catalog not synced',
+        'Token CardTrader mancante': 'CardTrader token missing',
+        'Nessuna carta con questo filtro.': 'No card matches this filter.',
+        'collezione vuota': 'empty collection',
+        "nessun prezzo d'acquisto": 'no purchase price',
+        'serve il prezzo pagato': 'needs the price you paid',
+        'Trascinale in una tasca della pagina.':
+            'Drag them into a pocket on the page.',
+        'Tutte le carte sono in un raccoglitore.':
+            'Every card is in a binder.',
+        'Aggiungi una carta qui…': 'Add a card here…',
+        'Togli dal raccoglitore': 'Take out of the binder',
+        'Per leggere i prezzi serve il token CardTrader: si imposta dal '
+        'Market Watch (pulsante con la chiave).':
+            'Reading prices needs the CardTrader token: set it from Market '
+            'Watch (the key button).',
+        "Non c'è ancora niente da aggiornare.": 'Nothing to refresh yet.',
+        "C'è già un aggiornamento in corso.": 'A refresh is already running.',
+        "Fermo l'aggiornamento…": 'Stopping the refresh…',
+        'Per aggiungere carte serve il catalogo delle stampe: si sincronizza '
+        'dal Market Watch (una volta sola, qualche minuto).':
+            'Adding cards needs the printings catalog: sync it from Market '
+            'Watch (once, a few minutes).',
+        'La collezione è vuota. «Aggiungi carta» per cominciare: scegli la '
+        'carta, poi la stampa che hai in mano.':
+            'The collection is empty. "Add card" to start: pick the card, '
+            'then the printing you actually hold.',
+        '{n} stampe diverse': '{n} different printings',
+        'Prezzi aggiornati: {quando}': 'Prices updated: {quando}',
+        '{n}× {name} in collezione.': '{n}× {name} added to the collection.',
+        'Market Watch': 'Market Watch',
+        'Aprilo dal menu a sinistra e premi il pulsante di sincronizzazione '
+        'del catalogo.':
+            'Open it from the menu on the left and press the catalog sync '
+            'button.',
+        'Pagina {n} di {tot}': 'Page {n} of {tot}',
+        '«{name}» contiene {n} copie.': '"{name}" holds {n} copies.',
+        'Solo mancanti o più vecchie di {g} giorni  ({n} richieste)':
+            'Only missing or older than {g} days  ({n} requests)',
+        'Tutta la collezione  ({n} richieste)':
+            'The whole collection  ({n} requests)',
+        'Aggiorno {n} stampe…': 'Refreshing {n} printings…',
+        'Aggiorno i prezzi… {a} di {b}': 'Refreshing prices… {a} of {b}',
+        '{n} stampe aggiornate': '{n} printings updated',
+        'Aggiornamento non riuscito: {err}': 'Refresh failed: {err}',
+        'Prezzo mai controllato': 'Price never checked',
+        'su {n} copie': 'over {n} copies',
+        'su {n} copie con valore e spesa':
+            'over {n} copies with both value and cost',
+        'Quante copie di {name} vuoi togliere?':
+            'How many copies of {name} do you want to remove?',
+        'Togliere {name} dalla collezione?':
+            'Remove {name} from the collection?',
+        '{valore} · {n} copie': '{valore} · {n} copies',
+        '{n} copie · valore da aggiornare': '{n} copies · value to refresh',
+        '{n} senza annunci': '{n} with no listings',
+        '{n} non riuscite ({err})': '{n} failed ({err})',
+        'Rilevato il {quando}': 'Found on {quando}',
+        'su {n} copie di {tot}': 'over {n} copies of {tot}',
+        'tutte le {n} copie': 'all {n} copies',
+        'Controllata il {quando}: nessuno la vende':
+            'Checked on {quando}: nobody is selling it',
+        '{n} mai controllate': '{n} never checked',
+        '{n} non in vendita': '{n} not for sale',
+        'stampa senza dettagli': 'printing with no details',
+        '🔍  Nome della carta (in inglese)…': '🔍  Card name…',
+        'Stampe': 'Printings',
+        'nessuna carta\nselezionata': 'no card\nselected',
+        'Non indicata': 'Not stated',
+        'Prima edizione': 'First edition',
+        'vuoto = non lo so': "empty = I don't know",
+        'Pagata': 'Paid',
+        'Raccoglitore': 'Binder',
+        'Nota': 'Note',
+        'Modifica la carta': 'Edit the card',
+        'Aggiungi alla collezione': 'Add to the collection',
+        'Salva': 'Save',
+        'Nessuna carta con questo nome nel catalogo.':
+            'No card by that name in the catalog.',
+        'Questa carta non ha stampe nel catalogo dei prezzi.':
+            'This card has no printings in the price catalog.',
+        'Scegli la stampa: è quella che decide il prezzo.':
+            'Pick the printing: it is what decides the price.',
+        'Tasca vuota': 'Empty pocket',
+        'mai': 'never',
+        "Ce l'ho: aggiungi alla Collezione": "I own it: add to the Collection",
+        'Il modulo Collezione non è disponibile.':
+            'The Collection module is not available.',
+        'Scarico il database…': 'Downloading the database…',
+        'Pagata {prezzo}': 'Paid {prezzo}',
+        'Raccoglitore: {name}': 'Binder: {name}',
+        'Prezzi mai aggiornati': 'Prices never updated',
+        'Prezzi dal {vecchio} al {recente}': 'Prices from {vecchio} to {recente}',
+        '{valore} su {n} copie di {tot}': '{valore} over {n} copies of {tot}',
+        'ancora vuoto': 'still empty',
+        'Filtro attivo: {n} righe di {tot}. Il riepilogo in alto è di tutta '
+        'la collezione.':
+            'Filter on: {n} rows of {tot}. The summary above covers the whole '
+            'collection.',
+        '{r} righe: la stessa stampa in stati diversi (condizione, lingua) '
+        'sta su righe separate':
+            '{r} rows: the same printing in different states (condition, '
+            'language) sits on separate rows',
+        '{n} non controllate': '{n} not checked',
+        '{prezzo} a copia': '{prezzo} per copy',
+        '{n} copie · nessuna in vendita': '{n} copies · none for sale',
     },
 }

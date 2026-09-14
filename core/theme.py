@@ -359,6 +359,31 @@ QListWidget#deckGrid::item:selected {{
     border: 1px solid rgba(26,195,178,0.65);
 }}
 
+/* ---- liste semplici della Collezione (raccoglitori, carte sfuse) ----
+   Stessa cura della griglia del mazzo, per lo stesso motivo: la selezione
+   ereditata dalla palette è una banda di teal PIENO con il testo scuro sopra,
+   che su un elenco di nomi è uno schiaffo. Qui è una velatura con il bordo,
+   come nel resto dell'app. ---- */
+QListWidget#softList {{
+    background: #1b212a;
+    border: 1px solid #2f3744;
+    border-radius: {s(12)}px;
+    padding: {s(4)}px;
+    outline: 0;
+}}
+QListWidget#softList::item {{
+    border: 1px solid transparent;   /* sempre presente: niente salti di 1px */
+    border-radius: {s(8)}px;
+    padding: {s(6)}px {s(8)}px;
+    color: #eef1f6;
+}}
+QListWidget#softList::item:hover {{ background: #262e39; }}
+QListWidget#softList::item:selected {{
+    background: rgba(26,195,178,0.14);
+    border: 1px solid rgba(26,195,178,0.65);
+    color: #eef1f6;
+}}
+
 /* ---- scrollbar ---- */
 QScrollBar:vertical {{ background: transparent; width: {s(12)}px; margin: {s(4)}px {s(2)}px; }}
 QScrollBar::handle:vertical {{ background: #333b48; border-radius: {s(6)}px; min-height: {s(32)}px; }}

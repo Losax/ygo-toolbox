@@ -45,7 +45,7 @@ from PySide6.QtWidgets import (
 from core import card_images, rarity, theme
 from core.i18n import tr
 
-from .providers.base import CardRef
+from core.prices.base import CardRef
 from .repository import ANY_RARITY
 from .search_model import _make_empty_frame
 

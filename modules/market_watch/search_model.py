@@ -31,7 +31,7 @@ from PySide6.QtWidgets import QStyle, QStyledItemDelegate, QToolTip, QWidget
 
 from core import theme
 
-from .net import SESSION
+from core.prices.net import SESSION
 
 THUMB = QSize(64, 92)
 MAX_INFLIGHT = 24

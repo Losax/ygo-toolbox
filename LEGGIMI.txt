@@ -1,5 +1,5 @@
 =====================================================================
-  YGO TOOLBOX v1.7.0 — prezzi delle carte Yu-Gi-Oh! su CardTrader
+  YGO TOOLBOX v1.8.0 — prezzi e collezione Yu-Gi-Oh! su CardTrader
 =====================================================================
 
 Cosa fa
@@ -9,6 +9,12 @@ CardTrader e ti avvisa con una notifica quando cala oltre la soglia
 che hai impostato. Cartelle, BASI (mazzi in più copie), filtri
 (lingua, condizione, CardTrader Zero, ...), controllo automatico
 periodico e all'avvio.
+
+Dalla v1.8.0 c'è anche la COLLEZIONE: ci metti dentro le carte che
+possiedi (stampa, condizione, lingua, copie, quanto le hai pagate) e
+l'app ti dice quanto vale quello che hai, tenendo separato quello che
+non sa. Puoi sistemarle in RACCOGLITORI digitali, una pagina di nove
+tasche per volta, trascinando le carte al loro posto.
 
 Requisiti
 ---------

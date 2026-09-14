@@ -73,16 +73,16 @@ from core.rarity import rarity_pixmap, rarity_rank
 from core.version import APP_VERSION
 from core.i18n import tr
 
-from . import config
+from core.prices import config
 from . import transfer
 from . import ydk
 from .deck_dialog import DeckDialog
 from .filters_dialog import DisplayDialog, FiltersDialog, WelcomeDialog
 from .flags import country_name, flag_pixmap
 from .history_chart import HistoryDialog, Run, split_runs
-from .providers import cardtrader
-from .providers.base import CardRef, ListingFilters, PriceQuote
-from .providers.cardtrader import CardTraderClient, CardTraderProvider
+from core.prices import cardtrader
+from core.prices.base import CardRef, ListingFilters, PriceQuote
+from core.prices.cardtrader import CardTraderClient, CardTraderProvider
 from .repository import ANY_RARITY, CardCatalogError, MarketWatchRepository
 from .search_model import (
     ThumbDelegate,
@@ -848,15 +848,25 @@ class MarketWatchWidget(QWidget):
     # ricordarla, ogni avvio ripartirebbe troppo veloce e si riprenderebbe gli
     # stessi 429 prima di ricalibrarsi. Qui la si porta avanti fra le sessioni.
     def _load_rate_interval(self) -> None:
-        try:
-            saved = float(self.repo.get_setting("api_interval", "") or 0)
-        except (TypeError, ValueError):
-            return
-        if saved > 0:
-            cardtrader.LIMITER.adopt(saved)
+        """La spaziatura vive in un FILE, non nelle impostazioni del modulo.
+
+        Il limitatore è uno solo per tutta l'app (sta in `core/prices`), e da
+        quando a usarlo sono in due una copia per modulo non regge: i widget si
+        costruiscono in ordine alfabetico, quindi l'ultimo che parte
+        sovrascriveva sempre il valore dell'altro. Il vecchio `mw_settings` si
+        legge ancora come ripiego, per non ripartire da zero chi aggiorna.
+        """
+        salvato = config.load_interval(self.context.data_dir)
+        if salvato <= 0:
+            try:
+                salvato = float(self.repo.get_setting("api_interval", "") or 0)
+            except (TypeError, ValueError):
+                salvato = 0.0
+        if salvato > 0:
+            cardtrader.LIMITER.adopt(salvato)
 
     def _save_rate_interval(self) -> None:
-        self.repo.set_setting("api_interval", f"{cardtrader.LIMITER.interval:.3f}")
+        config.save_interval(self.context.data_dir, cardtrader.LIMITER.interval)
 
     # ------------------------------------------------------------------ UI
     def _build_ui(self) -> None:

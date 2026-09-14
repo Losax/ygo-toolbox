@@ -19,28 +19,13 @@ from __future__ import annotations
 
 import sqlite3
 
-from core import rarity
+from core import card_catalog, rarity
+from core.card_catalog import CardCatalogError  # noqa: F401 (ri-esportata)
 from core.storage import Storage
 
 #: modalità "qualunque rarità" di `mw_watchlist.rarity`. Un asterisco e non
 #: una stringa vuota, perché '' vuol già dire "segui la stampa esatta".
 ANY_RARITY = "*"
-
-
-class CardCatalogError(RuntimeError):
-    """Il catalogo carte del Database c'è, ma non si riesce a leggerlo.
-
-    Si solleva **solo** quando la tabella esiste: non averla mai sincronizzata
-    è uno stato normale, non un errore, e chi chiama riceve un dizionario
-    vuoto. Porta con sé `stato` e `dettaglio` (le colonne mancanti, o il
-    messaggio di SQLite) perché l'interfaccia possa dire cosa fare davvero
-    invece di consigliare a caso.
-    """
-
-    def __init__(self, stato: str, dettaglio: str = "") -> None:
-        super().__init__(f"{stato}: {dettaglio}" if dettaglio else stato)
-        self.stato = stato
-        self.dettaglio = dettaglio
 
 
 class MarketWatchRepository:
@@ -646,89 +631,21 @@ class MarketWatchRepository:
         )
 
     # --- ponte verso il catalogo del modulo Database (sola lettura) ---
-    # I moduli non si importano fra loro, ma il database SQLite è uno solo, e
-    # per un `.ydk` non c'è alternativa: il file porta *passcode*, il catalogo
-    # prezzi conosce solo NOMI. La traduzione passcode → nome esiste solo in
-    # `cdb_cards`, che è del modulo Database.
-    # Le altre strade sono peggiori: duplicare 14.000 righe dentro `mw_`
-    # significherebbe una seconda sincronizzazione da tenere allineata, e un
-    # servizio di interrogazione dentro `AppContext` è più architettura di
-    # quanta ne giustifichi una funzione sola.
-    # Quindi: lettura, MAI scrittura, e tutto difensivo — chi non ha mai aperto
-    # il Database non ha la tabella, e deve ricevere un messaggio chiaro, non
-    # un errore SQL.
-    #: colonne che ci servono da `cdb_cards`. Se una manca, la query fallisce
-    #: TUTTA: meglio dirlo per nome che restituire "nessuna carta".
-    CARD_COLUMNS = ("id", "name", "name_it", "image_url", "image_small_url")
+    # Il ponte vero sta in `core/card_catalog.py` da quando serve anche alla
+    # Collezione (i moduli non si importano fra loro: ciò che serve a due va
+    # nel core). Qui restano solo i nomi con cui il Market Watch lo chiama.
+    CARD_COLUMNS = card_catalog.CARD_COLUMNS
 
     def card_catalog_status(self) -> tuple[str, str]:
-        """Stato del catalogo carte: `(stato, dettaglio)`.
-
-        Stati: `assente` (mai sincronizzato), `vuota` (tabella senza righe),
-        `incompleta` (mancano colonne — il dettaglio le elenca), `illeggibile`
-        (SQLite si lamenta; il dettaglio è il suo messaggio), `ok`.
-
-        **Perché non basta un booleano.** Prima "tabella assente" e "query
-        fallita" finivano nello stesso `return {}`, quindi l'utente riceveva
-        sempre lo stesso invito a sincronizzare. Per il primo caso è la cura
-        giusta; per il secondo è un giro a vuoto — sincronizzare riscrive le
-        RIGHE, non la FORMA della tabella. Un difetto che non si vede e manda
-        l'utente dalla parte sbagliata è peggio di un errore parlante.
-        """
-        try:
-            if not self.storage.query(
-                    "SELECT name FROM sqlite_master "
-                    "WHERE type='table' AND name='cdb_cards'"):
-                return "assente", ""
-            presenti = {r["name"] for r in
-                        self.storage.query("PRAGMA table_info(cdb_cards)")}
-            mancanti = [c for c in self.CARD_COLUMNS if c not in presenti]
-            if mancanti:
-                return "incompleta", ", ".join(mancanti)
-            if not self.storage.query("SELECT 1 AS uno FROM cdb_cards LIMIT 1"):
-                return "vuota", ""
-            return "ok", ""
-        except sqlite3.Error as exc:
-            return "illeggibile", str(exc)
+        """Stato del catalogo carte: `(stato, dettaglio)` — vedi core."""
+        return card_catalog.status(self.storage)
 
     def has_card_catalog(self) -> bool:
-        """C'è il catalogo carte del Database, ed è utilizzabile?"""
-        return self.card_catalog_status()[0] == "ok"
+        return card_catalog.available(self.storage)
 
     def cards_by_passcode(self, codes) -> dict:
-        """passcode → riga del catalogo carte, per i codici trovati.
-
-        I codici assenti semplicemente non compaiono nel risultato: è un dato
-        mancante, e chi chiama lo mostra come tale invece di inventare una
-        carta. Non tutti i passcode sono in `cdb_cards`: le **arti
-        alternative** hanno un passcode proprio che lì non è indicizzato (la
-        tabella tiene un id per carta), quindi un `.ydk` che le usa lascia
-        qualche riga non riconosciuta.
-        """
-        codici = [int(c) for c in codes]
-        if not codici:
-            return {}
-        stato, dettaglio = self.card_catalog_status()
-        if stato in ("assente", "vuota"):
-            return {}      # stati NORMALI: non c'è ancora niente da leggere
-        if stato != "ok":
-            # la tabella c'è ma non si legge: è un difetto, e va detto
-            raise CardCatalogError(stato, dettaglio)
-        out: dict[int, sqlite3.Row] = {}
-        # SQLite ha un tetto ai parametri di una query: si va a blocchi
-        for i in range(0, len(codici), 400):
-            blocco = codici[i:i + 400]
-            segni = ",".join("?" * len(blocco))
-            try:
-                righe = self.storage.query(
-                    f"SELECT id, name, name_it, image_url, "
-                    f"image_small_url FROM cdb_cards "
-                    f"WHERE id IN ({segni})", tuple(blocco))
-            except sqlite3.Error as exc:
-                raise CardCatalogError("illeggibile", str(exc)) from exc
-            for r in righe:
-                out[int(r["id"])] = r
-        return out
+        """passcode → riga del catalogo carte, per i codici trovati."""
+        return card_catalog.by_passcode(self.storage, codes)
 
     # --- impostazioni (chiave/valore) ---
     def get_setting(self, key, default=None):

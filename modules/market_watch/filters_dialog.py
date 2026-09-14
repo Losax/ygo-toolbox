@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 from core import anim, i18n, theme
 from core.i18n import tr
 
-from .providers.base import ListingFilters
+from core.prices.base import ListingFilters
 
 
 def _lerp(c1: QColor, c2: QColor, t: float) -> QColor:
