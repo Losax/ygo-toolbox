@@ -466,7 +466,13 @@ class CollectionWidget(QWidget):
         font.setBold(True)
         font.setPointSizeF(font.pointSizeF() + 2)
         self.binder_title.setFont(font)
-        testa.addWidget(self.binder_title)
+        # `Ignored` in orizzontale: la riga non si allarga per far stare il
+        # nome intero — è il nome ad accorciarsi (`_elide_title`). Senza,
+        # "Handtraps" spingeva fuori la tendina e le frecce.
+        self.binder_title.setSizePolicy(QSizePolicy.Policy.Ignored,
+                                        QSizePolicy.Policy.Preferred)
+        self.binder_title.setMinimumWidth(70)
+        testa.addWidget(self.binder_title, 1)
         testa.addStretch(1)
         self.binder_value = QLabel()
         self.binder_value.setObjectName("subtitle")
@@ -475,6 +481,7 @@ class CollectionWidget(QWidget):
         for colonne, righe in LAYOUTS:
             self.layout_combo.addItem(f"{colonne}×{righe}", (colonne, righe))
         self.layout_combo.setToolTip(tr("Formato della pagina"))
+        self.layout_combo.setFixedWidth(86)
         self.layout_combo.currentIndexChanged.connect(self._on_layout)
         testa.addWidget(self.layout_combo)
         self.prev_btn = QPushButton()
@@ -484,7 +491,7 @@ class CollectionWidget(QWidget):
         self.prev_btn.clicked.connect(lambda: self._gira(-1))
         self.page_label = QLabel("—")
         self.page_label.setObjectName("subtitle")
-        self.page_label.setMinimumWidth(86)
+        self.page_label.setMinimumWidth(104)   # ci sta "Pagine 11-12 di 20"
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.next_btn = QPushButton()
         self.next_btn.setIcon(_arrow_icon("right"))
@@ -805,6 +812,12 @@ class CollectionWidget(QWidget):
         for colonna in (COL_PAGATA, COL_BINDER):
             self.table.setColumnHidden(colonna, stretta)
         self._applica_minimi()
+        # Nell'intestazione del raccoglitore il valore è la voce che può
+        # sparire: le frecce e il formato servono a usare la pagina, il valore
+        # si rilegge nel riepilogo in alto.
+        if hasattr(self, "binder_value"):
+            self.binder_value.setVisible(not stretta)
+            self._elide_title()
 
     def _dillo_se_filtrato(self) -> None:
         """Con un filtro attivo, il riepilogo in alto NON è quello che si vede.
@@ -1254,7 +1267,8 @@ class CollectionWidget(QWidget):
 
     def _refresh_page(self) -> None:
         if self._binder_id is None:
-            self.binder_title.setText(tr("Nessun raccoglitore"))
+            self._binder_name = tr("Nessun raccoglitore")
+            self._elide_title()
             self.binder_value.setText("")
             self.page_label.setText("—")
             self.page.set_items({})
@@ -1268,7 +1282,8 @@ class CollectionWidget(QWidget):
             self._binder_id = None
             self._refresh_page()
             return
-        self.binder_title.setText(b["name"])
+        self._binder_name = b["name"]
+        self._elide_title()
         colonne, righe_pag = int(b["cols"]), int(b["rows"])
         indice = self.layout_combo.findData((colonne, righe_pag))
         self.layout_combo.blockSignals(True)
@@ -1325,6 +1340,19 @@ class CollectionWidget(QWidget):
             riga = slots.get(slot)
             if riga is not None:
                 self.thumbs.request(riga["card_name"])
+
+    def _elide_title(self) -> None:
+        """Il nome del raccoglitore, accorciato coi puntini se non ci sta.
+
+        Una `QLabel` non accorcia da sola: taglia. E un nome tagliato a metà
+        ("Handtrap") sembra un difetto, mentre i puntini si leggono come "c'è
+        dell'altro" — col nome intero nel suggerimento.
+        """
+        nome = getattr(self, "_binder_name", "") or tr("Nessun raccoglitore")
+        larghezza = max(70, self.binder_title.width())
+        self.binder_title.setText(self.binder_title.fontMetrics().elidedText(
+            nome, Qt.TextElideMode.ElideRight, larghezza))
+        self.binder_title.setToolTip(nome)
 
     def _gira(self, passo: int) -> None:
         """Si sfoglia di quante pagine si vedono: con il raccoglitore aperto
