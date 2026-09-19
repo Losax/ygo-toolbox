@@ -1,5 +1,5 @@
 =====================================================================
-  YGO TOOLBOX v1.8.0 — prezzi e collezione Yu-Gi-Oh! su CardTrader
+  YGO TOOLBOX v1.8.1 — prezzi e collezione Yu-Gi-Oh! su CardTrader
 =====================================================================
 
 Cosa fa

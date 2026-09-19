@@ -94,6 +94,17 @@ def rarity_abbrev(name: str) -> str:
     return _style(name)[0]
 
 
+def rarity_colors(name: str) -> list[str]:
+    """I colori della rarità (1 = tinta unita, 2+ = gradiente).
+
+    Erano chiusi dentro il disegno della pillola; la Collezione li usa per la
+    **striscia foil** in fondo alla carta dentro la tasca del raccoglitore, che
+    è lo stesso vocabolario visivo su un supporto diverso. Una rarità
+    sconosciuta torna il grigio neutro, mai un colore inventato.
+    """
+    return list(_style(name)[1])
+
+
 def from_detail(detail: str) -> str:
     """La rarità dal campo "rarità · espansione" del catalogo prezzi.
 

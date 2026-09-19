@@ -55,7 +55,7 @@ Riferimento schematico di architettura, decisioni, gotchas e comandi. Vedi anche
 | `module.py` | Punto di aggancio (`CollectionModule`, id `collection`, titolo "Collezione"). |
 | `repository.py` | Tabelle `col_*`. Tre domande, tre tabelle: cosa possiedo (`col_items`), i raccoglitori (`col_binders`), quanto vale oggi (`col_prices`). `totals()` è il cuore: torna il valore INSIEME a quante copie non lo hanno, perché un totale senza quel numero è un totale che mente (vedi §2). |
 | `widget.py` | Le due viste — **Inventario** (tabella) e **Raccoglitori** (pagine) — riepilogo, aggiornamento prezzi, menù contestuali. |
-| `binder_view.py` | `BinderPage`: la pagina **dipinta a mano** con QPainter, e `CardTray` (elenco trascinabile). Non è un `QListWidget` in IconMode come la griglia del `.ydk`, e il motivo è uno solo: **le tasche vuote**. Una lista a icone mette gli elementi uno dopo l'altro, i buchi in mezzo non esistono e ogni carta tolta fa scalare tutte le altre — l'opposto di un raccoglitore. Qui la tasca è una **posizione** (`slot`), la pagina è `slot // (colonne × righe)`, e cambiare formato ridistribuisce senza spostare niente. Trascinamento con un tipo MIME proprio (`application/x-ygo-collection-item`) invece di `text/plain`: così la pagina accetta solo ciò che viene davvero dalla collezione. |
+| `binder_view.py` | `BinderPage`: il raccoglitore **dipinto a mano** con QPainter, e `CardTray` (elenco trascinabile). Dalla v1.8.1 disegna il **foglio** (superficie propria, ombra, anelli lungo la rilegatura), le tasche **incassate**, la carta con la sua ombra e il **riflesso della bustina**, la velatura col prezzo e la **striscia foil** della rarità (`rarity.rarity_colors`). Il numero di pagine a schermo — una o due affiancate, con gli anelli al centro — lo decide `_layout()` e basta: geometria, disegno e trascinamento leggono tutti da lì, perché due pezzi che calcolano la stessa griglia in due modi diversi è il modo più rapido per posare una carta nella tasca sbagliata. Non è un `QListWidget` in IconMode come la griglia del `.ydk`, e il motivo è uno solo: **le tasche vuote**. Una lista a icone mette gli elementi uno dopo l'altro, i buchi in mezzo non esistono e ogni carta tolta fa scalare tutte le altre — l'opposto di un raccoglitore. Qui la tasca è una **posizione** (`slot`), la pagina è `slot // (colonne × righe)`, e cambiare formato ridistribuisce senza spostare niente. Trascinamento con un tipo MIME proprio (`application/x-ygo-collection-item`) invece di `text/plain`: così la pagina accetta solo ciò che viene davvero dalla collezione. |
 | `add_dialog.py` | Aggiungi/modifica: cerca → **scegli la stampa** → dichiara lo stato. Niente preselezionato (stessa regola del `.ydk`). Riceve due FUNZIONI (`cerca_nomi`, `stampe_di`) invece della connessione, così si prova senza database. Il prezzo pagato è un `QLineEdit` e non uno spinbox apposta: vuoto = **non lo so**, e uno spinbox lo zero lo scriverebbe da solo. |
 | `images.py` | `ThumbSource`: nome carta → miniatura, da `core.card_images` (cache su DISCO condivisa col Database) passando per `core.card_catalog`. **Non** dal CDN di CardTrader: quello sta dietro Cloudflare e una pagina di raccoglitore sono nove immagini per volta. Il prezzo del compromesso, detto chiaro: l'immagine è quella della CARTA, non della singola stampa. |
 | `workers.py` | `PriceRefreshWorker` (QThread). Due differenze dal controllo del Market Watch, ed è quello che rende onesto il valore: **"nessuno la vende" è un risultato** (prezzo NULL + data), un **errore non scrive niente** (la riga resta quella di prima, con la sua data). |
@@ -699,6 +699,35 @@ confini di parola per non pescare "usato").
   `~/.ygo_toolbox/api_interval.txt`, di cui è proprietario
   `core/prices/config.py`; il vecchio `mw_settings` si legge ancora come
   ripiego, per non far ripartire da zero chi aggiorna.
+
+- **Il raccoglitore aperto si adatta, e la decisione sta in un posto solo**
+  (v1.8.1). Due pagine affiancate sono ciò che fa riconoscere un raccoglitore
+  prima di leggere qualunque scritta, ma non ci stanno sempre: in una finestra
+  stretta, o con un formato 4×3, le tasche diventerebbero francobolli. Quindi
+  `_layout()` decide **una volta per ridisegno** `(pagine, tasca, foglio)` e
+  tutti gli altri leggono da lì — `_rect_for`, `slot_at`, `page_slots`, il
+  disegno del foglio e il trascinamento. L'ordine del calcolo non è casuale: la
+  tasca si misura **sull'altezza** (il lato che comanda quasi sempre) e solo
+  dopo si guarda se due griglie di quella misura ci stanno in larghezza.
+  Decidere prima le pagine e poi la tasca farebbe **oscillare** la scelta a ogni
+  ridisegno, perché la tasca cambierebbe la larghezza che serve.
+  Il controllo automatico su questo pezzo non guarda i pixel ma l'aggancio fra
+  indice a schermo e slot vero (blocco 8g): è quello che, sbagliando, posa una
+  carta nella tasca di un'altra.
+- **La velatura di Qt sulle icone selezionate ha colpito di nuovo** (v1.8.1).
+  L'icona del raccoglitore nell'elenco si sbiadiva da selezionata: è la stessa
+  cosa già vista sulla griglia del `.ydk` (`_icon_for`), cioè Qt che ridisegna
+  l'icona in modalità `Selected` stendendoci sopra una velatura del colore di
+  evidenziazione. La cura è sempre quella — registrare lo **stesso pixmap** per
+  `Normal`, `Selected` e `Active` — ma vale la pena scriverlo due volte: è una
+  trappola che scatta ogni volta che si mette un'icona **colorata** in una
+  lista selezionabile, e la prima reazione è sempre "ho sbagliato il colore".
+- **Un controllo che si appoggia a "oggi" passa il giorno che lo scrivi**
+  (v1.8.1). Un'asserzione dello smoke test confrontava una data con quella di
+  sistema: verde il 14 settembre, rossa il 19. Le date dei controlli si
+  **scrivono**, non si prendono dall'orologio — a meno che l'oggetto del
+  controllo sia proprio il passare del tempo, e allora si costruiscono con uno
+  scarto esplicito (`now() - timedelta(...)`, come fa il blocco 7f).
 
 - **GOTCHA 34 — leggere una miniatura non deve SCARICARLA** (v1.8.0).
     - **Sintomo:** nessuno. L'app si apre, la tabella si riempie, tutto bello —

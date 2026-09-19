@@ -79,7 +79,7 @@ from core.prices import catalog, cardtrader, config
 from core.prices.cardtrader import CardTraderClient, CardTraderProvider
 
 from .add_dialog import AddCardDialog
-from .binder_view import BinderPage, CardTray
+from .binder_view import BinderPage, CardTray, binder_icon
 from .format import quando as _quando
 from .format import soldi as _soldi
 from .images import ThumbSource
@@ -446,6 +446,7 @@ class CollectionWidget(QWidget):
         self.binder_list = QListWidget()
         self.binder_list.setObjectName("softList")
         self.binder_list.setFixedWidth(206)
+        self.binder_list.setIconSize(QSize(34, 34))
         self.binder_list.currentItemChanged.connect(self._on_binder_chosen)
         self.binder_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.binder_list.customContextMenuRequested.connect(self._binder_menu)
@@ -502,14 +503,10 @@ class CollectionWidget(QWidget):
         self.page.dropped.connect(self._on_drop)
         self.page.slot_menu.connect(self._slot_menu)
         self.page.slot_activated.connect(self._on_slot_activated)
-        # La pagina sta dentro una "card" del tema: senza, le tasche
-        # galleggiavano sullo sfondo e non si capiva dove finisse il foglio.
-        foglio = QFrame()
-        foglio.setObjectName("card")
-        foglio_lay = QVBoxLayout(foglio)
-        foglio_lay.setContentsMargins(10, 10, 10, 10)
-        foglio_lay.addWidget(self.page)
-        centro.addWidget(foglio, 1)
+        # Niente cornice intorno: il foglio ora se lo disegna la pagina, con
+        # gli anelli e la sua ombra. Due superfici arrotondate una dentro
+        # l'altra facevano solo rumore.
+        centro.addWidget(self.page, 1)
         lay.addLayout(centro, 1)
 
         # --- le carte ancora da sistemare ---
@@ -1185,6 +1182,9 @@ class CollectionWidget(QWidget):
             elemento = QListWidgetItem(
                 f"{b['name']}  ({int(b['copie'])})", self.binder_list)
             elemento.setData(Qt.ItemDataRole.UserRole, int(b["id"]))
+            elemento.setIcon(binder_icon(b["name"]))
+            elemento.setToolTip(tr("{righe} stampe · {copie} copie").format(
+                righe=int(b["righe"]), copie=int(b["copie"])))
         self.binder_list.blockSignals(False)
         if binders:
             ids = [int(b["id"]) for b in binders]
@@ -1290,8 +1290,7 @@ class CollectionWidget(QWidget):
         self._page = min(self._page, pagine - 1)
         self.page.set_page(self._page)
         self.page.set_items(slots)
-        self.page_label.setText(tr("Pagina {n} di {tot}").format(
-            n=self._page + 1, tot=pagine))
+        self._etichetta_pagina(pagine)
         self._pagine = pagine
         self._chiedi_immagini_pagina(slots)
 
@@ -1328,19 +1327,31 @@ class CollectionWidget(QWidget):
                 self.thumbs.request(riga["card_name"])
 
     def _gira(self, passo: int) -> None:
+        """Si sfoglia di quante pagine si vedono: con il raccoglitore aperto
+        si gira il foglio, cioè due pagine, non una."""
         pagine = getattr(self, "_pagine", 1)
+        quante = self.page.pages_shown()
         # Una pagina in più in fondo quando l'ultima è piena: è lì che si
         # trascinano le carte nuove, e senza non ci sarebbe posto dove metterle.
-        self._page = max(0, min(self._page + passo, pagine))
+        self._page = max(0, min(self._page + passo * quante, pagine))
         self._refresh_page_soft()
 
     def _refresh_page_soft(self) -> None:
         """Cambia pagina senza ricostruire tutto (le carte sono già in mano)."""
-        pagine = max(getattr(self, "_pagine", 1), self._page + 1)
         self.page.set_page(self._page)
-        self.page_label.setText(tr("Pagina {n} di {tot}").format(
-            n=self._page + 1, tot=pagine))
+        self._etichetta_pagina(max(getattr(self, "_pagine", 1), self._page + 1))
         self._chiedi_immagini_pagina(self.page._items)
+
+    def _etichetta_pagina(self, pagine: int) -> None:
+        """"Pagina 3 di 7" oppure "Pagine 3-4 di 7" col raccoglitore aperto."""
+        quante = self.page.pages_shown()
+        ultima = min(self._page + quante, max(pagine, self._page + quante))
+        if quante > 1:
+            self.page_label.setText(tr("Pagine {a}-{b} di {tot}").format(
+                a=self._page + 1, b=ultima, tot=max(pagine, ultima)))
+        else:
+            self.page_label.setText(tr("Pagina {n} di {tot}").format(
+                n=self._page + 1, tot=pagine))
 
     def _on_layout(self, _indice: int) -> None:
         if self._binder_id is None:

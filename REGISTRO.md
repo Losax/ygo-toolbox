@@ -84,7 +84,7 @@ guardi.
 | **Differenza (guadagno)** | Confronta valore e spesa **solo sulle carte che hanno tutti e due i dati**, e lo dice ("su 280 copie con valore e spesa"). Sottrarre quello che hai speso su una parte dal valore di tutto darebbe un numero più grande e completamente falso. |
 | **Aggiorna i prezzi** | Non succede da solo: **ogni stampa è una richiesta** a CardTrader, e una collezione vera sono centinaia. Il pulsante apre due scelte e **ti dice quante richieste costano**: solo quelle mancanti o più vecchie di 7 giorni, oppure tutta la collezione. Si può **fermare a metà** senza perdere quello che è già arrivato. |
 | **"Nessuno la vende"** | Se una stampa è stata controllata ma non ha annunci, il prezzo resta "—" **con la data del controllo** nel tooltip: è un'informazione (l'abbiamo guardata), diversa da "mai controllata". |
-| **Raccoglitori** | La seconda vista. Ogni raccoglitore è fatto di **pagine di tasche** (3×3 come quelli veri, o 4×3, 4×2, 2×2): trascini le carte dall'elenco *Carte sfuse* dentro le tasche, e le sposti trascinandole. **Le tasche vuote restano vuote** — chi colleziona lascia il posto alla carta che gli manca. Lasciando una carta su una tasca occupata, le due si **scambiano**. |
+| **Raccoglitori** | La seconda vista, ed è un raccoglitore **aperto**: due pagine affiancate con gli anelli in mezzo (se la finestra è stretta, una sola). Ogni pagina è fatta di **tasche** (3×3 come quelli veri, o 4×3, 4×2, 2×2): trascini le carte dall'elenco *Carte sfuse* dentro le tasche, e le sposti trascinandole. **Le tasche vuote restano vuote** — chi colleziona lascia il posto alla carta che gli manca. Lasciando una carta su una tasca occupata, le due si **scambiano**. Passando il mouse su una carta, quella si **solleva** dalla tasca; il prezzo e le copie stanno su una velatura in fondo alla carta, e una **striscia col colore della rarità** ti fa vedere a colpo d'occhio dove sono le carte buone. |
 | **Cambiare formato** | La tendina 3×3 / 4×3 / …: le carte **non si spostano**, si ridistribuiscono sulle pagine, come travasando un raccoglitore vero. |
 | **Eliminare un raccoglitore** | Chiede sempre, e distingue: *Tienile* (le carte tornano sfuse) oppure *Elimina anche le carte*. |
 | **Serve il catalogo** | Per aggiungere carte serve il **catalogo delle stampe** di CardTrader, quello che si sincronizza dal Market Watch. Se manca, la Collezione lo dice e ti ci porta. |
@@ -1029,6 +1029,32 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     accosta più un valore parziale al numero totale di copie; e in tabella
     *Pagata* è il totale della riga come *Valore*, non il prezzo di una copia
     sola — accostati, dicevano un guadagno tre volte più grande del vero.
+
+86. **"I raccoglitori li voglio molto più bellini" (v1.8.1).** Richiesta
+    dell'utente, e giusta: la vista funzionava ma era una griglia di riquadri.
+    Adesso è un **raccoglitore aperto** — due pagine affiancate con gli anelli
+    in mezzo e l'ombra della rilegatura, esattamente come quando ne apri uno
+    sul tavolo. Se la finestra è stretta (o il formato è 4×3) torna a una
+    pagina sola con gli anelli a sinistra: due pagine in poco spazio
+    ridurrebbero le carte a francobolli, e il punto di questa vista è
+    **guardare le carte**.
+    Le tasche ora sono **incassate** nel foglio, la carta ci sta dentro con la
+    sua ombra e gli angoli tondi, e sopra passa il **riflesso della bustina** —
+    è quel riflesso, più di ogni altra cosa, a far sembrare una carta una carta
+    dentro una tasca invece di un'immagine dentro un riquadro. Il prezzo e le
+    copie sono passati da una riga sotto a una **velatura sul fondo della
+    carta**: la carta è più grande, che è il motivo per cui si apre questa
+    vista. In fondo a ogni carta una **striscia col colore della rarità** (gli
+    stessi colori delle pillole): sfogliando si vede dove sono le carte buone
+    senza fermarsi a leggere.
+    Due cose si muovono, e solo perché dicono qualcosa: passando sopra una
+    carta quella **si solleva** dalla tasca, e girando pagina le tasche
+    **scorrono** dal lato da cui stai sfogliando — serve a far capire che hai
+    girato un foglio, non che il contenuto è cambiato da sé. Con le animazioni
+    spente dalle Opzioni non succede nulla di tutto questo.
+    Infine, nell'elenco a sinistra ogni raccoglitore ha la sua **icona**: un
+    raccoglitore chiuso con la costa colorata e gli anelli. Il colore viene dal
+    nome, quindi è sempre lo stesso per lo stesso raccoglitore.
 
 ## 4. Note operative importanti
 

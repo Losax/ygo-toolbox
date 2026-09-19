@@ -640,6 +640,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             'Open it from the menu on the left and press the catalog sync '
             'button.',
         'Pagina {n} di {tot}': 'Page {n} of {tot}',
+        'Pagine {a}-{b} di {tot}': 'Pages {a}-{b} of {tot}',
         '«{name}» contiene {n} copie.': '"{name}" holds {n} copies.',
         'Solo mancanti o più vecchie di {g} giorni  ({n} richieste)':
             'Only missing or older than {g} days  ({n} requests)',
@@ -710,5 +711,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         '{n} non controllate': '{n} not checked',
         '{prezzo} a copia': '{prezzo} per copy',
         '{n} copie · nessuna in vendita': '{n} copies · none for sale',
+        '{righe} stampe · {copie} copie': '{righe} printings · {copie} copies',
     },
 }

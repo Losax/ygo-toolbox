@@ -2301,6 +2301,31 @@ def main() -> int:
                             Qt.KeyboardModifier.NoModifier))
     assert len(lasciate) == 1, "solo il formato nostro entra nella pagina"
 
+    # --- il raccoglitore APERTO: due pagine affiancate quando c'è spazio ---
+    # È la parte con più aritmetica di tutto il modulo, ed è quella che, se
+    # sbaglia, posa una carta nella tasca sbagliata: si controlla che gli
+    # indici a schermo e gli slot veri restino agganciati.
+    pagina.resize(420, 460)
+    assert pagina.pages_shown() == 1, "stretta: una pagina sola"
+    assert len(pagina.page_slots()) == 9
+
+    pagina.resize(1100, 520)
+    assert pagina.pages_shown() == 2, "larga: raccoglitore aperto"
+    visibili = pagina.page_slots()
+    assert len(visibili) == 18 and visibili[0] == 0 and visibili[9] == 9, visibili
+    # la prima tasca della pagina di DESTRA sta a destra della piega...
+    assert pagina._rect_for(9).x() > pagina._rect_for(8).right()
+    # ...e risponde con lo slot della pagina successiva, non con il suo indice
+    for i, slot in enumerate(visibili):
+        assert pagina.slot_at(pagina._rect_for(i).center()) == slot, (i, slot)
+
+    pagina.set_page(2)              # pagine 3 e 4
+    visibili = pagina.page_slots()
+    assert visibili[0] == 18 and visibili[9] == 27, visibili
+    assert pagina.slot_at(pagina._rect_for(9).center()) == 27
+    pagina.resize(420, 460)
+    pagina.set_page(0)
+
     _vassoio = _CardTray()
     _voce = _QLWI("Dark Magician", _vassoio)
     _voce.setData(Qt.ItemDataRole.UserRole, 7)
@@ -2366,11 +2391,16 @@ def main() -> int:
     assert int(dentro["quantity"]) == 2, "e portarsi dietro tutte le copie"
 
     # 8j) la freschezza: si mostra il prezzo PIÙ VECCHIO, non il più recente
-    crepo.set_prices(_PROV, [("ur-a", 10.0, "EUR", "2026-01-02T10:00:00"),
-                             ("ur-b", None, "EUR", "2026-09-14T10:00:00")])
+    # Le date sono SCRITTE, non prese dall'orologio: un controllo che si
+    # appoggia a "oggi" passa il giorno che lo scrivi e cade il mese dopo (è
+    # successo).
+    crepo.set_prices(_PROV, [(r[0], r[1], "EUR", r[2]) for r in
+                             [(ref, None, "2030-06-01T10:00:00")
+                              for ref in crepo.all_refs(_PROV)]])
+    crepo.set_prices(_PROV, [("ur-a", 10.0, "EUR", "2026-01-02T10:00:00")])
     vecchio, recente = crepo.price_span(_PROV)
     assert vecchio.startswith("2026-01-02"), vecchio
-    assert recente.startswith("2026-09-14"), recente
+    assert recente.startswith("2030-06-01"), recente
     col._refresh_summary()
     etichetta = col.stat_agg.text()
     assert "02/01/2026" in etichetta, \
