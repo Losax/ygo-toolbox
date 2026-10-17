@@ -112,6 +112,20 @@ ORDINAMENTI = (
 )
 
 
+def _chiave_formato(colonne: int, righe: int) -> str:
+    """Il formato come stringa: è ciò che `findData` sa ritrovare."""
+    return f"{int(colonne)}x{int(righe)}"
+
+
+def _leggi_formato(chiave) -> tuple[int, int] | None:
+    """Dalla stringa al formato; None se la voce non dice niente di sensato."""
+    try:
+        colonne, righe = str(chiave).split("x")
+        return max(1, int(colonne)), max(1, int(righe))
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
 def _arrow_icon(verso: str, color: str = theme.TEXT_MUTED, size: int = 28) -> QIcon:
     """Triangolino disegnato a runtime.
 
@@ -478,8 +492,13 @@ class CollectionWidget(QWidget):
         self.binder_value.setObjectName("subtitle")
         testa.addWidget(self.binder_value)
         self.layout_combo = QComboBox()
+        # Il dato della voce è una STRINGA ("3x3"), non una tupla: `findData`
+        # confronta QVariant e su una tupla Python risponde **-1** anche
+        # quando la voce c'è (vedi GOTCHA 36). Era l'innesco del difetto per
+        # cui, dopo un cambio, il formato non si cambiava più.
         for colonne, righe in LAYOUTS:
-            self.layout_combo.addItem(f"{colonne}×{righe}", (colonne, righe))
+            self.layout_combo.addItem(f"{colonne}×{righe}",
+                                      _chiave_formato(colonne, righe))
         self.layout_combo.setToolTip(tr("Formato della pagina"))
         self.layout_combo.setFixedWidth(86)
         self.layout_combo.currentIndexChanged.connect(self._on_layout)
@@ -1285,10 +1304,7 @@ class CollectionWidget(QWidget):
         self._binder_name = b["name"]
         self._elide_title()
         colonne, righe_pag = int(b["cols"]), int(b["rows"])
-        indice = self.layout_combo.findData((colonne, righe_pag))
-        self.layout_combo.blockSignals(True)
-        self.layout_combo.setCurrentIndex(indice if indice >= 0 else 0)
-        self.layout_combo.blockSignals(False)
+        self._seleziona_formato(colonne, righe_pag)
         self.page.set_layout_size(colonne, righe_pag)
 
         carte = self.repo.list_items(PROVIDER, binder_id=self._binder_id)
@@ -1354,6 +1370,25 @@ class CollectionWidget(QWidget):
             nome, Qt.TextElideMode.ElideRight, larghezza))
         self.binder_title.setToolTip(nome)
 
+    def _seleziona_formato(self, colonne: int, righe: int) -> None:
+        """Porta la tendina sul formato in uso, **qualunque** esso sia.
+
+        Il ripiego di prima — "se non lo trovo metto la prima voce" — non era
+        una comodità, era una bugia: la tendina diceva 3×3 mentre la pagina era
+        4×3, e da quel momento sceglierla non cambiava l'indice, quindi
+        `currentIndexChanged` non scattava e il formato restava bloccato per
+        sempre. Un formato che non è fra quelli offerti si **aggiunge**
+        all'elenco: mostrare il vero è l'unica cosa che non può incastrarsi.
+        """
+        chiave = _chiave_formato(colonne, righe)
+        indice = self.layout_combo.findData(chiave)
+        if indice < 0:
+            self.layout_combo.addItem(f"{colonne}×{righe}", chiave)
+            indice = self.layout_combo.count() - 1
+        self.layout_combo.blockSignals(True)
+        self.layout_combo.setCurrentIndex(indice)
+        self.layout_combo.blockSignals(False)
+
     def _gira(self, passo: int) -> None:
         """Si sfoglia di quante pagine si vedono: con il raccoglitore aperto
         si gira il foglio, cioè due pagine, non una."""
@@ -1384,8 +1419,10 @@ class CollectionWidget(QWidget):
     def _on_layout(self, _indice: int) -> None:
         if self._binder_id is None:
             return
-        colonne, righe = self.layout_combo.currentData()
-        self.repo.set_binder_layout(self._binder_id, colonne, righe)
+        scelto = _leggi_formato(self.layout_combo.currentData())
+        if scelto is None:
+            return
+        self.repo.set_binder_layout(self._binder_id, *scelto)
         self._refresh_page()
 
     def new_binder(self) -> None:

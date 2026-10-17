@@ -1056,6 +1056,26 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     raccoglitore chiuso con la costa colorata e gli anelli. Il colore viene dal
     nome, quindi è sempre lo stesso per lo stesso raccoglitore.
 
+87. **Il formato della pagina si incastrava dopo il primo cambio (v1.8.2).**
+    Segnalazione dell'utente: da 3×3 a 4×3 funzionava, ma rimettendolo a 3×3
+    non cambiava più niente, per sempre.
+    La causa non era il cambio, era la **tendina**. Il formato di ogni voce era
+    conservato come coppia di numeri, e Qt non sa ritrovare una coppia: alla
+    domanda "dov'è 4×3?" rispondeva "non c'è". A quel punto il codice faceva la
+    cosa peggiore possibile — ripiegava sulla **prima voce** — quindi dopo aver
+    scelto 4×3 la tendina tornava a dire *3×3* mentre la pagina era davvero
+    4×3. E da lì sceglievi "3×3"… che era già la voce selezionata, quindi non
+    cambiava nulla e il programma non riceveva nessun segnale. Bloccato.
+    **Il difetto vero era il ripiego silenzioso**, non il formato della chiave:
+    una tendina che mostra una cosa diversa da quella in uso non è una
+    comodità, è una bugia — ed è una bugia che si incastra da sola. Ora il
+    formato in uso è sempre quello scritto nella tendina, e un formato che non
+    fosse fra quelli offerti viene **aggiunto all'elenco** invece di sparire.
+    Stesso trattamento per le tendine del dialogo di aggiunta, dove ripiegare
+    in silenzio sarebbe stato peggio: premendo *Salva* si sarebbe scritto il
+    ripiego, cioè si sarebbe **perso il dato** inserito a mano.
+    Il giro 3×3 → 4×3 → 3×3 → 2×2 → 3×3 ora è un controllo automatico.
+
 ## 4. Note operative importanti
 
 - **Non fare raffiche di richieste** verso CardTrader: è dietro Cloudflare e può

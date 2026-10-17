@@ -221,7 +221,7 @@ class AddCardDialog(QDialog):
         self.first_edition.setChecked(bool(dati.get("first_edition")))
         pagato = dati.get("paid")
         self.paid.setText("" if pagato is None else f"{float(pagato):.2f}")
-        self._seleziona(self.binder, dati.get("binder_id"))
+        self._seleziona(self.binder, dati.get("binder_id"), aggiungi=False)
         self.note.setText(dati.get("note", "") or "")
         self._mostra_anteprima(dati.get("card_name", ""))
         self.hint.setText(f"{dati.get('card_name', '')} · "
@@ -229,9 +229,23 @@ class AddCardDialog(QDialog):
         self._ok.setEnabled(True)
 
     @staticmethod
-    def _seleziona(combo: QComboBox, valore) -> None:
+    def _seleziona(combo: QComboBox, valore, aggiungi: bool = True) -> None:
+        """Porta la tendina sul valore; se non è fra le voci, ce la mette.
+
+        Ripiegare in silenzio sulla prima voce non sarebbe solo brutto:
+        premendo *Salva* si scriverebbe quella, cioè si **perderebbe** il dato
+        che l'utente aveva messo — una condizione che il provider non elenca
+        più, per dire. Meglio una voce in più che un dato in meno.
+
+        `aggiungi=False` per le tendine dove "non trovato" è esso stesso il
+        dato giusto: un raccoglitore cancellato nel frattempo non va
+        resuscitato come voce, la carta è semplicemente tornata sfusa.
+        """
         indice = combo.findData(valore)
-        combo.setCurrentIndex(indice if indice >= 0 else 0)
+        if indice < 0 and aggiungi and valore not in (None, ""):
+            combo.addItem(str(valore), valore)
+            indice = combo.count() - 1
+        combo.setCurrentIndex(max(0, indice))
 
     # ----------------------------------------------------------- ricerca ---
     def _on_search_text(self, _testo: str) -> None:

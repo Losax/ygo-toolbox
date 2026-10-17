@@ -46,10 +46,17 @@ come artefatto: due volte era un difetto vero (GOTCHA 14).
   numerata**: i punti nuovi si aggiungono **IN FONDO, in ordine crescente**
   (inserendoli in cima la cronologia si legge al rovescio: è già capitato e ho
   dovuto riordinarla).
-- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 35
+- `REGISTRO_TECNICO.md` = handoff tecnico: architettura, modello dati, 36
   **GOTCHAS** e le decisioni col loro *perché*. Quando scopri una trappola,
   scrivila lì con il sintomo, la causa e la cura — è la parte più utile del
   documento.
+
+**3-bis. Un selettore non ripiega mai in silenzio** (GOTCHA 36). Se il
+valore in uso non è fra le voci di una tendina, lo si **aggiunge** o lo si
+dice: `setCurrentIndex(i if i >= 0 else 0)` fa mostrare una cosa diversa da
+quella vera, e in un selettore questo **si incastra da solo** — l'utente
+sceglie ciò che vede già selezionato e nessun segnale parte. In un dialogo che
+salva, poi, scrive il ripiego al posto del dato dell'utente.
 
 **4. Non inventare numeri.** Il filo conduttore di questa sessione: variazioni
 percentuali calcolate su prezzi non confrontabili, totali che moltiplicavano
@@ -117,7 +124,7 @@ le tabelle esistenti).
   Regola che vale per tutti e due gli ultimi: ciò che serve a DUE moduli va
   qui, perché i moduli non si importano fra loro.
 - Dettagli, decisioni e trappole stanno in **`REGISTRO_TECNICO.md`**: leggerlo
-  prima di mettere le mani su market_watch, ha 35 GOTCHAS che spiegano *perché*
+  prima di mettere le mani su market_watch, ha 36 GOTCHAS che spiegano *perché*
   il codice è com'è.
 - `modules/<nome>/module.py` = punto di aggancio: una sottoclasse di
   `ToolModule` con `id`, `title`, `create_widget()`. Viene scoperta da sola al

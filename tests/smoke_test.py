@@ -2107,7 +2107,10 @@ def main() -> int:
     from modules.collection.repository import (  # noqa: E402
         CollectionRepository,
     )
-    from modules.collection.widget import CollectionWidget  # noqa: E402
+    from modules.collection.widget import (  # noqa: E402
+        CollectionWidget,
+        _chiave_formato as _chiave_fmt,
+    )
     from modules.collection.workers import PriceRefreshWorker  # noqa: E402
 
     col = CollectionWidget(ctx)
@@ -2340,6 +2343,36 @@ def main() -> int:
     trovate = _cc.by_name(storage, ["Dark Magician", "Nome Inventato"])
     assert "Nome Inventato" not in trovate, \
         "chi non c'è resta fuori: mai l'immagine di un'altra carta"
+
+    # 8l) il formato della pagina si cambia AVANTI E INDIETRO
+    #     Segnalato dall'utente: 3×3 → 4×3 funzionava, tornare a 3×3 no, e da
+    #     lì non cambiava più niente. Causa: il dato della voce era una tupla,
+    #     `findData` rispondeva -1 (GOTCHA 36) e la tendina ripiegava sulla
+    #     PRIMA voce — mostrando 3×3 mentre la pagina era 4×3. Scegliere "3×3"
+    #     non cambiava più l'indice, quindi il segnale non scattava.
+    b_fmt = crepo.add_binder("Formati", 3, 3)
+    col._binder_id = b_fmt
+    col._refresh_page()
+    for colonne, righe in ((3, 3), (4, 3), (3, 3), (2, 2), (3, 3)):
+        indice = col.layout_combo.findData(_chiave_fmt(colonne, righe))
+        assert indice >= 0, f"formato {colonne}×{righe} introvabile nella tendina"
+        col.layout_combo.setCurrentIndex(indice)
+        letto = crepo.binder(b_fmt)
+        assert (int(letto["cols"]), int(letto["rows"])) == (colonne, righe), \
+            f"nel DB c'è {int(letto['cols'])}×{int(letto['rows'])}, non {colonne}×{righe}"
+        assert (col.page._cols, col.page._rows) == (colonne, righe)
+        # e la tendina non racconta un formato diverso da quello in uso
+        assert col.layout_combo.currentData() == _chiave_fmt(colonne, righe), \
+            col.layout_combo.currentData()
+
+    # un formato che non è fra quelli offerti si MOSTRA, non si nasconde
+    crepo.set_binder_layout(b_fmt, 5, 4)
+    col._refresh_page()
+    assert col.layout_combo.currentData() == _chiave_fmt(5, 4), \
+        "un formato fuori elenco deve comparire, non diventare il primo"
+    assert (col.page._cols, col.page._rows) == (5, 4)
+    crepo.set_binder_layout(b_fmt, 3, 3)
+    col._refresh_page()
 
     # 8i) LEGGERE UNA MINIATURA NON DEVE SCARICARE NIENTE
     #     Il difetto vero: `pixmap()` avviava il download, e `_fill_table` la

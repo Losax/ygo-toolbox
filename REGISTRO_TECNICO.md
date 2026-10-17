@@ -729,6 +729,33 @@ confini di parola per non pescare "usato").
   controllo sia proprio il passare del tempo, e allora si costruiscono con uno
   scarto esplicito (`now() - timedelta(...)`, come fa il blocco 7f).
 
+- **GOTCHA 36 — `findData` non trova le tuple, e il ripiego silenzioso
+  incastra** (v1.8.2).
+    - **Sintomo:** la tendina del formato pagina cambiava una volta sola. Da
+      3×3 a 4×3 funzionava; rimettendo 3×3 non succedeva più niente, mai più.
+    - **Causa, due strati.** Il dato di ogni voce era una **tupla**
+      (`addItem("4×3", (4, 3))`) e `QComboBox.findData` confronta QVariant: su
+      una tupla Python risponde **-1** anche quando la voce c'è. Fin qui è solo
+      un'API che delude. Il difetto vero è la riga dopo:
+      `setCurrentIndex(indice if indice >= 0 else 0)` — un **ripiego
+      silenzioso** che fa mostrare alla tendina la PRIMA voce. Dopo aver scelto
+      4×3, la tendina diceva 3×3 mentre la pagina era 4×3; scegliendo "3×3"
+      l'indice non cambiava, `currentIndexChanged` non scattava, e il formato
+      restava bloccato per sempre.
+    - **Cura:** chiave **stringa** (`"4x3"`), che `findData` ritrova; e mai più
+      il ripiego — un valore fuori elenco si **aggiunge** alla tendina.
+    - **La regola generale, che vale ben oltre Qt:** un selettore che ripiega
+      in silenzio su un valore diverso da quello in uso non è tollerante, è
+      **bugiardo**, e si incastra da solo — perché l'utente sceglie ciò che
+      vede già selezionato e nessun segnale parte. Se il valore non c'è, o lo
+      si aggiunge o lo si dice: non lo si sostituisce.
+    - **Il fratello peggiore:** la stessa riga, in un dialogo che poi SALVA,
+      non si limita a confondere — scrive il ripiego al posto del dato
+      dell'utente. Per questo `AddCardDialog._seleziona` ora aggiunge la voce
+      mancante, e ha un `aggiungi=False` esplicito per l'unica tendina dove
+      "non trovato" è esso stesso il dato giusto (un raccoglitore cancellato
+      nel frattempo: la carta è tornata sfusa, non va resuscitato).
+
 - **GOTCHA 34 — leggere una miniatura non deve SCARICARLA** (v1.8.0).
     - **Sintomo:** nessuno. L'app si apre, la tabella si riempie, tutto bello —
       e intanto parte una raffica di richieste a YGOPRODeck che dura minuti.
