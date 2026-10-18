@@ -84,7 +84,7 @@ guardi.
 | **Differenza (guadagno)** | Confronta valore e spesa **solo sulle carte che hanno tutti e due i dati**, e lo dice ("su 280 copie con valore e spesa"). Sottrarre quello che hai speso su una parte dal valore di tutto darebbe un numero più grande e completamente falso. |
 | **Aggiorna i prezzi** | Non succede da solo: **ogni stampa è una richiesta** a CardTrader, e una collezione vera sono centinaia. Il pulsante apre due scelte e **ti dice quante richieste costano**: solo quelle mancanti o più vecchie di 7 giorni, oppure tutta la collezione. Si può **fermare a metà** senza perdere quello che è già arrivato. |
 | **"Nessuno la vende"** | Se una stampa è stata controllata ma non ha annunci, il prezzo resta "—" **con la data del controllo** nel tooltip: è un'informazione (l'abbiamo guardata), diversa da "mai controllata". |
-| **Raccoglitori** | La seconda vista, ed è un raccoglitore **aperto**: due pagine affiancate con gli anelli in mezzo (se la finestra è stretta, una sola). Ogni pagina è fatta di **tasche** (3×3 come quelli veri, o 4×3, 4×2, 2×2): trascini le carte dall'elenco *Carte sfuse* dentro le tasche, e le sposti trascinandole. **Le tasche vuote restano vuote** — chi colleziona lascia il posto alla carta che gli manca. Lasciando una carta su una tasca occupata, le due si **scambiano**. Passando il mouse su una carta, quella si **solleva** dalla tasca; il prezzo e le copie stanno su una velatura in fondo alla carta, e una **striscia col colore della rarità** ti fa vedere a colpo d'occhio dove sono le carte buone. |
+| **Raccoglitori** | La seconda vista, ed è un raccoglitore **aperto**: due pagine affiancate con gli anelli in mezzo (se la finestra è stretta, una sola). Ogni pagina è fatta di **tasche** (3×3 come quelli veri, o 4×3, 4×2, 2×2): trascini le carte dall'elenco *Carte sfuse* dentro le tasche, e le sposti trascinandole. **Le tasche vuote restano vuote** — chi colleziona lascia il posto alla carta che gli manca. **Una tasca tiene una copia**: se hai tre Ash Blossom occupano tre tasche, come in un raccoglitore vero. Lasciando una carta su una tasca occupata, le due si **scambiano**. Passando il mouse su una carta, quella si **solleva** dalla tasca; il prezzo e le copie stanno su una velatura in fondo alla carta, e una **striscia col colore della rarità** ti fa vedere a colpo d'occhio dove sono le carte buone. |
 | **Cambiare formato** | La tendina 3×3 / 4×3 / …: le carte **non si spostano**, si ridistribuiscono sulle pagine, come travasando un raccoglitore vero. |
 | **Eliminare un raccoglitore** | Chiede sempre, e distingue: *Tienile* (le carte tornano sfuse) oppure *Elimina anche le carte*. |
 | **Serve il catalogo** | Per aggiungere carte serve il **catalogo delle stampe** di CardTrader, quello che si sincronizza dal Market Watch. Se manca, la Collezione lo dice e ti ci porta. |
@@ -1075,6 +1075,29 @@ I filtri sono **salvati** e ri-applicati; cambiandoli l'app ricontrolla subito.
     in silenzio sarebbe stato peggio: premendo *Salva* si sarebbe scritto il
     ripiego, cioè si sarebbe **perso il dato** inserito a mano.
     Il giro 3×3 → 4×3 → 3×3 → 2×2 → 3×3 ora è un controllo automatico.
+
+88. **Tre copie, tre tasche (v1.9.0).** Richiesta dell'utente: *"quando metto
+    3 copie di una carta vorrei che le spalmasse, come se fosse in un vero
+    binder, quindi 1 copia a slot"*. Giusta, e per farla ho dovuto cambiare il
+    modello, non l'aspetto.
+    Prima la posizione era un attributo della carta: *questa riga sta nella
+    tasca 4*. Funzionava finché una riga valeva una carta, ma una riga vale
+    **n copie**, e in un raccoglitore vero tre copie occupano tre tasche. Con
+    la posizione dentro l'oggetto non c'era modo di dirlo, e restava la scritta
+    "×3" su una tasca sola — cioè il modello che mentiva, non un dettaglio
+    grafico. Ora la **tasca è una cosa**, con il suo elenco, e tiene una copia:
+    il "×3" è sparito perché le tre copie si vedono.
+    **Cosa ne segue, e si vede.** Trascinando una carta dall'elenco delle sfuse
+    entrano tutte le sue copie, una per tasca; se il raccoglitore non ha posto
+    per tutte, entrano quelle che ci stanno e **l'app dice quante restano
+    fuori** invece di arrotondare. Trascinando una carta già dentro si sposta
+    **quella copia sola**. Col tasto destro su una tasca c'è *Togli questa
+    copia* (la carta resta, con una copia in meno in tasca) e, se ce n'è più
+    d'una, *Togli tutte le copie*. Scendendo di copie si liberano le tasche in
+    eccesso, partendo dall'ultima.
+    **I raccoglitori esistenti si travasano da soli** al primo avvio: la carta
+    che stava in una tasca con tre copie ne occupa tre, e le vecchie colonne
+    vengono azzerate per non lasciare in giro una verità vecchia.
 
 ## 4. Note operative importanti
 

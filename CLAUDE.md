@@ -217,7 +217,13 @@ le tabelle esistenti).
 
 - **Le carte che possiedi**, non quelle che guardi: `col_items` (stampa +
   stato + copie + prezzo pagato), `col_binders` (raccoglitori digitali),
-  `col_prices` (cache dell'ultimo prezzo per stampa).
+  `col_slots` (chi sta in quale tasca), `col_prices` (cache dell'ultimo prezzo
+  per stampa).
+- **Una tasca tiene UNA copia** (v1.9.0): tre copie occupano tre tasche, come
+  in un raccoglitore vero. Le vecchie `col_items.binder_id`/`slot` sono morte,
+  travasate in `col_slots` dalla migrazione. Ogni conteggio deve usare
+  `copie_viste` di `list_items`, non `quantity`: in una vista filtrata sono
+  due cose diverse, e `quantity` conterebbe due volte le stesse copie.
 - **Il valore non si mostra mai da solo**: `totals()` porta con sé quante
   copie NON hanno un prezzo, divise fra "mai controllate" e "controllate ma
   nessuno le vende". La *Differenza* fra valore e spesa si calcola solo dove

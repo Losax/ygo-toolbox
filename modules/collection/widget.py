@@ -187,6 +187,7 @@ class CollectionWidget(QWidget):
         self.context = context
         self.repo = CollectionRepository(context.storage)
         self.repo.cleanup_prices(PROVIDER)     # niente prezzi orfani
+        self.repo.cleanup_slots()              # né tasche senza carta
         self.thumbs = ThumbSource(context.storage, self)
         self.thumbs.ready.connect(self._on_thumb)
         self._items: list = []                 # righe mostrate in Inventario
@@ -527,6 +528,7 @@ class CollectionWidget(QWidget):
         self.page.setSizePolicy(QSizePolicy.Policy.Expanding,
                                 QSizePolicy.Policy.Expanding)
         self.page.dropped.connect(self._on_drop)
+        self.page.moved.connect(self._on_move)
         self.page.slot_menu.connect(self._slot_menu)
         self.page.slot_activated.connect(self._on_slot_activated)
         # Niente cornice intorno: il foglio ora se lo disegna la pagina, con
@@ -721,7 +723,7 @@ class CollectionWidget(QWidget):
                 if nome_rar else self._testo("—"))
 
             self.table.setItem(r, COL_STATO, QTableWidgetItem(self._stato(dato)))
-            copie = QTableWidgetItem(str(int(dato["quantity"] or 1)))
+            copie = QTableWidgetItem(str(int(dato["copie_viste"] or 1)))
             copie.setTextAlignment(int(Qt.AlignmentFlag.AlignRight
                                        | Qt.AlignmentFlag.AlignVCenter))
             self.table.setItem(r, COL_COPIE, copie)
@@ -741,7 +743,8 @@ class CollectionWidget(QWidget):
                     quando=_quando(dato["checked_at"])))
             self.table.setItem(r, COL_PREZZO, cella_prezzo)
 
-            totale = None if prezzo is None else float(prezzo) * int(dato["quantity"] or 1)
+            totale = (None if prezzo is None
+                      else float(prezzo) * int(dato["copie_viste"] or 1))
             cella_val = QTableWidgetItem(_soldi(totale, dato["currency"]))
             cella_val.setTextAlignment(int(Qt.AlignmentFlag.AlignRight
                                            | Qt.AlignmentFlag.AlignVCenter))
@@ -753,7 +756,7 @@ class CollectionWidget(QWidget):
             # prezzo pagato per copia accanto a un valore per tutte, la riga
             # "3 copie · valore 37,20 € · pagata 8,50 €" si leggeva come un
             # guadagno tre volte più grande del vero.
-            copie_riga = int(dato["quantity"] or 1)
+            copie_riga = int(dato["copie_viste"] or 1)
             speso = None if dato["paid"] is None else float(dato["paid"]) * copie_riga
             pagata = QTableWidgetItem(_soldi(speso, dato["currency"]))
             pagata.setTextAlignment(int(Qt.AlignmentFlag.AlignRight
@@ -1053,9 +1056,11 @@ class CollectionWidget(QWidget):
         if not dati:
             return None
         binder_id = dati.pop("binder_id", None)
-        slot = self.repo.first_free_slot(binder_id) if binder_id else -1
-        item_id = self.repo.add_item(PROVIDER, binder_id=binder_id, slot=slot,
-                                     **dati)
+        item_id = self.repo.add_item(PROVIDER, **dati)
+        if binder_id is not None:
+            # una copia per tasca: tre copie entrano in tre tasche
+            self.repo.place_item(item_id, binder_id,
+                                 self.repo.first_free_slot(binder_id))
         self._reload()
         self.status.setText(tr("{n}× {name} in collezione.").format(
             n=dati["quantity"], name=dati["card_name"]))
@@ -1087,7 +1092,8 @@ class CollectionWidget(QWidget):
         iniziale = {chiave: riga[chiave] for chiave in
                     ("ref_id", "card_name", "detail", "set_code", "image_url",
                      "quantity", "condition", "language", "first_edition",
-                     "paid", "note", "binder_id")}
+                     "paid", "note")}
+        iniziale["binder_id"] = self._binder_di(item_id)
         iniziale["first_edition"] = bool(iniziale["first_edition"])
         dialogo = AddCardDialog(
             cerca_nomi=lambda q: [], stampe_di=lambda n: [],
@@ -1106,12 +1112,24 @@ class CollectionWidget(QWidget):
             "paid": dati.get("paid"),
             "note": dati.get("note", ""),
         }
-        if binder_dopo != binder_prima:
-            campi["binder_id"] = binder_dopo
-            campi["slot"] = (self.repo.first_free_slot(binder_dopo)
-                             if binder_dopo is not None else -1)
         self.repo.update_item(item_id, **campi)
+        if binder_dopo != binder_prima:
+            if binder_dopo is None:
+                self.repo.unplace_item(item_id)
+            else:
+                self.repo.place_item(item_id, binder_dopo,
+                                     self.repo.first_free_slot(binder_dopo))
+        else:
+            # le copie possono essere cambiate: le tasche si adeguano
+            self.repo.cleanup_slots()
         self._reload()
+
+    def _binder_di(self, item_id):
+        """In quale raccoglitore sta questa carta (None = in nessuno)."""
+        righe = self.context.storage.query(
+            "SELECT binder_id FROM col_slots WHERE item_id = ? LIMIT 1",
+            (int(item_id),))
+        return int(righe[0]["binder_id"]) if righe else None
 
     def _selected_item(self):
         riga = self.table.currentRow()
@@ -1145,14 +1163,15 @@ class CollectionWidget(QWidget):
         sub = QMenu(tr("Metti nel raccoglitore"), menu)
         vuoto = QAction(tr("Nessuno (carte sfuse)"), sub)
         vuoto.setCheckable(True)
-        vuoto.setChecked(dato is not None and dato["binder_id"] is None)
+        dove_sta = self._binder_di(item_id)
+        vuoto.setChecked(dove_sta is None)
         vuoto.triggered.connect(lambda: self._sposta_in(item_id, None))
         sub.addAction(vuoto)
         for b in self.repo.list_binders():
             bid = int(b["id"])
             azione = QAction(b["name"], sub)
             azione.setCheckable(True)
-            azione.setChecked(dato is not None and dato["binder_id"] == bid)
+            azione.setChecked(dove_sta == bid)
             azione.triggered.connect(
                 lambda _c=False, x=bid: self._sposta_in(item_id, x))
             sub.addAction(azione)
@@ -1171,9 +1190,10 @@ class CollectionWidget(QWidget):
 
     def _sposta_in(self, item_id, binder_id) -> None:
         if binder_id is None:
-            self.repo.place(item_id, None, -1)
+            self.repo.unplace_item(item_id)
         else:
-            self.repo.place(item_id, binder_id, self.repo.first_free_slot(binder_id))
+            self.repo.place_item(item_id, binder_id,
+                                 self.repo.first_free_slot(binder_id))
         self._reload()
 
     def _elimina(self, item_id) -> None:
@@ -1240,7 +1260,7 @@ class CollectionWidget(QWidget):
         self.tray.clear()
         for riga in self.repo.list_items(PROVIDER, binder_id=None):
             testo = riga["card_name"]
-            copie = int(riga["quantity"] or 1)
+            copie = int(riga["copie_viste"] or 1)
             if copie > 1:
                 testo = f"{copie}× {testo}"
             elemento = QListWidgetItem(testo, self.tray)
@@ -1307,16 +1327,9 @@ class CollectionWidget(QWidget):
         self._seleziona_formato(colonne, righe_pag)
         self.page.set_layout_size(colonne, righe_pag)
 
-        carte = self.repo.list_items(PROVIDER, binder_id=self._binder_id)
-        self.thumbs.resolve([r["card_name"] for r in carte])
+        slots = self.repo.slots_of(self._binder_id)
+        self.thumbs.resolve([r["card_name"] for r in slots.values()])
         per_pagina = max(1, colonne * righe_pag)
-        slots = {}
-        for r in carte:
-            slot = int(r["slot"])
-            if slot < 0:
-                slot = self.repo.first_free_slot(self._binder_id)
-                self.repo.update_item(int(r["id"]), slot=slot)
-            slots[slot] = r
         pagine = max(1, (max(slots) // per_pagina + 1) if slots else 1)
         self._page = min(self._page, pagine - 1)
         self.page.set_page(self._page)
@@ -1500,9 +1513,28 @@ class CollectionWidget(QWidget):
 
     # --- gesti sulla pagina ---
     def _on_drop(self, item_id: int, slot: int) -> None:
+        """Una carta arrivata dall'elenco delle sfuse: entra con le sue copie."""
         if self._binder_id is None:
             return
-        self.repo.place(item_id, self._binder_id, slot)
+        messe = self.repo.place_item(item_id, self._binder_id, slot)
+        self._dopo_lo_spostamento()
+        riga = self.repo.item(item_id)
+        if riga is not None and messe:
+            rimaste = int(riga["quantity"] or 1) - self.repo.copies_placed(item_id)
+            if rimaste > 0:
+                # il raccoglitore è finito: si dice, non si arrotonda
+                self.status.setText(tr(
+                    "{messe} copie in tasca, {rimaste} non ci stanno: "
+                    "restano sfuse.").format(messe=messe, rimaste=rimaste))
+
+    def _on_move(self, da: int, a: int) -> None:
+        """Una copia spostata dentro la pagina: scambia con chi c'era."""
+        if self._binder_id is None:
+            return
+        self.repo.move_slot(self._binder_id, da, a)
+        self._dopo_lo_spostamento()
+
+    def _dopo_lo_spostamento(self) -> None:
         self._items = self.repo.list_items(PROVIDER)
         self._fill_table()
         self._refresh_page()
@@ -1528,14 +1560,25 @@ class CollectionWidget(QWidget):
             modifica = QAction(tr("Modifica…"), menu)
             modifica.triggered.connect(lambda: self.edit_item(item_id))
             menu.addAction(modifica)
-            sfila = QAction(tr("Togli dal raccoglitore"), menu)
-            sfila.triggered.connect(lambda: self._sposta_in(item_id, None))
+            sfila = QAction(tr("Togli questa copia dal raccoglitore"), menu)
+            sfila.triggered.connect(lambda: self._svuota_tasca(slot))
             menu.addAction(sfila)
+            if self.repo.copies_placed(item_id, self._binder_id) > 1:
+                tutte = QAction(tr("Togli tutte le copie dal raccoglitore"), menu)
+                tutte.triggered.connect(lambda: self._sposta_in(item_id, None))
+                menu.addAction(tutte)
             menu.addSeparator()
             elimina = QAction(tr("Togli dalla collezione"), menu)
             elimina.triggered.connect(lambda: self._elimina(item_id))
             menu.addAction(elimina)
         menu.exec(pos)
+
+    def _svuota_tasca(self, slot: int) -> None:
+        """La copia esce dalla tasca e torna sfusa; la carta resta."""
+        if self._binder_id is None:
+            return
+        self.repo.unplace_slot(self._binder_id, slot)
+        self._dopo_lo_spostamento()
 
     def _aggiungi_in_tasca(self, slot: int) -> None:
         """Aggiunge una carta e la mette **in quella tasca**.
@@ -1548,7 +1591,7 @@ class CollectionWidget(QWidget):
         """
         item_id = self.add_card()
         if item_id is not None and self._binder_id is not None:
-            self.repo.place(item_id, self._binder_id, slot)
+            self.repo.place_item(item_id, self._binder_id, slot)
             self._reload()
             self._refresh_page()
 

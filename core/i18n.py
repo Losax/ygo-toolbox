@@ -616,6 +616,12 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
             'Every card is in a binder.',
         'Aggiungi una carta qui…': 'Add a card here…',
         'Togli dal raccoglitore': 'Take out of the binder',
+        'Togli questa copia dal raccoglitore':
+            'Take this copy out of the binder',
+        'Togli tutte le copie dal raccoglitore':
+            'Take every copy out of the binder',
+        '{messe} copie in tasca, {rimaste} non ci stanno: restano sfuse.':
+            '{messe} copies filed, {rimaste} do not fit: they stay loose.',
         'Per leggere i prezzi serve il token CardTrader: si imposta dal '
         'Market Watch (pulsante con la chiave).':
             'Reading prices needs the CardTrader token: set it from Market '

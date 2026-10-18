@@ -230,13 +230,25 @@ al catalogo serve **ri-sincronizzare**.
   added_at)` — una riga per **stampa in un certo stato**. `paid` è REAL
   **senza NOT NULL e senza default**: `NULL` = "non so cosa l'ho pagata",
   `0.0` = "regalata". Sono due cose diverse e confonderle falserebbe la
-  *Differenza*. `binder_id` NULL = carta sfusa; `slot` = tasca **assoluta**
-  dentro il raccoglitore (-1 = nessuna), quindi la pagina è
-  `slot // (colonne × righe)` e cambiare formato non sposta niente.
-  `add_item` **fonde** due righe solo se stampa, stato, raccoglitore, tasca
-  **e prezzo pagato** coincidono: due copie pagate 2 € e 12 € restano due
+  *Differenza*. `binder_id` e `slot` sono **morte dalla v1.9.0**: la
+  posizione sta in `col_slots` (qui sotto), la migrazione le travasa una volta
+  sola e poi le azzera. Restano nella tabella perché cancellare colonne a un
+  database già in mano all'utente vale meno del rischio; non vanno lette da
+  nessuno.
+  `add_item` **fonde** due righe se stampa, stato **e prezzo pagato**
+  coincidono — dove stia la carta non entra più nel confronto, da quando le
+  tasche sono una tabella a parte. Due copie pagate 2 € e 12 € restano due
   righe, perché il prezzo d'acquisto lo ha inserito una persona e nessuno ha
   il diritto di mediarlo.
+- `col_slots(binder_id, slot, item_id)` — **chi sta in quale tasca**, una riga
+  per tasca, e una tasca tiene **una copia** (v1.9.0). La chiave primaria
+  `(binder_id, slot)` è la garanzia che due carte non finiscano nello stesso
+  posto: scritta nello schema invece che in un controllo nel codice. Lo `slot`
+  è un numero **assoluto** dentro il raccoglitore, quindi la pagina è
+  `slot // (colonne × righe)` e cambiare formato non sposta niente.
+  Le copie di una carta possono stare in parte in tasca e in parte sfuse —
+  succede quando il raccoglitore è pieno — e `quantity` meno le tasche
+  occupate dice quante ne restano fuori: l'interfaccia lo mostra.
 - `col_binders(id, name, position, cols, rows, note, created_at)` — i
   raccoglitori. Eliminandone uno le carte **restano** (tornano sfuse) a meno
   che non si scelga il contrario: il valore predefinito è il meno distruttivo,
@@ -728,6 +740,37 @@ confini di parola per non pescare "usato").
   **scrivono**, non si prendono dall'orologio — a meno che l'oggetto del
   controllo sia proprio il passare del tempo, e allora si costruiscono con uno
   scarto esplicito (`now() - timedelta(...)`, come fa il blocco 7f).
+
+- **La tasca è una COSA, non un attributo** (v1.9.0). La posizione nasceva
+  come due colonne di `col_items` (`binder_id`, `slot`): una riga, una tasca.
+  Regge finché una riga vale una carta — ma una riga vale **n copie**, e in un
+  raccoglitore vero tre copie occupano tre tasche. Con la posizione dentro
+  l'oggetto non c'era modo di scriverlo, e restava un "×3" stampato su una
+  tasca sola: non un dettaglio grafico, il **modello che mentiva**. Spostare le
+  tasche in `col_slots` ha fatto cadere quella scritta da sé, perché non c'era
+  più niente da riassumere.
+  Due conseguenze che dal diagramma non si vedono. La prima: `add_item` non
+  deve più confrontare il posto per decidere se due righe sono la stessa cosa,
+  quindi la stessa carta in un raccoglitore e sul tavolo è **una riga** con due
+  copie — più giusto di prima. La seconda: ogni conteggio ha dovuto imparare la
+  differenza fra "quante ne possiedo" e "quante ne conto **qui**"
+  (`copie_viste` in `list_items`), perché sommando `quantity` in una vista
+  filtrata le stesse copie finirebbero contate due volte.
+  Anche il trascinamento ha dovuto distinguere due gesti che prima erano uno
+  solo: una carta che arriva **da fuori** porta dentro tutte le sue copie, una
+  copia **già in tasca** si sposta e basta. Senza la distinzione, spostare una
+  carta dentro la pagina avrebbe rimesso dentro anche le copie lasciate fuori
+  apposta — per questo il trascinamento porta `item:<id>` oppure `slot:<n>` e
+  non più un numero nudo.
+- **I segnaposto di una query stanno nell'ordine del TESTO, non del pensiero**
+  (v1.9.0). `list_items` costruisce `copie_viste` nella SELECT e il filtro nel
+  WHERE: il `?` della SELECT viene **prima**. Avendo accodato i parametri
+  nell'ordine in cui li pensavo (provider, poi raccoglitore) la query non
+  trovava niente e i conti andavano a zero — **senza un errore**, perché una
+  query con i parametri scambiati è legittima, solo falsa. L'ha presa il
+  controllo automatico sui totali del raccoglitore, non l'occhio: a schermo si
+  sarebbe vista come "qui manca qualcosa", che si liquida come un dato non
+  ancora caricato.
 
 - **GOTCHA 36 — `findData` non trova le tuple, e il ripiego silenzioso
   incastra** (v1.8.2).

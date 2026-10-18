@@ -2162,35 +2162,68 @@ def main() -> int:
     assert crepo.item(senza_prezzo) is None
     assert crepo.totals(_PROV)["copie_da_controllare"] == 0
 
-    # 8c) raccoglitori: tasche, buchi, scambi, travasi
+    # 8c) raccoglitori: UNA TASCA, UNA COPIA
+    #     Richiesta dell'utente: tre copie devono occupare tre tasche, come in
+    #     un raccoglitore vero. È il motivo per cui la tasca è una tabella a
+    #     parte e non due colonne della carta.
     b1 = crepo.add_binder("Prova", 3, 3)
-    crepo.place(uno, b1, 0)
-    crepo.place(tre, b1, 4)
-    assert crepo.first_free_slot(b1) == 1, "il primo buco, non la fine"
+    assert crepo.item(uno)["quantity"] == 3
+    messe = crepo.place_item(uno, b1, 0)
+    assert messe == 3, f"tre copie, tre tasche: ne ha messe {messe}"
+    assert sorted(crepo.slots_of(b1)) == [0, 1, 2]
+    assert crepo.copies_placed(uno) == 3
+    # e non restano copie sfuse
+    assert crepo.list_items(_PROV, binder_id=None) == [] or all(
+        int(r["id"]) != uno for r in crepo.list_items(_PROV, binder_id=None))
+
+    crepo.place_item(tre, b1, 4)
+    assert crepo.first_free_slot(b1) == 3, "il primo buco, non la fine"
     # chi arriva su una tasca occupata SCAMBIA con chi c'era
-    crepo.place(tre, b1, 0)
+    crepo.move_slot(b1, 4, 0)
     assert int(crepo.item_at(b1, 0)["id"]) == tre
     assert int(crepo.item_at(b1, 4)["id"]) == uno, "l'altra non è sparita"
+    # le altre due copie di `uno` non si sono mosse
+    assert crepo.copies_placed(uno, b1) == 3
+
+    # togliere UNA copia libera UNA tasca: la carta resta, con una copia fuori
+    crepo.unplace_slot(b1, 4)
+    assert crepo.copies_placed(uno, b1) == 2
+    assert crepo.item(uno)["quantity"] == 3, "la carta ha ancora tre copie"
+    sfuse = {int(r["id"]): int(r["copie_viste"])
+             for r in crepo.list_items(_PROV, binder_id=None)}
+    assert sfuse.get(uno) == 1, f"una copia dovrebbe essere sfusa: {sfuse}"
+    # e nei conti la copia fuori non viene contata due volte
+    assert crepo.totals(_PROV, binder_id=b1)["copie"] == 3      # 2 + 1 di `tre`
+    crepo.place_item(uno, b1, 0)                                # rientra
+    assert crepo.copies_placed(uno, b1) == 3
+
+    # scendendo di copie si liberano le tasche in eccesso
+    crepo.set_quantity(uno, 2)
+    assert crepo.copies_placed(uno) == 2, "tre tasche per due copie non vanno"
+    crepo.set_quantity(uno, 3)
+
     # cambiare formato NON sposta le carte: lo slot è assoluto, cambia la pagina
-    assert 4 // (3 * 3) == 0                      # 3×3: prima pagina
+    prima_del_cambio = {s: int(r["id"]) for s, r in crepo.slots_of(b1).items()}
     crepo.set_binder_layout(b1, 2, 2)
-    assert int(crepo.item(uno)["slot"]) == 4      # la carta è ferma...
-    assert 4 // (2 * 2) == 1                      # ...ma ora è in seconda pagina
+    assert {s: int(r["id"]) for s, r in crepo.slots_of(b1).items()} ==         prima_del_cambio, "le tasche non si toccano cambiando formato"
+    # a cambiare è solo su quale pagina cadono: la tasca 5 sta in prima pagina
+    # con il 3×3 e in seconda con il 2×2, senza essersi mossa di un posto
+    assert 5 // (3 * 3) == 0 and 5 // (2 * 2) == 1
     crepo.set_binder_layout(b1, 3, 3)
 
     # eliminare il raccoglitore NON butta le carte, a meno che non lo si chieda
     b2 = crepo.add_binder("Da buttare")
     dentro = crepo.add_item(_PROV, "ur-a", "Carta Multipla", "Ultra Rare · Set A",
-                            "SETA", quantity=1, condition="Played",
-                            binder_id=b2, slot=0)
+                            "SETA", quantity=1, condition="Played")
+    crepo.place_item(dentro, b2, 0)
     crepo.delete_binder(b2)
     assert crepo.item(dentro) is not None, "il raccoglitore se ne va, la carta no"
-    assert crepo.item(dentro)["binder_id"] is None
-    assert int(crepo.item(dentro)["slot"]) == -1
+    assert crepo.copies_placed(dentro) == 0
     b3 = crepo.add_binder("Da buttare davvero")
-    crepo.place(dentro, b3, 0)
+    crepo.place_item(dentro, b3, 0)
     crepo.delete_binder(b3, con_carte=True)
     assert crepo.item(dentro) is None
+    assert crepo.slots_of(b3) == {}, "nessuna tasca orfana"
 
     # 8d) il worker: "nessuno la vende" è un risultato, un errore non scrive
     class _ProvaPrezzi:
@@ -2274,6 +2307,8 @@ def main() -> int:
         MIME as _MIME,
         BinderPage as _BinderPage,
         CardTray as _CardTray,
+        dato_carta as _dato_carta,
+        dato_tasca as _dato_tasca,
     )
 
     pagina = _BinderPage()
@@ -2291,12 +2326,25 @@ def main() -> int:
     lasciate = []
     pagina.dropped.connect(lambda i, s: lasciate.append((i, s)))
     _dati = _QMime()
-    _dati.setData(_MIME, b"42")
+    _dati.setData(_MIME, _dato_carta(42))
     _punto = _QPF(pagina._rect_for(4).center())
     pagina.dropEvent(_QDrop(_punto, Qt.DropAction.MoveAction, _dati,
                             Qt.MouseButton.LeftButton,
                             Qt.KeyboardModifier.NoModifier))
     assert lasciate == [(42, 4)], lasciate
+
+    # una COPIA già in tasca che si sposta non è la stessa cosa di una carta
+    # che arriva da fuori: senza distinguerle, spostarla dentro la pagina
+    # rimetterebbe dentro anche le copie lasciate fuori apposta
+    spostate = []
+    pagina.moved.connect(lambda a, b: spostate.append((a, b)))
+    _mossa = _QMime()
+    _mossa.setData(_MIME, _dato_tasca(1))
+    pagina.dropEvent(_QDrop(_punto, Qt.DropAction.MoveAction, _mossa,
+                            Qt.MouseButton.LeftButton,
+                            Qt.KeyboardModifier.NoModifier))
+    assert spostate == [(1, 4)], spostate
+    assert len(lasciate) == 1, "una copia spostata non è una carta in arrivo"
     _altro = _QMime()
     _altro.setText("una riga di testo qualunque")
     pagina.dropEvent(_QDrop(_punto, Qt.DropAction.MoveAction, _altro,
@@ -2333,7 +2381,7 @@ def main() -> int:
     _voce = _QLWI("Dark Magician", _vassoio)
     _voce.setData(Qt.ItemDataRole.UserRole, 7)
     _md = _vassoio.mimeData([_voce])
-    assert _md.hasFormat(_MIME) and bytes(_md.data(_MIME)) == b"7"
+    assert _md.hasFormat(_MIME) and bytes(_md.data(_MIME)) == _dato_carta(7)
     pagina.deleteLater()
     _vassoio.deleteLater()
 
@@ -2422,6 +2470,9 @@ def main() -> int:
     assert dentro is not None and int(dentro["id"]) == sfusa_id, \
         "la tasca deve riempirsi anche se la carta si è fusa"
     assert int(dentro["quantity"]) == 2, "e portarsi dietro tutte le copie"
+    # ...che però stanno in DUE tasche, non in una con scritto ×2
+    assert crepo.copies_placed(sfusa_id, b_tasca) == 2, \
+        "due copie, due tasche"
 
     # 8j) la freschezza: si mostra il prezzo PIÙ VECCHIO, non il più recente
     # Le date sono SCRITTE, non prese dall'orologio: un controllo che si
@@ -2443,6 +2494,9 @@ def main() -> int:
     print("[OK] Collezione: leggere una miniatura NON scarica (le richieste le "
           "fa solo chi sa cosa c'è a schermo), e la freschezza dei prezzi "
           "mostra il più VECCHIO, non il più recente.")
+    print("[OK] Collezione: una tasca = UNA copia (tre copie occupano tre "
+          "tasche), togliendone una la carta resta con una copia sfusa, e i "
+          "conti non contano due volte le stesse copie.")
     print("[OK] Collezione: il valore copre solo le copie con un prezzo (e dice "
           "quante non ce l'hanno), 'nessuno la vende' non è 'mai controllata', "
           "il guadagno esce solo dove ci sono valore E spesa, le tasche del "

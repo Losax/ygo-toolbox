@@ -76,6 +76,32 @@ from .format import soldi
 #: viene davvero dalla collezione, e non qualunque testo trascinato da fuori.
 MIME = "application/x-ygo-collection-item"
 
+#: Cosa viaggia nel trascinamento: `item:<id>` è una carta che arriva da
+#: fuori (dall'elenco delle sfuse) e porta dentro le sue copie; `slot:<n>` è
+#: una copia già in una tasca, che si sta solo spostando. Senza distinguerli,
+#: spostare una carta dentro la pagina rimetterebbe dentro anche le copie che
+#: l'utente aveva lasciato fuori apposta.
+def dato_carta(item_id) -> bytes:
+    return f"item:{int(item_id)}".encode("ascii")
+
+
+def dato_tasca(slot) -> bytes:
+    return f"slot:{int(slot)}".encode("ascii")
+
+
+def leggi_dato(grezzo) -> tuple[str, int] | None:
+    """`b"slot:4"` → `("slot", 4)`; roba incomprensibile → None."""
+    try:
+        genere, numero = bytes(grezzo).decode("ascii").split(":")
+    except (UnicodeDecodeError, ValueError):
+        return None
+    if genere not in ("item", "slot"):
+        return None
+    try:
+        return genere, int(numero)
+    except ValueError:
+        return None
+
 CARD_RATIO = 59 / 86        # proporzioni di una carta Yu-Gi-Oh!
 GAP = 12                    # aria fra una tasca e l'altra
 SPINE = 34                  # striscia degli anelli, sul bordo sinistro
@@ -202,15 +228,17 @@ class CardTray(QListWidget):
         if items:
             item_id = items[0].data(Qt.ItemDataRole.UserRole)
             if item_id is not None:
-                dati.setData(MIME, str(int(item_id)).encode("ascii"))
+                dati.setData(MIME, dato_carta(item_id))
         return dati
 
 
 class BinderPage(QWidget):
     """Una pagina di tasche. Non tocca il database: chiede e riceve."""
 
-    #: (item_id, slot di destinazione) — una carta è stata lasciata in una tasca
+    #: (item_id, slot) — una carta arrivata da fuori è stata lasciata in una tasca
     dropped = Signal(int, int)
+    #: (slot di partenza, slot di arrivo) — una copia spostata dentro la pagina
+    moved = Signal(int, int)
     #: slot cliccato (anche vuoto: serve per "metti una carta qui")
     slot_clicked = Signal(int)
     slot_activated = Signal(int)          # doppio clic
@@ -616,12 +644,9 @@ class BinderPage(QWidget):
         painter.drawText(testo, int(Qt.AlignmentFlag.AlignLeft
                                     | Qt.AlignmentFlag.AlignVCenter),
                          soldi(prezzo, riga["currency"]))
-        copie = int(riga["quantity"] or 1)
-        if copie > 1:
-            painter.setPen(QColor(theme.ACCENT))
-            painter.drawText(testo, int(Qt.AlignmentFlag.AlignRight
-                                        | Qt.AlignmentFlag.AlignVCenter),
-                             f"×{copie}")
+        # Niente "×3": ogni tasca tiene UNA copia, e tre copie si vedono
+        # perché occupano tre tasche. Era la scritta a dire che il modello
+        # stava mentendo.
 
     @staticmethod
     def _disegna_foil(painter: QPainter, carta: QRectF, riga) -> None:
@@ -714,7 +739,7 @@ class BinderPage(QWidget):
             return
         riga = self._items[self._drag_slot]
         dati = QMimeData()
-        dati.setData(MIME, str(int(riga["id"])).encode("ascii"))
+        dati.setData(MIME, dato_tasca(self._drag_slot))
         trascina = QDrag(self)
         trascina.setMimeData(dati)
         if self._thumbs is not None:
@@ -762,12 +787,15 @@ class BinderPage(QWidget):
         slot = self.slot_at(event.position().toPoint())
         if slot < 0:
             return          # lasciata fuori dalle tasche: non succede niente
-        try:
-            item_id = int(bytes(event.mimeData().data(MIME)).decode("ascii"))
-        except (ValueError, UnicodeDecodeError):
+        letto = leggi_dato(event.mimeData().data(MIME))
+        if letto is None:
             return
         event.acceptProposedAction()
-        self.dropped.emit(item_id, slot)
+        genere, numero = letto
+        if genere == "slot":
+            self.moved.emit(numero, slot)
+        else:
+            self.dropped.emit(numero, slot)
 
     # ------------------------------------------------------------ utile ---
     def tooltip_for(self, slot: int) -> str:

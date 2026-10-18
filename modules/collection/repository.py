@@ -7,11 +7,36 @@ Tre tabelle, e ognuna risponde a una domanda diversa:
                   l'ho pagata e in quale tasca del raccoglitore sta;
 - `col_binders` — **i raccoglitori**: nome, formato della pagina (3×3, 4×3…)
                   e ordine nell'elenco;
+- `col_slots`   — **chi sta in quale tasca**: una riga per TASCA, e una tasca
+                  tiene UNA copia. Tre copie della stessa carta nel
+                  raccoglitore sono tre righe qui, come in un raccoglitore
+                  vero — non una tasca con scritto "×3";
 - `col_prices`  — **quanto vale oggi**: l'ultimo prezzo visto per ogni stampa,
                   con la data. È una cache, non uno storico: la Collezione
                   risponde a "quanto vale adesso", e tenere un punto per ogni
                   controllo di 2.000 carte sarebbe un archivio che nessuno
                   guarda (lo storico per carta ce l'ha già il Market Watch).
+
+## Perché le tasche stanno in una tabella a parte (v1.9.0)
+
+All'inizio la posizione era due colonne di `col_items` (`binder_id`, `slot`):
+una riga, una tasca. Funzionava finché una riga valeva una carta, ma una riga
+vale **n copie**, e in un raccoglitore vero tre copie occupano tre tasche. Con
+la posizione dentro l'oggetto non c'era modo di dirlo: restava la scritta "×3"
+su una tasca sola.
+
+Ora la tasca è una **cosa**, non un attributo: `col_slots(binder_id, slot,
+item_id)` con chiave primaria `(binder_id, slot)` — che è anche la garanzia,
+scritta nello schema invece che nel codice, che due carte non possano finire
+nella stessa tasca. Le copie di una carta possono stare in parte nelle tasche e
+in parte sfuse (succede quando il raccoglitore è pieno), e `quantity` meno le
+tasche occupate dice quante ne restano fuori: l'interfaccia lo mostra invece di
+arrotondare.
+
+Le vecchie colonne `col_items.binder_id` / `slot` sono **morte**: la
+migrazione le travasa in `col_slots` una volta sola e poi le azzera. Restano
+nella tabella perché cancellare colonne a un database già in mano all'utente
+vale meno del rischio; non vanno lette da nessuno.
 
 Il prefisso `col_` tiene le tabelle separate da `mw_` e `cdb_`: il file SQLite
 è uno solo, condiviso da tutti i moduli. Va usato solo dal thread della GUI
@@ -103,29 +128,102 @@ class CollectionRepository:
             )
             """
         )
+        # Una riga per TASCA. La chiave primaria `(binder_id, slot)` è la
+        # garanzia che due carte non finiscano nello stesso posto: scritta
+        # nello schema, non affidata a un controllo nel codice.
+        self.storage.execute(
+            """
+            CREATE TABLE IF NOT EXISTS col_slots (
+                binder_id INTEGER NOT NULL,
+                slot      INTEGER NOT NULL,
+                item_id   INTEGER NOT NULL,
+                PRIMARY KEY (binder_id, slot)
+            )
+            """
+        )
+        self.storage.execute(
+            "CREATE INDEX IF NOT EXISTS idx_col_slots_item ON col_slots(item_id)")
+        self._migra_tasche()
+
+    def _migra_tasche(self) -> None:
+        """Travasa le vecchie `col_items.binder_id`/`slot` in `col_slots`.
+
+        Una volta sola, e **moltiplicando per le copie**: una riga da 3 copie
+        che stava in una tasca ne occupa tre, perché è quello che vuol dire la
+        nuova regola. Poi le vecchie colonne si azzerano, così nessuno può
+        leggerle per sbaglio e trovarci una verità vecchia.
+        """
+        if self.get_setting("tasche_migrate"):
+            return
+        righe = self.storage.query(
+            "SELECT id, quantity, binder_id, slot FROM col_items "
+            "WHERE binder_id IS NOT NULL AND slot >= 0 ORDER BY binder_id, slot")
+        occupate: dict[int, set] = {}
+        for r in righe:
+            binder = int(r["binder_id"])
+            presi = occupate.setdefault(binder, set())
+            posto = int(r["slot"])
+            for _ in range(max(1, int(r["quantity"] or 1))):
+                while posto in presi:
+                    posto += 1
+                presi.add(posto)
+                self.storage.execute(
+                    "INSERT OR IGNORE INTO col_slots (binder_id, slot, item_id) "
+                    "VALUES (?,?,?)", (binder, posto, int(r["id"])))
+        self.storage.execute(
+            "UPDATE col_items SET binder_id = NULL, slot = -1 "
+            "WHERE binder_id IS NOT NULL OR slot >= 0")
+        self.set_setting("tasche_migrate", "1")
 
     # ------------------------------------------------------------ carte ---
+    #: pezzi di query comuni: quante tasche occupa una carta, e dove
+    _IN_TASCA = ("(SELECT COUNT(*) FROM col_slots s WHERE s.item_id = i.id)")
+    _NOME_BINDER = ("(SELECT b.name FROM col_slots s "
+                    " JOIN col_binders b ON b.id = s.binder_id "
+                    " WHERE s.item_id = i.id LIMIT 1)")
+
     def list_items(self, provider: str, binder_id=TUTTI) -> list:
         """Le carte possedute, con il prezzo noto agganciato.
 
-        `binder_id`: `TUTTI` = tutte; `None` = solo quelle fuori dai
-        raccoglitori; un id = solo quelle di quel raccoglitore.
+        `binder_id`: `TUTTI` = tutte; `None` = solo le copie **fuori** dalle
+        tasche; un id = solo le copie dentro quel raccoglitore.
+
+        Ogni riga porta `copie_viste`: quante copie contano **in questa
+        vista**. Non è un sinonimo di `quantity` — una carta da 3 copie con 2
+        nel raccoglitore ne mostra 2 lì e 1 fra le sfuse — ed è il numero che
+        i conti devono usare, altrimenti le stesse copie verrebbero contate due
+        volte.
         """
-        dove, parametri = "i.provider = ?", [provider]
-        if binder_id is not TUTTI:
-            if binder_id is None:
-                dove += " AND i.binder_id IS NULL"
-            else:
-                dove += " AND i.binder_id = ?"
-                parametri.append(int(binder_id))
+        # I parametri vanno nell'ordine in cui i `?` compaiono nel TESTO della
+        # query, non nell'ordine in cui si pensano: qui `copie_viste` sta nella
+        # SELECT, quindi il suo segnaposto viene prima di quello del WHERE.
+        # Sbagliando l'ordine la query non trova niente e i conti vanno a zero
+        # senza un errore — l'ha preso il controllo automatico, non l'occhio.
+        if binder_id is TUTTI:
+            viste = "i.quantity"
+            dove = "i.provider = ?"
+            parametri = [provider]
+        elif binder_id is None:
+            viste = f"(i.quantity - {self._IN_TASCA})"
+            dove = f"i.provider = ? AND i.quantity > {self._IN_TASCA}"
+            parametri = [provider]
+        else:
+            viste = ("(SELECT COUNT(*) FROM col_slots s "
+                     " WHERE s.item_id = i.id AND s.binder_id = ?)")
+            dove = ("i.provider = ? AND EXISTS (SELECT 1 FROM col_slots s "
+                    " WHERE s.item_id = i.id AND s.binder_id = ?)")
+            parametri = [int(binder_id), provider, int(binder_id)]
         return self.storage.query(
-            "SELECT i.*, p.price AS price, p.currency AS currency, "
-            "       p.checked_at AS checked_at, b.name AS binder_name "
-            "FROM col_items i "
-            "LEFT JOIN col_prices p ON p.provider = i.provider AND p.ref_id = i.ref_id "
-            "LEFT JOIN col_binders b ON b.id = i.binder_id "
+            f"SELECT i.*, p.price AS price, p.currency AS currency, "
+            f"       p.checked_at AS checked_at, "
+            f"       {self._NOME_BINDER} AS binder_name, "
+            f"       {self._IN_TASCA} AS copie_in_tasca, "
+            f"       {viste} AS copie_viste "
+            f"FROM col_items i "
+            f"LEFT JOIN col_prices p ON p.provider = i.provider "
+            f"     AND p.ref_id = i.ref_id "
             f"WHERE {dove} "
-            "ORDER BY i.card_name COLLATE NOCASE, i.set_code, i.id",
+            f"ORDER BY i.card_name COLLATE NOCASE, i.set_code, i.id",
             tuple(parametri))
 
     def item(self, item_id):
@@ -139,23 +237,26 @@ class CollectionRepository:
 
     def add_item(self, provider, ref_id, card_name, detail="", set_code="",
                  image_url="", quantity=1, condition="", language="",
-                 first_edition=False, paid=None, note="", binder_id=None,
-                 slot=-1) -> int:
+                 first_edition=False, paid=None, note="") -> int:
         """Aggiunge copie, **fondendole** con una riga identica se c'è già.
 
-        "Identica" vuol dire stessa stampa nello stesso stato, nello stesso
-        posto e pagata la stessa cifra: solo allora due righe sono davvero la
-        stessa cosa e sommarle non perde niente. Due copie pagate 2 € e 12 €
-        restano due righe, perché il prezzo d'acquisto è un dato che l'utente
-        ha inserito a mano e nessuno ha il diritto di mediarlo.
+        "Identica" vuol dire stessa stampa, stesso stato e pagata la stessa
+        cifra: solo allora due righe sono davvero la stessa cosa e sommarle non
+        perde niente. Due copie pagate 2 € e 12 € restano due righe, perché il
+        prezzo d'acquisto è un dato che l'utente ha inserito a mano e nessuno
+        ha il diritto di mediarlo.
+
+        Dove stia la carta **non entra più** nel confronto: da quando le tasche
+        sono una tabella a parte, la stessa carta in un raccoglitore e sul
+        tavolo è una riga sola con due copie, una in tasca e una no.
         """
         quantity = max(1, int(quantity))
         gemella = self.storage.query(
-            "SELECT id, quantity FROM col_items WHERE provider = ? AND ref_id = ? "
+            "SELECT id FROM col_items WHERE provider = ? AND ref_id = ? "
             "AND condition = ? AND language = ? AND first_edition = ? "
-            "AND paid IS ? AND binder_id IS ? AND slot = ? LIMIT 1",
+            "AND paid IS ? LIMIT 1",
             (provider, str(ref_id), condition, language, int(bool(first_edition)),
-             paid, binder_id, int(slot)))
+             paid))
         if gemella:
             self.storage.execute(
                 "UPDATE col_items SET quantity = quantity + ? WHERE id = ?",
@@ -163,18 +264,17 @@ class CollectionRepository:
             return int(gemella[0]["id"])
         cur = self.storage.execute(
             "INSERT INTO col_items (provider, ref_id, card_name, detail, set_code,"
-            " image_url, quantity, condition, language, first_edition, paid, note,"
-            " binder_id, slot) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " image_url, quantity, condition, language, first_edition, paid, note)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (provider, str(ref_id), card_name, detail, set_code, image_url,
-             quantity, condition, language, int(bool(first_edition)), paid,
-             note, binder_id, int(slot)))
+             quantity, condition, language, int(bool(first_edition)), paid, note))
         return int(cur.lastrowid)
 
     #: campi che si possono cambiare dopo l'inserimento (tutto il resto è
     #: identità della riga e si cambia cancellando e riaggiungendo)
     MODIFICABILI = ("quantity", "condition", "language", "first_edition", "paid",
-                    "note", "binder_id", "slot", "detail", "set_code",
-                    "image_url", "card_name", "ref_id")
+                    "note", "detail", "set_code", "image_url", "card_name",
+                    "ref_id")
 
     def update_item(self, item_id, **campi) -> None:
         """Aggiorna solo i campi passati (gli altri restano come sono)."""
@@ -191,26 +291,41 @@ class CollectionRepository:
             f"UPDATE col_items SET {', '.join(pezzi)} WHERE id = ?", tuple(valori))
 
     def remove_item(self, item_id) -> None:
+        """Via la carta e via le sue tasche: niente tasche orfane."""
+        self.storage.execute("DELETE FROM col_slots WHERE item_id = ?",
+                             (int(item_id),))
         self.storage.execute("DELETE FROM col_items WHERE id = ?", (int(item_id),))
 
     def set_quantity(self, item_id, quantity: int) -> None:
         """Cambia le copie; a zero la riga sparisce (possedere zero copie non
-        è uno stato, è non possederla)."""
+        è uno stato, è non possederla).
+
+        Se le copie scendono sotto il numero di tasche occupate, le tasche in
+        eccesso si **liberano partendo dall'ultima**: tre copie in tre tasche
+        che diventano due devono lasciarne una vuota, non restare tre.
+        """
         quantity = int(quantity)
         if quantity <= 0:
             self.remove_item(item_id)
             return
         self.storage.execute("UPDATE col_items SET quantity = ? WHERE id = ?",
                              (quantity, int(item_id)))
+        in_tasca = self.copies_placed(item_id)
+        if in_tasca > quantity:
+            self.storage.execute(
+                "DELETE FROM col_slots WHERE rowid IN ("
+                "  SELECT rowid FROM col_slots WHERE item_id = ? "
+                "  ORDER BY binder_id DESC, slot DESC LIMIT ?)",
+                (int(item_id), in_tasca - quantity))
 
     # ----------------------------------------------------- raccoglitori ---
     def list_binders(self) -> list:
         """I raccoglitori, con quante righe e quante copie contengono."""
         return self.storage.query(
             "SELECT b.*, "
-            " (SELECT COUNT(*) FROM col_items i WHERE i.binder_id = b.id) AS righe, "
-            " (SELECT COALESCE(SUM(i.quantity), 0) FROM col_items i "
-            "  WHERE i.binder_id = b.id) AS copie "
+            " (SELECT COUNT(DISTINCT s.item_id) FROM col_slots s "
+            "  WHERE s.binder_id = b.id) AS righe, "
+            " (SELECT COUNT(*) FROM col_slots s WHERE s.binder_id = b.id) AS copie "
             "FROM col_binders b ORDER BY b.position, b.id")
 
     def binder(self, binder_id):
@@ -250,12 +365,12 @@ class CollectionRepository:
         raccoglitore non vuol dire buttare via le carte.
         """
         if con_carte:
-            self.storage.execute("DELETE FROM col_items WHERE binder_id = ?",
-                                 (int(binder_id),))
-        else:
             self.storage.execute(
-                "UPDATE col_items SET binder_id = NULL, slot = -1 "
-                "WHERE binder_id = ?", (int(binder_id),))
+                "DELETE FROM col_items WHERE id IN "
+                "(SELECT item_id FROM col_slots WHERE binder_id = ?)",
+                (int(binder_id),))
+        self.storage.execute("DELETE FROM col_slots WHERE binder_id = ?",
+                             (int(binder_id),))
         self.storage.execute("DELETE FROM col_binders WHERE id = ?",
                              (int(binder_id),))
 
@@ -264,54 +379,142 @@ class CollectionRepository:
             "UPDATE col_binders SET position = ? WHERE id = ?",
             [(int(p), int(i)) for i, p in coppie])
 
-    # --- tasche ---
+    # ----------------------------------------------------------- tasche ---
+    # Una tasca tiene UNA copia. Tutto quello che sta qui sotto ragiona per
+    # copie, non per righe: è la differenza fra un raccoglitore e una lista.
+    def slots_of(self, binder_id) -> dict:
+        """`slot → riga della carta` per tutte le tasche piene di un raccoglitore."""
+        righe = self.storage.query(
+            "SELECT s.slot AS slot, i.*, p.price AS price, "
+            "       p.currency AS currency, p.checked_at AS checked_at "
+            "FROM col_slots s "
+            "JOIN col_items i ON i.id = s.item_id "
+            "LEFT JOIN col_prices p ON p.provider = i.provider "
+            "     AND p.ref_id = i.ref_id "
+            "WHERE s.binder_id = ? ORDER BY s.slot", (int(binder_id),))
+        return {int(r["slot"]): r for r in righe}
+
     def item_at(self, binder_id, slot: int):
         righe = self.storage.query(
-            "SELECT * FROM col_items WHERE binder_id = ? AND slot = ? LIMIT 1",
+            "SELECT i.* FROM col_slots s JOIN col_items i ON i.id = s.item_id "
+            "WHERE s.binder_id = ? AND s.slot = ? LIMIT 1",
             (int(binder_id), int(slot)))
         return righe[0] if righe else None
 
-    def place(self, item_id, binder_id, slot: int) -> None:
-        """Mette una carta in una tasca precisa, **scambiando** con chi c'era.
-
-        Lo scambio è l'unico comportamento che non perde niente: sovrascrivere
-        farebbe sparire una carta dal raccoglitore senza dirlo, e rifiutare il
-        gesto costringerebbe a svuotare la tasca a mano prima di ogni
-        spostamento.
-        """
-        item_id = int(item_id)
-        riga = self.item(item_id)
-        if riga is None:
-            return
+    def copies_placed(self, item_id, binder_id=None) -> int:
+        """Quante copie di questa carta stanno in una tasca (in tutto, o qui)."""
         if binder_id is None:
-            self.update_item(item_id, binder_id=None, slot=-1)
-            return
-        binder_id, slot = int(binder_id), int(slot)
-        occupante = self.item_at(binder_id, slot)
-        if occupante is not None and int(occupante["id"]) == item_id:
-            return                      # già lì: niente da fare
-        if occupante is not None:
-            # chi c'era prende il posto (e il raccoglitore) di chi arriva
-            partenza = riga["binder_id"]
-            self.update_item(int(occupante["id"]),
-                             binder_id=partenza,
-                             slot=int(riga["slot"]) if partenza is not None else -1)
-        self.update_item(item_id, binder_id=binder_id, slot=slot)
+            righe = self.storage.query(
+                "SELECT COUNT(*) AS n FROM col_slots WHERE item_id = ?",
+                (int(item_id),))
+        else:
+            righe = self.storage.query(
+                "SELECT COUNT(*) AS n FROM col_slots "
+                "WHERE item_id = ? AND binder_id = ?",
+                (int(item_id), int(binder_id)))
+        return int(righe[0]["n"]) if righe else 0
 
-    def first_free_slot(self, binder_id) -> int:
-        """La prima tasca libera del raccoglitore (anche in mezzo alle pagine).
+    def first_free_slot(self, binder_id, da: int = 0) -> int:
+        """La prima tasca libera da `da` in poi (anche in mezzo alle pagine).
 
         Riempire i buchi lasciati da una carta tolta è ciò che ci si aspetta
         da un raccoglitore: l'alternativa — andare sempre in fondo — lascia
         pagine mezze vuote che poi si sistemano a mano.
         """
         usati = {int(r["slot"]) for r in self.storage.query(
-            "SELECT slot FROM col_items WHERE binder_id = ?", (int(binder_id),))
-            if int(r["slot"]) >= 0}
-        posto = 0
+            "SELECT slot FROM col_slots WHERE binder_id = ?", (int(binder_id),))}
+        posto = max(0, int(da))
         while posto in usati:
             posto += 1
         return posto
+
+    def place_item(self, item_id, binder_id, slot: int = 0) -> int:
+        """Mette nel raccoglitore le copie ancora fuori, **una per tasca**.
+
+        Parte dalla tasca indicata e prosegue con le libere successive: tre
+        copie entrano in tre tasche, che è tutto il senso di questa richiesta.
+        Se il raccoglitore finisce lo spazio ne entrano meno, e le altre
+        restano sfuse — detto, non arrotondato. Torna quante ne ha messe.
+
+        Una carta sta in **un** raccoglitore alla volta: portandola altrove,
+        le tasche di prima si liberano.
+        """
+        item_id, binder_id = int(item_id), int(binder_id)
+        riga = self.item(item_id)
+        if riga is None:
+            return 0
+        self.storage.execute(
+            "DELETE FROM col_slots WHERE item_id = ? AND binder_id <> ?",
+            (item_id, binder_id))
+        da_mettere = int(riga["quantity"] or 1) - self.copies_placed(item_id, binder_id)
+        posto, messe = max(0, int(slot)), 0
+        while messe < da_mettere:
+            posto = self.first_free_slot(binder_id, posto)
+            self.storage.execute(
+                "INSERT OR IGNORE INTO col_slots (binder_id, slot, item_id) "
+                "VALUES (?,?,?)", (binder_id, posto, item_id))
+            posto += 1
+            messe += 1
+        return messe
+
+    def move_slot(self, binder_id, da: int, a: int) -> None:
+        """Sposta la copia da una tasca all'altra, **scambiando** con chi c'era.
+
+        Lo scambio è l'unico comportamento che non perde niente: sovrascrivere
+        farebbe sparire una carta senza dirlo, e rifiutare il gesto
+        costringerebbe a svuotare la tasca a mano prima di ogni spostamento.
+        """
+        binder_id, da, a = int(binder_id), int(da), int(a)
+        if da == a:
+            return
+        qui = self.storage.query(
+            "SELECT item_id FROM col_slots WHERE binder_id = ? AND slot = ?",
+            (binder_id, da))
+        if not qui:
+            return
+        mio = int(qui[0]["item_id"])
+        altro = self.storage.query(
+            "SELECT item_id FROM col_slots WHERE binder_id = ? AND slot = ?",
+            (binder_id, a))
+        self.storage.execute(
+            "DELETE FROM col_slots WHERE binder_id = ? AND slot IN (?, ?)",
+            (binder_id, da, a))
+        self.storage.execute(
+            "INSERT INTO col_slots (binder_id, slot, item_id) VALUES (?,?,?)",
+            (binder_id, a, mio))
+        if altro:
+            self.storage.execute(
+                "INSERT INTO col_slots (binder_id, slot, item_id) VALUES (?,?,?)",
+                (binder_id, da, int(altro[0]["item_id"])))
+
+    def unplace_slot(self, binder_id, slot: int) -> None:
+        """Svuota UNA tasca: quella copia torna sfusa (la carta resta)."""
+        self.storage.execute(
+            "DELETE FROM col_slots WHERE binder_id = ? AND slot = ?",
+            (int(binder_id), int(slot)))
+
+    def unplace_item(self, item_id) -> None:
+        """Toglie dal raccoglitore **tutte** le copie di questa carta."""
+        self.storage.execute("DELETE FROM col_slots WHERE item_id = ?",
+                             (int(item_id),))
+
+    def cleanup_slots(self) -> None:
+        """Via le tasche che indicano carte o raccoglitori che non ci sono più,
+        e quelle in eccesso rispetto alle copie possedute."""
+        self.storage.execute(
+            "DELETE FROM col_slots WHERE item_id NOT IN (SELECT id FROM col_items)")
+        self.storage.execute(
+            "DELETE FROM col_slots WHERE binder_id NOT IN "
+            "(SELECT id FROM col_binders)")
+        for r in self.storage.query(
+                "SELECT s.item_id AS id, COUNT(*) AS n, i.quantity AS q "
+                "FROM col_slots s JOIN col_items i ON i.id = s.item_id "
+                "GROUP BY s.item_id HAVING n > q"):
+            self.storage.execute(
+                "DELETE FROM col_slots WHERE rowid IN ("
+                "  SELECT rowid FROM col_slots WHERE item_id = ? "
+                "  ORDER BY binder_id DESC, slot DESC LIMIT ?)",
+                (int(r["id"]), int(r["n"]) - int(r["q"])))
 
     # ------------------------------------------------------------ prezzi ---
     def prices(self, provider: str) -> dict:
@@ -416,7 +619,11 @@ class CollectionRepository:
         }
         valute = set()
         for r in righe:
-            copie = int(r["quantity"] or 0)
+            # `copie_viste`, non `quantity`: in un raccoglitore contano le copie
+            # che stanno LÌ, e fra le sfuse quelle che non stanno da nessuna
+            # parte. Con `quantity` le stesse copie verrebbero contate due volte.
+            copie = int(r["copie_viste"] if "copie_viste" in r.keys()
+                        else r["quantity"] or 0)
             conti["copie"] += copie
             prezzo = r["price"]
             noto = prezzo is not None
